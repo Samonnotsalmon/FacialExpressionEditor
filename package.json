@@ -1,0 +1,15 @@
+{
+  "name": "jp.samon.facial-expression-editor",
+  "displayName": "Facial Expression Editor",
+  "version": "0.1.0",
+  "unity": "2022.3",
+  "description": "VRChatアバターの表情・ジェスチャー設定エディタ。表情セットを複数の顔バリアントで共有し、Modular Avatarで非破壊に適用する。",
+  "author": {
+    "name": "Samon"
+  },
+  "vpmDependencies": {
+    "com.vrchat.avatars": ">=3.10.0",
+    "nadena.dev.modular-avatar": ">=1.18.0",
+    "nadena.dev.ndmf": ">=1.14.0"
+  }
+}

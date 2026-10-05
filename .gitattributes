@@ -1,0 +1,21 @@
+* text=auto
+
+*.cs      text diff=csharp
+*.md      text
+*.json    text
+*.asmdef  text
+*.meta    text eol=lf
+
+# Unity YAML
+*.asset   text eol=lf
+*.prefab  text eol=lf
+*.unity   text eol=lf
+*.anim    text eol=lf
+*.controller text eol=lf
+*.mat     text eol=lf
+
+# バイナリ
+*.png     binary
+*.jpg     binary
+*.psd     binary
+*.fbx     binary
