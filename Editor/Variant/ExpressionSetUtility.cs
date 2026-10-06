@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -5,7 +6,7 @@ using UnityEngine;
 namespace Samon.FacialExpressionEditor.Editor
 {
     /// <summary>
-    /// 表情データの複製と、新しい表情の作成を行う。
+    /// 表情データの複製、新しい表情の作成、表情メニューの編集を行う。
     /// </summary>
     public static class ExpressionSetUtility
     {
@@ -19,6 +20,201 @@ namespace Samon.FacialExpressionEditor.Editor
             Empty,
         }
 
+        /// <summary>
+        /// クリップを使っている表情を返す。無ければクリップ名で表情を作って追加する（Undoは呼び出し側で記録する）。
+        /// </summary>
+        public static Expression FindOrCreateExpression(ExpressionSet set, AnimationClip clip)
+        {
+            var expression = set.expressions.Find(e => e.clip == clip);
+            if (expression != null) return expression;
+
+            expression = new Expression { name = clip.name, clip = clip };
+            set.expressions.Add(expression);
+            return expression;
+        }
+
+        /// <summary>
+        /// 表情を削除し、ジェスチャー・組み合わせ・表情メニューからの参照も外す（Undoは呼び出し側で記録する）。
+        /// クリップのファイルは消さない。
+        /// </summary>
+        public static void RemoveExpression(ExpressionSet set, Expression expression)
+        {
+            set.expressions.Remove(expression);
+            foreach (var mapping in set.gestureSets.Select(s => s.mapping))
+            {
+                mapping.EnsureSize();
+                for (var i = 0; i < GestureMapping.GestureCount; i++)
+                {
+                    if (mapping.left[i] == expression.id) mapping.left[i] = null;
+                    if (mapping.right[i] == expression.id) mapping.right[i] = null;
+                }
+                mapping.combos.RemoveAll(c => c.expressionId == expression.id);
+            }
+            foreach (var node in set.menu.Where(n => n.kind == MenuNodeKind.Expression && n.expressionId == expression.id).ToList())
+            {
+                RemoveNode(set, node);
+            }
+        }
+
+        // ---- 表情メニュー ----
+
+        /// <summary>
+        /// ゲーム内のメニューでモードとして切り替える項目（表情セット）。固定だけの表情は「表情選択」にだけ並ぶ。
+        /// </summary>
+        public static bool IsMode(MenuNode node) => node.kind == MenuNodeKind.GestureSet;
+
+        public static IEnumerable<MenuNode> Children(ExpressionSet set, string parentId)
+        {
+            return set.menu.Where(n => (n.parentId ?? "") == (parentId ?? ""));
+        }
+
+        /// <summary>
+        /// メニューを上から順に（フォルダの中身はフォルダの直後に）並べる。
+        /// </summary>
+        public static List<(MenuNode node, int depth)> TreeOrder(ExpressionSet set)
+        {
+            var result = new List<(MenuNode, int)>();
+            void Walk(string parentId, int depth)
+            {
+                foreach (var node in Children(set, parentId))
+                {
+                    result.Add((node, depth));
+                    if (node.kind == MenuNodeKind.Folder) Walk(node.id, depth + 1);
+                }
+            }
+            Walk("", 0);
+            return result;
+        }
+
+        /// <summary>
+        /// メニューで何も選んでいないときのモード。指定が無ければ、メニューで最初の表情セット。
+        /// </summary>
+        public static MenuNode DefaultMode(ExpressionSet set)
+        {
+            var modes = TreeOrder(set).Select(t => t.node).Where(IsMode).ToList();
+            return modes.Find(n => n.id == set.defaultModeId) ?? modes.FirstOrDefault();
+        }
+
+        public static string NodeName(ExpressionSet set, MenuNode node)
+        {
+            switch (node.kind)
+            {
+                case MenuNodeKind.GestureSet: return set.FindGestureSet(node.gestureSetId)?.name ?? "（表情セットが見つかりません）";
+                case MenuNodeKind.Expression: return set.FindExpression(node.expressionId)?.name ?? "（表情が見つかりません）";
+                default: return node.name;
+            }
+        }
+
+        /// <summary>
+        /// 項目とその中身を削除する（表情セットや表情そのものは消さない）。
+        /// </summary>
+        public static void RemoveNode(ExpressionSet set, MenuNode node)
+        {
+            foreach (var child in Children(set, node.id).ToList()) RemoveNode(set, child);
+            set.menu.Remove(node);
+        }
+
+        /// <summary>
+        /// 項目を parentId のフォルダへ移す。before があればその前に、無ければフォルダの最後に置く。
+        /// </summary>
+        public static void MoveNode(ExpressionSet set, MenuNode node, string parentId, MenuNode before)
+        {
+            if (node == before) return;
+            // フォルダを自分の中には入れない。
+            for (var p = parentId; !string.IsNullOrEmpty(p); p = set.menu.Find(n => n.id == p)?.parentId)
+            {
+                if (p == node.id) return;
+            }
+
+            set.menu.Remove(node);
+            node.parentId = parentId ?? "";
+            var index = before != null ? set.menu.IndexOf(before) : -1;
+            if (index < 0)
+            {
+                var last = set.menu.FindLastIndex(n => (n.parentId ?? "") == node.parentId);
+                index = last >= 0 ? last + 1 : set.menu.Count;
+            }
+            set.menu.Insert(index, node);
+        }
+
+        /// <summary>
+        /// 表情セットのジェスチャーに割り当てた表情（左手の表 → 右手の表 → 組み合わせの順、重複なし）。
+        /// FaceEmoと同じく、これらはゲーム内の「表情選択」メニューに自動で並び、固定できる。
+        /// </summary>
+        public static List<Expression> GestureExpressions(ExpressionSet set, GestureSet gestureSet)
+        {
+            gestureSet.mapping.EnsureSize();
+            return gestureSet.mapping.left
+                .Concat(gestureSet.mapping.right)
+                .Concat(gestureSet.mapping.combos.Select(c => c.expressionId))
+                .Select(set.FindExpression)
+                .Where(e => e != null)
+                .Distinct()
+                .ToList();
+        }
+
+        /// <summary>
+        /// メニューに置いた表情セットのジェスチャーに割り当てている表情か（＝「表情選択」に自動で並ぶ）。
+        /// </summary>
+        public static bool IsInGestureOfMenu(ExpressionSet set, string expressionId)
+        {
+            return set.menu
+                .Where(n => n.kind == MenuNodeKind.GestureSet)
+                .Select(n => set.FindGestureSet(n.gestureSetId))
+                .Where(s => s != null)
+                .Any(s => GestureExpressions(set, s).Any(e => e.id == expressionId));
+        }
+
+        /// <summary>
+        /// 表情セットをメニューに置く。ジェスチャーに割り当てた表情は「表情選択」に自動で並ぶので、
+        /// 固定だけの項目としては追加しない。既にメニューにある表情セットは作り直さない。
+        /// </summary>
+        public static void AddMenuFromSets(ExpressionSet set)
+        {
+            foreach (var gestureSet in set.gestureSets)
+            {
+                if (set.menu.Any(n => n.kind == MenuNodeKind.GestureSet && n.gestureSetId == gestureSet.id)) continue;
+                InsertAtRootBeforeFolders(set, new MenuNode { kind = MenuNodeKind.GestureSet, gestureSetId = gestureSet.id });
+            }
+        }
+
+        /// <summary>
+        /// 旧形式（表情セットの「ジェスチャーで使う」と固定メニューのフォルダ）から、表情メニューを作る。
+        /// メニューが空のときだけ行う。旧固定メニューのうち、ジェスチャーに割り当てていない表情は「その他」に置く。
+        /// </summary>
+        public static bool EnsureMenu(ExpressionSet set)
+        {
+            if (set.menu.Count > 0 || set.gestureSets.Count == 0 && set.fixedMenu.Count == 0) return false;
+
+            foreach (var gestureSet in set.gestureSets.Where(s => s.useForGesture))
+            {
+                set.menu.Add(new MenuNode { kind = MenuNodeKind.GestureSet, gestureSetId = gestureSet.id });
+            }
+
+            var fixedOnly = set.fixedMenu
+                .SelectMany(f => f.expressionIds)
+                .Where(id => set.FindExpression(id) != null && !IsInGestureOfMenu(set, id))
+                .Distinct()
+                .ToList();
+            if (fixedOnly.Count > 0)
+            {
+                var folder = new MenuNode { kind = MenuNodeKind.Folder, name = "その他" };
+                set.menu.Add(folder);
+                foreach (var id in fixedOnly)
+                {
+                    set.menu.Add(new MenuNode { kind = MenuNodeKind.Expression, expressionId = id, parentId = folder.id });
+                }
+            }
+
+            set.fixedMenu.Clear();
+            return true;
+        }
+        private static void InsertAtRootBeforeFolders(ExpressionSet set, MenuNode node)
+        {
+            var index = set.menu.FindIndex(n => string.IsNullOrEmpty(n.parentId) && n.kind == MenuNodeKind.Folder);
+            if (index < 0) set.menu.Add(node);
+            else set.menu.Insert(index, node);
+        }
         /// <summary>
         /// 表情データを複製する。表情・表情セット・パーツの設定を引き継ぎ、表情のIDも同じものを使うので、
         /// 顔バリアントの差し替えは複製した表情データでもそのまま使える。

@@ -10,19 +10,35 @@ namespace Samon.FacialExpressionEditor
     /// </summary>
     public class FaceVariant : ScriptableObject
     {
-        // 表情中にベース顔を残すかどうかの標準。表情ごとの例外は expressionRules で指定する。
-        public bool keepBaseFaceByDefault;
+        // 表情中にベース顔を残すかどうかの標準。初期値は「残す」（編集したベース顔を元の表情に適用する）。
+        public bool keepBaseFaceByDefault = true;
 
         public List<BaseFaceKey> baseFace = new List<BaseFaceKey>();
 
+        // 表情ごとに、シェイプキー単位で標準と違う扱いにしたもの。
         public List<ExpressionBaseFaceRule> expressionRules = new List<ExpressionBaseFaceRule>();
 
         public List<ExpressionOverride> overrides = new List<ExpressionOverride>();
 
-        public bool ShouldKeepBaseFace(string expressionId)
+        /// <summary>
+        /// この表情で、このベース顔のシェイプキーを残すかどうか。
+        /// 「常に残す」＞ 表情ごとの指定 ＞ 顔バリアントの標準 の順で決める。
+        /// </summary>
+        public bool ShouldKeep(string expressionId, BaseFaceKey key)
         {
-            var rule = expressionRules.Find(r => r.expressionId == expressionId);
-            return rule != null ? rule.keepBaseFace : keepBaseFaceByDefault;
+            if (key.alwaysKeep) return true;
+            var rule = FindRule(expressionId);
+            if (rule != null)
+            {
+                if (rule.keepKeys.Contains(key.Key)) return true;
+                if (rule.resetKeys.Contains(key.Key)) return false;
+            }
+            return keepBaseFaceByDefault;
+        }
+
+        public ExpressionBaseFaceRule FindRule(string expressionId)
+        {
+            return expressionRules.Find(r => r.expressionId == expressionId);
         }
 
         public ExpressionOverride FindOverride(string expressionId)
@@ -42,7 +58,7 @@ namespace Samon.FacialExpressionEditor
         public string path;
         public string blendShape;
 
-        // 元Prefabの値。「ベース顔をリセット」するときはこの値に戻す。
+        // 元Prefabの値。「ベース顔を外す（リセット）」ときはこの値に戻す。
         public float referenceValue;
 
         // 検出したときのバリアントでの値。別のアバターで使うときに、顔が同じかを確かめるために使う。
@@ -52,16 +68,23 @@ namespace Samon.FacialExpressionEditor
 
         // 表情の設定に関係なく、常に残す（目の大きさなどの微調整向け）。
         public bool alwaysKeep;
+
+        public string Key => $"{path}|{blendShape}";
     }
 
     /// <summary>
-    /// 表情ごとの、ベース顔を残すかどうかの例外。
+    /// 表情ごとの、ベース顔のシェイプキー単位の指定（標準と違うものだけ持つ）。
     /// </summary>
     [Serializable]
     public class ExpressionBaseFaceRule
     {
         public string expressionId;
-        public bool keepBaseFace;
+
+        // 標準が「外す」でも、この表情では残すシェイプキー（BaseFaceKey.Key）。
+        public List<string> keepKeys = new List<string>();
+
+        // 標準が「残す」でも、この表情では外すシェイプキー（BaseFaceKey.Key）。
+        public List<string> resetKeys = new List<string>();
     }
 
     [Serializable]

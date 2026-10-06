@@ -11,17 +11,9 @@ namespace Samon.FacialExpressionEditor.Editor
     [CustomEditor(typeof(ExpressionSet))]
     internal class ExpressionSetEditor : UnityEditor.Editor
     {
-        private static readonly string[] GestureLabels =
-            { "ニュートラル", "グー（Fist）", "パー", "指差し", "ピース", "ロック", "銃", "サムズアップ" };
-
-        private static readonly string[] HandLabels = { "左手", "右手" };
-
-        private bool _showSets = true;
         private bool _showExpressions;
         private bool _showParts = true;
         private bool _showAdvanced;
-        private readonly HashSet<string> _openSets = new HashSet<string>();
-        private readonly HashSet<string> _openCombos = new HashSet<string>();
         private readonly HashSet<string> _openPartProperties = new HashSet<string>();
 
         public override void OnInspectorGUI()
@@ -32,10 +24,14 @@ namespace Samon.FacialExpressionEditor.Editor
             Undo.RecordObject(set, "表情セットを編集");
             EditorGUI.BeginChangeCheck();
 
+            if (GUILayout.Button("表情エディタを開く", GUILayout.Height(26)))
+            {
+                ExpressionEditorWindow.Open(null);
+            }
+
             set.defaultTransitionDuration = EditorGUILayout.FloatField("遷移時間（秒）", set.defaultTransitionDuration);
 
-            EditorGUILayout.Space();
-            DrawGestureSets(set);
+            EditorGUILayout.HelpBox("表情メニュー・表情セット（ジェスチャー）・固定の表情は、表情エディタで編集します。", MessageType.None);
             EditorGUILayout.Space();
             DrawParts(set);
             EditorGUILayout.Space();
@@ -49,113 +45,8 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
-        private void DrawGestureSets(ExpressionSet set)
-        {
-            _showSets = EditorGUILayout.Foldout(_showSets, $"表情セット（{set.gestureSets.Count}）", true, EditorStyles.foldoutHeader);
-            if (!_showSets) return;
 
-            EditorGUILayout.HelpBox(
-                "「ジェスチャーで使う」セットが2つ以上あると、メニューで切り替えられます。\n" +
-                "「固定メニューに並べる」セットの表情は、表情固定メニューから選べます。", MessageType.None);
 
-            var (ids, labels) = ExpressionOptions(set);
-
-            foreach (var gestureSet in set.gestureSets.ToList())
-            {
-                using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
-                {
-                    using (new EditorGUILayout.HorizontalScope())
-                    {
-                        var open = _openSets.Contains(gestureSet.id);
-                        var next = EditorGUILayout.Foldout(open, GUIContent.none, true);
-                        if (next != open)
-                        {
-                            if (next) _openSets.Add(gestureSet.id);
-                            else _openSets.Remove(gestureSet.id);
-                        }
-
-                        gestureSet.name = EditorGUILayout.TextField(gestureSet.name);
-                        if (GUILayout.Button("削除", GUILayout.Width(44)))
-                        {
-                            set.gestureSets.Remove(gestureSet);
-                            EditorUtility.SetDirty(set);
-                            GUIUtility.ExitGUI();
-                        }
-                    }
-
-                    using (new EditorGUILayout.HorizontalScope())
-                    {
-                        gestureSet.useForGesture = EditorGUILayout.ToggleLeft("ジェスチャーで使う", gestureSet.useForGesture);
-                        gestureSet.showInFixedMenu = EditorGUILayout.ToggleLeft("固定メニューに並べる", gestureSet.showInFixedMenu);
-                    }
-
-                    if (_openSets.Contains(gestureSet.id)) DrawMapping(gestureSet, ids, labels);
-                }
-            }
-
-            if (GUILayout.Button("表情セットを追加"))
-            {
-                var gestureSet = new GestureSet { name = $"セット{set.gestureSets.Count + 1}" };
-                set.gestureSets.Add(gestureSet);
-                _openSets.Add(gestureSet.id);
-            }
-        }
-
-        private void DrawMapping(GestureSet gestureSet, string[] ids, string[] labels)
-        {
-            var mapping = gestureSet.mapping;
-            mapping.EnsureSize();
-
-            mapping.dominantHand = (Hand)EditorGUILayout.Popup("優先する手", (int)mapping.dominantHand, HandLabels);
-
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                EditorGUILayout.LabelField("", GUILayout.Width(EditorGUIUtility.labelWidth - 4));
-                EditorGUILayout.LabelField("左手", EditorStyles.miniBoldLabel);
-                EditorGUILayout.LabelField("右手", EditorStyles.miniBoldLabel);
-            }
-
-            for (var i = 0; i < GestureMapping.GestureCount; i++)
-            {
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    EditorGUILayout.PrefixLabel(GestureLabels[i]);
-                    mapping.left[i] = ExpressionPopup(mapping.left[i], ids, labels);
-                    mapping.right[i] = ExpressionPopup(mapping.right[i], ids, labels);
-                }
-            }
-
-            var open = _openCombos.Contains(gestureSet.id);
-            var next = EditorGUILayout.Foldout(open, $"組み合わせの上書き（{mapping.combos.Count}）", true);
-            if (next != open)
-            {
-                if (next) _openCombos.Add(gestureSet.id);
-                else _openCombos.Remove(gestureSet.id);
-            }
-            if (!next) return;
-
-            foreach (var combo in mapping.combos.ToList())
-            {
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    combo.left = (HandGesture)EditorGUILayout.Popup((int)combo.left, GestureLabels);
-                    GUILayout.Label("×", GUILayout.Width(14));
-                    combo.right = (HandGesture)EditorGUILayout.Popup((int)combo.right, GestureLabels);
-                    combo.expressionId = ExpressionPopup(combo.expressionId, ids, labels);
-                    if (GUILayout.Button("削除", GUILayout.Width(44)))
-                    {
-                        mapping.combos.Remove(combo);
-                        EditorUtility.SetDirty(target);
-                        GUIUtility.ExitGUI();
-                    }
-                }
-            }
-
-            if (GUILayout.Button("組み合わせを追加"))
-            {
-                mapping.combos.Add(new GestureComboOverride());
-            }
-        }
 
         private void DrawParts(ExpressionSet set)
         {
@@ -351,17 +242,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private static void RemoveExpression(ExpressionSet set, Expression expression)
         {
-            set.expressions.Remove(expression);
-            foreach (var mapping in set.gestureSets.Select(s => s.mapping))
-            {
-                mapping.EnsureSize();
-                for (var i = 0; i < GestureMapping.GestureCount; i++)
-                {
-                    if (mapping.left[i] == expression.id) mapping.left[i] = null;
-                    if (mapping.right[i] == expression.id) mapping.right[i] = null;
-                }
-                mapping.combos.RemoveAll(c => c.expressionId == expression.id);
-            }
+            ExpressionSetUtility.RemoveExpression(set, expression);
             EditorUtility.SetDirty(set);
         }
     }

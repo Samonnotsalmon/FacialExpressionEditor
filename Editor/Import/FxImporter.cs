@@ -101,7 +101,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     name = name,
                     useForGesture = old?.useForGesture ?? true,
-                    showInFixedMenu = old?.showInFixedMenu ?? true,
                 };
                 gestureSet.mapping.dominantHand = dominantHand;
 
@@ -133,6 +132,10 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 if (AddFolder(set, entry.Clip)) result.AddedFolders++;
             }
+
+            // 表情メニューに表情セットを置き、各セットの表情を「表情固定」フォルダに並べる
+            // （既にメニューにあるものや、同じ名前のフォルダは作り直さないので、並べ替えた状態は残る）。
+            ExpressionSetUtility.AddMenuFromSets(set);
 
             set.originalGestureLayers = new List<string>(result.GestureLayers);
             EditorUtility.SetDirty(set);

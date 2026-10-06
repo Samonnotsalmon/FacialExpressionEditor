@@ -10,7 +10,6 @@ namespace Samon.FacialExpressionEditor.Editor
     internal class FacialExpressionAvatarEditor : UnityEditor.Editor
     {
         private static readonly string[] SourceLabels = { "今の顔から", "既存の表情をコピー", "空から" };
-        private static readonly string[] RuleLabels = { "標準", "残す", "リセット" };
 
         private int _partsLayerIndex = -1;
         private string _newVariantName;
@@ -59,6 +58,11 @@ namespace Samon.FacialExpressionEditor.Editor
                     CreateSet(avatar, descriptor, false);
                 }
                 return;
+            }
+
+            if (GUILayout.Button("表情エディタを開く", GUILayout.Height(28)))
+            {
+                ExpressionEditorWindow.Open(avatar);
             }
 
             DrawExpressionSet(avatar, descriptor, set, fx);
@@ -277,7 +281,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawExpressions(ExpressionSet set, FaceVariant variant)
         {
             _showExpressions = EditorGUILayout.Foldout(_showExpressions,
-                $"表情ごとの設定（差し替え {variant.overrides.Count(o => o.clip != null)} / {set.expressions.Count}）", true);
+                $"表情の差し替え（{variant.overrides.Count(o => o.clip != null)} / {set.expressions.Count}）", true);
             if (!_showExpressions) return;
 
             EditorGUI.indentLevel++;
@@ -286,8 +290,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 var entry = variant.FindOverride(expression.id);
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    EditorGUILayout.LabelField(expression.name, GUILayout.Width(EditorGUIUtility.labelWidth - 40));
-                    RulePopup(variant, expression);
+                    EditorGUILayout.LabelField(expression.name, GUILayout.Width(EditorGUIUtility.labelWidth));
 
                     if (entry == null)
                     {
@@ -329,21 +332,6 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorGUI.indentLevel--;
         }
 
-        private static void RulePopup(FaceVariant variant, Expression expression)
-        {
-            var rule = variant.expressionRules.Find(r => r.expressionId == expression.id);
-            var current = rule == null ? 0 : rule.keepBaseFace ? 1 : 2;
-            var next = EditorGUILayout.Popup(current, RuleLabels, GUILayout.Width(80));
-            if (next == current) return;
-
-            Undo.RecordObject(variant, "ベース顔の扱いを変更");
-            variant.expressionRules.RemoveAll(r => r.expressionId == expression.id);
-            if (next != 0)
-            {
-                variant.expressionRules.Add(new ExpressionBaseFaceRule { expressionId = expression.id, keepBaseFace = next == 1 });
-            }
-            EditorUtility.SetDirty(variant);
-        }
 
         private void DrawPartsImport(VRCAvatarDescriptor descriptor, ExpressionSet set, string[] layerNames)
         {

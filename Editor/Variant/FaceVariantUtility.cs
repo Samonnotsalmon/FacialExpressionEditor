@@ -137,11 +137,10 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             if (entry.baseFaceBaked || entry.clip == null) return false;
 
-            var keepExpression = variant.ShouldKeepBaseFace(entry.expressionId);
             Undo.RecordObject(entry.clip, "ベース顔を反映");
             foreach (var key in variant.baseFace)
             {
-                if (!key.enabled || !(keepExpression || key.alwaysKeep)) continue;
+                if (!key.enabled || !variant.ShouldKeep(entry.expressionId, key)) continue;
 
                 var binding = EditorCurveBinding.FloatCurve(key.path, typeof(SkinnedMeshRenderer), BlendShapePrefix + key.blendShape);
                 var curve = AnimationUtility.GetEditorCurve(entry.clip, binding);

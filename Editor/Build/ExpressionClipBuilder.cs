@@ -11,9 +11,6 @@ namespace Samon.FacialExpressionEditor.Editor
     /// </summary>
     internal class ExpressionClipBuilder
     {
-        private const float BlendShapeMin = 0;
-        private const float BlendShapeMax = 100;
-
         private readonly FaceVariant _variant;
         private readonly GameObject _avatarRoot;
         private readonly Dictionary<string, VirtualClip> _cache = new Dictionary<string, VirtualClip>();
@@ -37,60 +34,75 @@ namespace Samon.FacialExpressionEditor.Editor
                 CopyCurves(source, clip, null);
             }
 
-            if (_variant != null) ApplyBaseFace(clip, _variant.ShouldKeepBaseFace(expression.id), overridden != null);
+            if (_variant != null)
+            {
+                BaseFaceProcessor.Apply(_variant, expression.id, overridden != null, _avatarRoot,
+                    clip.GetFloatCurve, clip.SetFloatCurve);
+            }
 
             _cache[expression.id] = clip;
             return clip;
         }
 
         /// <summary>
-        /// ベース顔のシェイプキーを処理する。「常に残す」のシェイプキーは、表情の設定に関係なく残す。
-        /// - リセット：クリップが動かしていなければ元Prefabの値にする（動かしていればクリップの値のまま）
-        /// - 残す：クリップの値に「バリアントの値 − 元Prefabの値」を足す。動かしていなければバリアントの値にする
-        /// 差し替えクリップはそのバリアント用に作ったものなので、差分は足さずにクリップの値をそのまま使う。
+        /// 切り替え演出つきのクリップを作る。頭で挟む表情（目閉じなど）を holdTime の間見せ、fadeTime かけて目的の表情に移る。
+        /// 挟む表情が動かさないプロパティは目的の表情の値のまま、目的の表情が動かさないプロパティはアバターの今の値に戻す。
         /// </summary>
-        private void ApplyBaseFace(VirtualClip clip, bool keepExpression, bool overridden)
+        public VirtualClip BuildSwitch(Expression target, Expression between, SwitchEffect effect)
         {
-            foreach (var key in _variant.baseFace)
+            var targetClip = Build(target);
+            var betweenClip = Build(between);
+            var hold = Mathf.Max(0, effect.holdTime);
+            var end = hold + Mathf.Max(0.0001f, effect.fadeTime);
+
+            var clip = VirtualClip.Create($"{target.name}（{between.name}を挟む）");
+            var settings = clip.Settings;
+            settings.loopTime = false;
+            clip.Settings = settings;
+
+            var floatBindings = targetClip.GetFloatCurveBindings().Concat(betweenClip.GetFloatCurveBindings()).Distinct();
+            foreach (var binding in floatBindings)
             {
-                if (!key.enabled) continue;
-                var keepBaseFace = keepExpression || key.alwaysKeep;
+                var targetCurve = targetClip.GetFloatCurve(binding);
+                var betweenCurve = betweenClip.GetFloatCurve(binding);
 
-                var renderer = FindRenderer(key.path);
-                var index = renderer != null ? renderer.sharedMesh.GetBlendShapeIndex(key.blendShape) : -1;
-                if (index < 0) continue;
+                float targetValue;
+                if (targetCurve != null) targetValue = EndValue(targetCurve);
+                else if (!AnimationUtility.GetFloatValue(_avatarRoot, binding, out targetValue)) continue;
+                var betweenValue = betweenCurve != null ? EndValue(betweenCurve) : targetValue;
 
-                var current = renderer.GetBlendShapeWeight(index);
-                var binding = EditorCurveBinding.FloatCurve(key.path, typeof(SkinnedMeshRenderer), "blendShape." + key.blendShape);
-                var curve = clip.GetFloatCurve(binding);
-
-                if (curve == null)
+                var curve = new AnimationCurve(new Keyframe(0, betweenValue), new Keyframe(hold, betweenValue), new Keyframe(end, targetValue));
+                for (var i = 0; i < curve.length; i++)
                 {
-                    var value = keepBaseFace ? current : key.referenceValue;
-                    clip.SetFloatCurve(binding, new AnimationCurve(new Keyframe(0, value)));
+                    AnimationUtility.SetKeyLeftTangentMode(curve, i, AnimationUtility.TangentMode.Linear);
+                    AnimationUtility.SetKeyRightTangentMode(curve, i, AnimationUtility.TangentMode.Linear);
                 }
-                else if (keepBaseFace && !overridden)
-                {
-                    clip.SetFloatCurve(binding, Offset(curve, current - key.referenceValue));
-                }
+                clip.SetFloatCurve(binding, curve);
             }
+
+            var objectBindings = targetClip.GetObjectCurveBindings().Concat(betweenClip.GetObjectCurveBindings()).Distinct();
+            foreach (var binding in objectBindings)
+            {
+                var targetKeys = targetClip.GetObjectCurve(binding);
+                var betweenKeys = betweenClip.GetObjectCurve(binding);
+                Object targetValue;
+                if (targetKeys != null && targetKeys.Length > 0) targetValue = targetKeys[targetKeys.Length - 1].value;
+                else if (!AnimationUtility.GetObjectReferenceValue(_avatarRoot, binding, out targetValue)) continue;
+                var betweenValue = betweenKeys != null && betweenKeys.Length > 0 ? betweenKeys[betweenKeys.Length - 1].value : targetValue;
+
+                clip.SetObjectCurve(binding, new[]
+                {
+                    new ObjectReferenceKeyframe { time = 0, value = betweenValue },
+                    new ObjectReferenceKeyframe { time = hold, value = targetValue },
+                });
+            }
+
+            return clip;
         }
 
-        private SkinnedMeshRenderer FindRenderer(string path)
+        private static float EndValue(AnimationCurve curve)
         {
-            var transform = string.IsNullOrEmpty(path) ? _avatarRoot.transform : _avatarRoot.transform.Find(path);
-            var renderer = transform != null ? transform.GetComponent<SkinnedMeshRenderer>() : null;
-            return renderer != null && renderer.sharedMesh != null ? renderer : null;
-        }
-
-        private static AnimationCurve Offset(AnimationCurve curve, float delta)
-        {
-            var keys = curve.keys;
-            for (var i = 0; i < keys.Length; i++)
-            {
-                keys[i].value = Mathf.Clamp(keys[i].value + delta, BlendShapeMin, BlendShapeMax);
-            }
-            return new AnimationCurve(keys) { preWrapMode = curve.preWrapMode, postWrapMode = curve.postWrapMode };
+            return curve.length == 0 ? 0 : curve.Evaluate(curve.keys[curve.length - 1].time);
         }
 
         /// <summary>

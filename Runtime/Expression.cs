@@ -27,6 +27,10 @@ namespace Samon.FacialExpressionEditor
         public bool overrideTransitionDuration;
         public float transitionDuration = 0.1f;
 
+        // 固定メニューでこの表情に切り替えたときの演出。
+        public SwitchEffectMode fixedSwitchMode;
+        public SwitchEffect fixedSwitchEffect = new SwitchEffect { enabled = true };
+
         public static string NewId() => Guid.NewGuid().ToString("N");
     }
 }

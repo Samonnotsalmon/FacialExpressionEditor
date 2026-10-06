@@ -14,6 +14,12 @@ namespace Samon.FacialExpressionEditor
 
         public Hand dominantHand = Hand.Right;
 
+        // Fistのとき、握り具合（GestureWeight）で表情を動かすか。オフなら握り具合に関係なく表情を出す。
+        public bool useLeftFistWeight;
+        public bool useRightFistWeight = true;
+
+        public bool UsesFistWeight(Hand hand) => hand == Hand.Left ? useLeftFistWeight : useRightFistWeight;
+
         // 添字は HandGesture の値。
         public string[] left = new string[GestureCount];
         public string[] right = new string[GestureCount];
