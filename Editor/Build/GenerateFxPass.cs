@@ -25,16 +25,16 @@ namespace Samon.FacialExpressionEditor.Editor
 
         protected override void Execute(BuildContext context)
         {
-            var variant = context.AvatarRootObject.GetComponentInChildren<ExpressionVariant>(true);
-            if (variant == null) return;
+            var avatar = context.AvatarRootObject.GetComponentInChildren<FacialExpressionAvatar>(true);
+            if (avatar == null) return;
 
-            var set = variant.expressionSet;
-            if (set != null) Generate(context, set, variant);
+            var set = avatar.expressionSet;
+            if (set != null) Generate(context, set, avatar.faceVariant);
 
-            Object.DestroyImmediate(variant);
+            Object.DestroyImmediate(avatar);
         }
 
-        private static void Generate(BuildContext context, ExpressionSet set, ExpressionVariant variant)
+        private static void Generate(BuildContext context, ExpressionSet set, FaceVariant variant)
         {
             var controllerContext = context.Extension<AnimatorServicesContext>().ControllerContext;
             if (!controllerContext.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx) || fx == null)

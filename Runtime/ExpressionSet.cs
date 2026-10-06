@@ -4,9 +4,10 @@ using UnityEngine;
 namespace Samon.FacialExpressionEditor
 {
     /// <summary>
-    /// 素体ごとに1つ作る共有の表情セット。全バリアントから参照される。
+    /// 素体ごとに1つ作る共有の表情データ（UI上の名前）。全バリアントから参照される。
+    /// ジェスチャーの組（UI上の「表情セット」）は GestureSet。
     /// </summary>
-    [CreateAssetMenu(menuName = "Samon/表情エディタ/表情セット", fileName = "ExpressionSet")]
+    [CreateAssetMenu(menuName = "Samon/表情エディタ/表情データ", fileName = "表情データ")]
     public class ExpressionSet : ScriptableObject
     {
         // 登録フォルダはGUIDで持つ（フォルダを移動・改名しても外れないように）。

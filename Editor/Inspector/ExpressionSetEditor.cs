@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Samon.FacialExpressionEditor.Editor
 {
     /// <summary>
-    /// 表情セットの仮インスペクタ。専用ウィンドウ（Phase 3）ができるまでの編集用。
+    /// 表情データの仮インスペクタ。専用ウィンドウ（Phase 3）ができるまでの編集用。
     /// </summary>
     [CustomEditor(typeof(ExpressionSet))]
     internal class ExpressionSetEditor : UnityEditor.Editor
@@ -272,7 +272,6 @@ namespace Samon.FacialExpressionEditor.Editor
                     }
 
                     expression.clip = (AnimationClip)EditorGUILayout.ObjectField("クリップ", expression.clip, typeof(AnimationClip), false);
-
                     using (new EditorGUILayout.HorizontalScope())
                     {
                         expression.overrideTransitionDuration = EditorGUILayout.ToggleLeft("遷移時間を個別に設定",

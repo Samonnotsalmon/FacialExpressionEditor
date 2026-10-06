@@ -14,8 +14,7 @@ namespace Samon.FacialExpressionEditor
         public string name;
         public AnimationClip clip;
 
-        // 表情中もバリアントのベース顔を残す。オフなら元Prefabの値に戻す。
-        public bool keepBaseFace;
+        // ベース顔を残すかどうかは、顔ごとに変わるので FaceVariant 側で持つ。
         public bool enableBlink = true;
         public bool enableLipSync = true;
         public bool mouthMorphCancel = true;

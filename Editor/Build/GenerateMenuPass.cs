@@ -22,8 +22,8 @@ namespace Samon.FacialExpressionEditor.Editor
 
         protected override void Execute(BuildContext context)
         {
-            var variant = context.AvatarRootObject.GetComponentInChildren<ExpressionVariant>(true);
-            var set = variant != null ? variant.expressionSet : null;
+            var avatar = context.AvatarRootObject.GetComponentInChildren<FacialExpressionAvatar>(true);
+            var set = avatar != null ? avatar.expressionSet : null;
             if (set == null) return;
 
             var descriptor = context.AvatarRootObject.GetComponent<VRCAvatarDescriptor>();
