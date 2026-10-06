@@ -2,7 +2,9 @@
     "name": "Samon.FacialExpressionEditor.Editor",
     "rootNamespace": "Samon.FacialExpressionEditor.Editor",
     "references": [
-        "Samon.FacialExpressionEditor.Runtime"
+        "Samon.FacialExpressionEditor.Runtime",
+        "nadena.dev.ndmf",
+        "nadena.dev.modular-avatar.core"
     ],
     "includePlatforms": [
         "Editor"

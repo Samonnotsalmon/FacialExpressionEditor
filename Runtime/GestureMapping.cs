@@ -20,12 +20,20 @@ namespace Samon.FacialExpressionEditor
 
         public List<GestureComboOverride> combos = new List<GestureComboOverride>();
 
+        public string Resolve(HandGesture leftGesture, HandGesture rightGesture)
+        {
+            return Resolve(leftGesture, rightGesture, out _);
+        }
+
         /// <summary>
         /// 組み合わせの上書き ＞ 優先する手 ＞ 反対の手 の順で表情を決める。
         /// どれにも割り当てがなければ null（無表情）を返す。
+        /// source には、表情を決めた手を返す（組み合わせの上書きなら優先する手）。
         /// </summary>
-        public string Resolve(HandGesture leftGesture, HandGesture rightGesture)
+        public string Resolve(HandGesture leftGesture, HandGesture rightGesture, out Hand source)
         {
+            source = dominantHand;
+
             foreach (var combo in combos)
             {
                 if (combo.left == leftGesture && combo.right == rightGesture && !string.IsNullOrEmpty(combo.expressionId))
@@ -40,8 +48,18 @@ namespace Samon.FacialExpressionEditor
             var otherId = dominantHand == Hand.Left ? rightId : leftId;
 
             if (!string.IsNullOrEmpty(dominantId)) return dominantId;
-            if (!string.IsNullOrEmpty(otherId)) return otherId;
+            if (!string.IsNullOrEmpty(otherId))
+            {
+                source = dominantHand == Hand.Left ? Hand.Right : Hand.Left;
+                return otherId;
+            }
             return null;
+        }
+
+        public void EnsureSize()
+        {
+            if (left == null || left.Length != GestureCount) Array.Resize(ref left, GestureCount);
+            if (right == null || right.Length != GestureCount) Array.Resize(ref right, GestureCount);
         }
 
         private static string Get(string[] table, HandGesture gesture)

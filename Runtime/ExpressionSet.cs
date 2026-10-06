@@ -16,12 +16,32 @@ namespace Samon.FacialExpressionEditor
 
         public List<Expression> expressions = new List<Expression>();
 
-        public GestureMapping gestures = new GestureMapping();
+        public List<GestureSet> gestureSets = new List<GestureSet>();
+
+        public List<FacialPart> parts = new List<FacialPart>();
+
+        // 元FXのジェスチャーレイヤー名。ビルド時に取り除き、その位置に生成した表情レイヤーを入れる。
+        public List<string> originalGestureLayers = new List<string>();
+
+        // 元FXのパーツ用レイヤー名。ビルド時に取り除き、その位置に生成したパーツレイヤーを入れる。
+        public List<string> originalPartLayers = new List<string>();
 
         public Expression FindExpression(string id)
         {
             if (string.IsNullOrEmpty(id)) return null;
             return expressions.Find(e => e.id == id);
+        }
+
+        public float GetTransitionDuration(Expression expression)
+        {
+            return expression != null && expression.overrideTransitionDuration
+                ? expression.transitionDuration
+                : defaultTransitionDuration;
+        }
+
+        private void OnValidate()
+        {
+            foreach (var gestureSet in gestureSets) gestureSet.mapping.EnsureSize();
         }
     }
 }
