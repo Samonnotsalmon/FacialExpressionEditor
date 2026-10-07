@@ -49,6 +49,12 @@ namespace Samon.FacialExpressionEditor
         // 表情ごとのまばたき・リップシンクを、元FXから取り込み済みか（この機能より前に作った表情データのため）。
         public bool faceControlImported;
 
+        // コンタクト・PhysBoneで出す表情（上にあるものほど優先）。
+        public List<ContactTrigger> contactTriggers = new List<ContactTrigger>();
+
+        // 顔を動かしている元FXのレイヤーの扱い（指定が無いものはそのまま使う）。
+        public List<OriginalLayerSetting> originalLayerSettings = new List<OriginalLayerSetting>();
+
         // 元FXのジェスチャーレイヤー名。ビルド時に取り除き、その位置に生成した表情レイヤーを入れる。
         public List<string> originalGestureLayers = new List<string>();
 

@@ -66,6 +66,11 @@ namespace Samon.FacialExpressionEditor.Editor
                 usage.Add(part.clip, $"パーツ：{part.name}", () => set.parts.Remove(part));
             }
 
+            foreach (var trigger in set.contactTriggers)
+            {
+                usage.Add(set, trigger.expressionId, $"コンタクト・PhysBone：{trigger.parameter}", () => trigger.expressionId = null);
+            }
+
             return usage;
         }
 

@@ -150,13 +150,14 @@ namespace Samon.FacialExpressionEditor.Editor
 
         // プレビューで見える値（ベース顔とこの表情だけの値を適用した後）。クリップと顔バリアントが変わったときだけ作り直す。
         private Dictionary<EditorCurveBinding, float> _shown;
-        private (AnimationClip, int, int) _shownOf;
+        private (Expression, AnimationClip, int, int) _shownOf;
 
         private Dictionary<EditorCurveBinding, float> ShownValues(Expression expression)
         {
             var variant = Variant;
             var clip = TargetClip;
-            var key = (clip, clip != null ? EditorUtility.GetDirtyCount(clip) : 0, variant != null ? EditorUtility.GetDirtyCount(variant) : 0);
+            var key = (expression, clip, clip != null ? EditorUtility.GetDirtyCount(clip) : 0,
+                variant != null ? EditorUtility.GetDirtyCount(variant) : 0);
             if (_shown != null && _shownOf.Equals(key)) return _shown;
 
             _shown = new Dictionary<EditorCurveBinding, float>();
@@ -164,7 +165,10 @@ namespace Samon.FacialExpressionEditor.Editor
             var preview = PreviewClips.ForExpression(expression, variant, _avatar.gameObject);
             foreach (var binding in AnimationUtility.GetCurveBindings(preview))
             {
-                if (ClipEditing.TryGetFloat(preview, binding, out var value)) _shown[binding] = value;
+                var curve = AnimationUtility.GetEditorCurve(preview, binding);
+                if (curve == null || curve.length == 0) continue;
+                // 表情は最後まで再生した形。
+                _shown[binding] = curve.keys[curve.length - 1].value;
             }
             PreviewClips.Release(preview);
             return _shown;
@@ -282,9 +286,8 @@ namespace Samon.FacialExpressionEditor.Editor
             x += 80;
 
             // 青い行はこの表情だけの値（見える値）、それ以外はクリップの値。
-            var value = faceRelated
-                ? hasFaceValue ? faceValue : state.Shown.TryGetValue(binding, out var shown) ? shown : _shapes.Renderer.GetBlendShapeWeight(shape)
-                : inClip ? clipValue : state.Neutral[shape];
+            var shownValue = state.Shown.TryGetValue(binding, out var shown) ? shown : _shapes.Renderer.GetBlendShapeWeight(shape);
+            var value = faceRelated ? hasFaceValue ? faceValue : shownValue : inClip ? clipValue : state.Neutral[shape];
 
             var sliderRect = new Rect(x, rect.y + 1, rect.xMax - x - 28, rect.height - 2);
             EditorGUI.BeginChangeCheck();

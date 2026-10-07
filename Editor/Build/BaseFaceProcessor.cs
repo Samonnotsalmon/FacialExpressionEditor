@@ -9,6 +9,7 @@ namespace Samon.FacialExpressionEditor.Editor
     /// - ベース顔はすべての表情に適用する：クリップの値に「バリアントの値 − 元Prefabの値」を足す。動かしていなければバリアントの値にする
     /// - 差し替えクリップはそのバリアント用に作ったものなので、差分は足さずにクリップの値をそのまま使う
     /// - 最後に、表情ごとのこの顔だけの値（表情の編集ウィンドウで変えたもの）で上書きする
+    /// - 元FXのAFKのクリップは、ベース顔の後に、この顔だけの動き（キーを打ったシェイプキー）で上書きする
     /// </summary>
     internal static class BaseFaceProcessor
     {
@@ -45,6 +46,20 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 if (CurrentValue(avatarRoot, value.path, value.blendShape) == null) continue;
                 setCurve(Binding(value.path, value.blendShape), new AnimationCurve(new Keyframe(0, value.value)));
+            }
+        }
+
+        /// <summary>
+        /// 元FXのAFKのクリップに、この顔だけの動きを書き込む。ベース顔を適用した後に呼ぶ。
+        /// </summary>
+        public static void ApplyAfkCurves(AfkClipCurves curves, GameObject avatarRoot, Action<EditorCurveBinding, AnimationCurve> setCurve)
+        {
+            if (curves == null) return;
+            foreach (var entry in curves.curves)
+            {
+                if (entry.curve == null || entry.curve.length == 0) continue;
+                if (CurrentValue(avatarRoot, entry.path, entry.blendShape) == null) continue;
+                setCurve(Binding(entry.path, entry.blendShape), new AnimationCurve(entry.curve.keys));
             }
         }
 

@@ -19,6 +19,14 @@ namespace Samon.FacialExpressionEditor.Editor
             return EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), BlendShapePrefix + name);
         }
 
+        // シェイプキーのカーブの、シェイプキーの名前。シェイプキーでなければ null。
+        public static string BlendShapeName(EditorCurveBinding binding)
+        {
+            return binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith(BlendShapePrefix)
+                ? binding.propertyName.Substring(BlendShapePrefix.Length)
+                : null;
+        }
+
         public static EditorCurveBinding Active(string path)
         {
             return EditorCurveBinding.FloatCurve(path, typeof(GameObject), IsActive);

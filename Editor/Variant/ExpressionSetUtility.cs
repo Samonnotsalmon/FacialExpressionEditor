@@ -100,6 +100,10 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 RemoveNode(set, node);
             }
+            foreach (var trigger in set.contactTriggers.Where(t => t.expressionId == expression.id))
+            {
+                trigger.expressionId = null;
+            }
         }
 
         // ---- 表情メニュー ----

@@ -28,6 +28,23 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
+        /// 元FXのAFKのクリップに、ビルドと同じくベース顔と、この顔だけのAFKの動きを適用したもの。
+        /// </summary>
+        public static AnimationClip ForAfk(AnimationClip original, FaceVariant variant, GameObject avatarRoot)
+        {
+            var clip = Object.Instantiate(original);
+            clip.hideFlags = HideFlags.HideAndDontSave;
+            if (variant == null) return clip;
+
+            BaseFaceProcessor.Apply(variant, FaceVariant.AfkId, false, avatarRoot,
+                b => AnimationUtility.GetEditorCurve(clip, b),
+                (b, c) => AnimationUtility.SetEditorCurve(clip, b, c),
+                includeFaceValues: false);
+            BaseFaceProcessor.ApplyAfkCurves(variant.FindAfkCurves(original), avatarRoot, (b, c) => AnimationUtility.SetEditorCurve(clip, b, c));
+            return clip;
+        }
+
+        /// <summary>
         /// Fistの握り具合で動かすクリップ（ビルドと同じ FistBlend）。握り具合0でベース顔、握り切ると表情。
         /// クリップ自体が時間で動く表情は、表情のクリップそのもの。
         /// </summary>

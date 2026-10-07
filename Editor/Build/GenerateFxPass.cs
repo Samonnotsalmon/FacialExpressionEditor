@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Reflection;
 using nadena.dev.ndmf;
 using nadena.dev.ndmf.animator;
 using UnityEditor;
@@ -84,6 +85,12 @@ namespace Samon.FacialExpressionEditor.Editor
                 EnsureParameter(fx, entry.Parameter,
                     entry.IsGrouped ? AnimatorControllerParameterType.Int : AnimatorControllerParameterType.Bool);
             }
+            foreach (var trigger in ContactTriggers(set))
+            {
+                EnsureParameter(fx, trigger.parameter, trigger.isFloat ? AnimatorControllerParameterType.Float : AnimatorControllerParameterType.Bool);
+            }
+
+            ProcessOriginalFaceLayers(fx, face, variant, avatarRoot);
 
             RedirectLayerControls(fx, set, new[] { expressionLayer, blinkLayer }.Where(l => l != null).ToList());
             // 元FXのまばたきのレイヤーは取り除くだけ（生成したまばたきは、表情レイヤーより後ろに置く必要があるため表情レイヤーの直後に入れる）。
@@ -93,7 +100,90 @@ namespace Samon.FacialExpressionEditor.Editor
                 (face.MouthCancelerLayersToReplace, cancelerLayers),
                 (set.originalPartLayers, partLayers),
                 (face.BlinkLayersToReplace, new List<VirtualLayer>()),
+                (face.DisabledLayers, new List<VirtualLayer>()),
             });
+        }
+
+        /// <summary>
+        /// 元FXの、顔を動かしているレイヤーを加工する（ビルド用の複製だけを変え、元のアセットは変えない）。
+        /// - AFK：元のアニメーションのまま、顔を動かすクリップにだけベース顔と、この顔だけのAFKの動きを適用する（体などの演出や、顔を動かさないステートには触らない）
+        /// - 「顔のカーブだけ取り除く」にしたレイヤー：顔のシェイプキーのカーブを取り除く
+        /// </summary>
+        private static void ProcessOriginalFaceLayers(VirtualAnimatorController fx, FaceControlPlan face, FaceVariant variant, GameObject avatarRoot)
+        {
+            var done = new HashSet<VirtualClip>();
+            foreach (var layer in fx.Layers.Where(l => l.IsOriginalLayer))
+            {
+                var afk = face.AfkLayers.Contains(layer.Name);
+                var strip = face.StripFaceLayers.Contains(layer.Name);
+                if (!afk && !strip) continue;
+
+                foreach (var clip in layer.AllReachableNodes().OfType<VirtualState>().SelectMany(s => ClipsOf(s.Motion)))
+                {
+                    if (!done.Add(clip)) continue;
+                    var faceCurves = clip.GetFloatCurveBindings().Where(face.IsFaceCurve).ToList();
+                    if (faceCurves.Count == 0) continue;
+
+                    if (strip)
+                    {
+                        foreach (var binding in faceCurves) clip.SetFloatCurve(binding, null);
+                    }
+                    else if (variant != null)
+                    {
+                        BaseFaceProcessor.Apply(variant, FaceVariant.AfkId, false, avatarRoot, clip.GetFloatCurve, clip.SetFloatCurve,
+                            includeFaceValues: false);
+                        BaseFaceProcessor.ApplyAfkCurves(AfkCurvesOf(variant, clip), avatarRoot, clip.SetFloatCurve);
+                    }
+                }
+            }
+        }
+
+        // ビルド用に複製したクリップの、元のクリップ（NDMF が内部で持っている）。
+        private static readonly PropertyInfo OriginalObjectProperty =
+            typeof(VirtualNode).GetProperty("OriginalObject", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        /// <summary>
+        /// ビルド用のクリップに対応する、この顔だけのAFKの動き。元のクリップで探し、分からなければクリップの名前で探す。
+        /// </summary>
+        private static AfkClipCurves AfkCurvesOf(FaceVariant variant, VirtualClip clip)
+        {
+            var original = OriginalObjectProperty?.GetValue(clip) as AnimationClip;
+            return variant.FindAfkCurves(original) ?? variant.afkCurves.Find(c => c.clip != null && c.clip.name == clip.Name);
+        }
+
+        private static IEnumerable<VirtualClip> ClipsOf(VirtualMotion motion)
+        {
+            switch (motion)
+            {
+                case VirtualClip clip:
+                    yield return clip;
+                    break;
+                case VirtualBlendTree tree:
+                    foreach (var child in tree.Children.SelectMany(c => ClipsOf(c.Motion))) yield return child;
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// 使えるコンタクト・PhysBoneの表情（パラメータと表情があるもの）。上にあるものほど優先する。
+        /// </summary>
+        private static List<ContactTrigger> ContactTriggers(ExpressionSet set)
+        {
+            return set.contactTriggers.Where(t => !string.IsNullOrEmpty(t.parameter) && set.FindExpression(t.expressionId) != null).ToList();
+        }
+
+        private static AnimatorCondition ContactOn(ContactTrigger trigger)
+        {
+            return trigger.isFloat
+                ? Condition(trigger.parameter, AnimatorConditionMode.Greater, trigger.threshold)
+                : Condition(trigger.parameter, AnimatorConditionMode.If, 0);
+        }
+
+        private static AnimatorCondition ContactOff(ContactTrigger trigger)
+        {
+            return trigger.isFloat
+                ? Condition(trigger.parameter, AnimatorConditionMode.Less, trigger.threshold)
+                : Condition(trigger.parameter, AnimatorConditionMode.IfNot, 0);
         }
 
         /// <summary>
@@ -174,12 +264,44 @@ namespace Samon.FacialExpressionEditor.Editor
                 transitions.Add(transition);
             }
 
+            // コンタクト・PhysBone：表情選択より下、ジェスチャーより上。上にあるものほど優先し、
+            // 条件が重ならないよう、それより上のものが成り立っていない条件を付ける。
+            var triggers = ContactTriggers(set);
+            if (triggers.Count > 0)
+            {
+                var contactMachine = VirtualStateMachine.Create(cloneContext, "Contact");
+                root.StateMachines = root.StateMachines
+                    .Add(new VirtualStateMachine.VirtualChildStateMachine { StateMachine = contactMachine, Position = new Vector3(600, 300, 0) });
+
+                var contactStates = new Dictionary<string, VirtualState>();
+                for (var i = 0; i < triggers.Count; i++)
+                {
+                    var trigger = triggers[i];
+                    var expression = set.FindExpression(trigger.expressionId);
+                    if (!contactStates.TryGetValue(expression.id, out var state))
+                    {
+                        state = AddState(contactMachine, builder.NameOf(expression), builder.Build(expression), contactStates.Count, expression);
+                        contactStates[expression.id] = state;
+                    }
+
+                    var conditions = new List<AnimatorCondition>();
+                    if (plan.UsesEmoteParameter) conditions.Add(Condition(BuildPlan.EmoteParameter, AnimatorConditionMode.Equals, 0));
+                    conditions.AddRange(triggers.Take(i).Select(ContactOff));
+                    conditions.Add(ContactOn(trigger));
+                    var transition = Transition(state, set.GetTransitionDuration(expression), conditions.ToArray());
+                    transition.Name = $"Contact {i}: {FxNames.Of(trigger.parameter, $"Parameter{i}")} -> {builder.NameOf(expression)}";
+                    transitions.Add(transition);
+                }
+            }
+
             // メニューで選んだモード（FEE/Mode の値）ごとに遷移を作る。モードは1つだけ有効になるので条件は重ならない。
+            // コンタクト・PhysBoneがどれも成り立っていないときだけ働く。
             foreach (var mode in plan.Modes)
             {
                 var prefix = new List<AnimatorCondition>();
                 if (plan.UsesEmoteParameter) prefix.Add(Condition(BuildPlan.EmoteParameter, AnimatorConditionMode.Equals, 0));
                 if (plan.UsesModeParameter) prefix.Add(Condition(BuildPlan.ModeParameter, AnimatorConditionMode.Equals, mode.Value));
+                prefix.AddRange(triggers.Select(ContactOff));
 
                 var label = plan.UsesModeParameter ? $"Mode {mode.Value} {FxNames.GestureSet(set, mode.GestureSet)}: " : "";
                 AddGestureTransitions(set, builder, mode.GestureSet.mapping, prefix, label, neutral, GestureState, transitions);

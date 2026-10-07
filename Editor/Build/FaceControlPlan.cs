@@ -41,6 +41,13 @@ namespace Samon.FacialExpressionEditor.Editor
         public List<string> BlinkLayersToReplace { get; private set; } = new List<string>();
         public List<string> MouthCancelerLayersToReplace { get; private set; } = new List<string>();
 
+        // 元FXの、顔を動かしているレイヤーの扱い。AFK は顔にベース顔とこの顔だけのAFKの動きを適用し、
+        // それ以外は表情データの指定に従って顔のカーブを取り除くか、レイヤーごと使わない。
+        public HashSet<string> FacePaths { get; private set; } = new HashSet<string>();
+        public List<string> AfkLayers { get; private set; } = new List<string>();
+        public List<string> StripFaceLayers { get; private set; } = new List<string>();
+        public List<string> DisabledLayers { get; private set; } = new List<string>();
+
         /// <summary>
         /// ビルド中は1回だけ作り、メニュー生成とFX生成で同じものを使う。
         /// FX生成の時点では元FXがアニメーターの仮想化で読めなくなるので、先に走るメニュー生成で作っておく。
@@ -93,7 +100,24 @@ namespace Samon.FacialExpressionEditor.Editor
 
             // 元FXの口モーフキャンセラーは、自分で編集して空にしたときも取り除く（生成したものだけで扱う）。
             plan.MouthCancelerLayersToReplace = defaults.MouthCancelerLayers;
+
+            var avatar = avatarRoot.GetComponentInChildren<FacialExpressionAvatar>(true);
+            var handled = defaults.MouthCancelerLayers.ToList();
+            if (defaults.BlinkLayer != null) handled.Add(defaults.BlinkLayer);
+            var analysis = OriginalFxAnalysis.Analyze(descriptor, set, avatar != null ? avatar.faceVariant : null, handled);
+            plan.FacePaths = analysis.FacePaths;
+            plan.AfkLayers = analysis.AfkLayers;
+            foreach (var setting in set.originalLayerSettings.Where(s => analysis.FaceLayers.Contains(s.layerName)))
+            {
+                if (setting.mode == OriginalLayerMode.StripFace) plan.StripFaceLayers.Add(setting.layerName);
+                else if (setting.mode == OriginalLayerMode.Disable) plan.DisabledLayers.Add(setting.layerName);
+            }
             return plan;
+        }
+
+        public bool IsFaceCurve(EditorCurveBinding binding)
+        {
+            return binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.") && FacePaths.Contains(binding.path);
         }
 
         public static EditorCurveBinding Binding(BlendShapeRef shape)

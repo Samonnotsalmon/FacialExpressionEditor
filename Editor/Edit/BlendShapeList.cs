@@ -53,6 +53,11 @@ namespace Samon.FacialExpressionEditor.Editor
             return SideSuffixes.Select(s => IndexOf(name + s)).Where(i => i >= 0);
         }
 
+        public static IEnumerable<string> SideVariantNames(Mesh mesh, string name)
+        {
+            return SideSuffixes.Select(s => name + s).Where(n => mesh.GetBlendShapeIndex(n) >= 0);
+        }
+
         public static bool IsSeparator(string name) => Separator.IsMatch(name);
 
         private void GroupBySeparators()

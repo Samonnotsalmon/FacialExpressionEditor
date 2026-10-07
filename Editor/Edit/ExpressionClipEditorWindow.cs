@@ -41,12 +41,12 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private ExpressionSet Set => _avatar != null ? _avatar.expressionSet : null;
         private FaceVariant Variant => _avatar != null ? _avatar.faceVariant : null;
-        private Expression Expression => Set != null ? Set.FindExpression(_expressionId) : null;
+        private Expression Expression => IsAfk ? AfkExpression : Set != null ? Set.FindExpression(_expressionId) : null;
         private ExpressionOverride Override => Variant != null ? Variant.FindOverride(_expressionId) : null;
         private Transform Root => _avatar != null ? _avatar.transform : null;
 
-        // 今編集している（次に書き込む）クリップ。差し替えがあればそちら。
-        private AnimationClip TargetClip => Override != null ? Override.clip : Expression?.clip;
+        // 今編集している（次に書き込む）クリップ。差し替えがあればそちら。AFKでは元のクリップを変えないので無し。
+        private AnimationClip TargetClip => IsAfk ? null : Override != null ? Override.clip : Expression?.clip;
 
         // 共有の表情を編集しているか（差し替えではなく）。
         private bool EditsShared => Override == null;
@@ -69,6 +69,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             Undo.undoRedoPerformed -= OnUndoRedo;
             DisposePreview();
+            ReleaseAfk();
             if (_snapshot != null) DestroyImmediate(_snapshot);
         }
 
@@ -76,6 +77,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             _previewDirty = true;
             InvalidateValues();
+            InvalidateAfk();
             Edited?.Invoke();
             Repaint();
         }
@@ -95,6 +97,7 @@ namespace Samon.FacialExpressionEditor.Editor
             if (_snapshot != null) DestroyImmediate(_snapshot);
             _snapshot = null;
             _snapshotExpressionId = _expressionId;
+            if (IsAfk) TakeAfkSnapshot();
 
             var faceValues = Variant != null ? Variant.FindFaceValues(_expressionId) : null;
             _faceValuesSnapshot = faceValues?.values
@@ -135,12 +138,19 @@ namespace Samon.FacialExpressionEditor.Editor
 
                 using (new EditorGUILayout.VerticalScope())
                 {
-                    _tab = (Tab)GUILayout.Toolbar((int)_tab, TabLabels, GUILayout.Height(24));
-                    switch (_tab)
+                    if (IsAfk)
                     {
-                        case Tab.BlendShapes: DrawBlendShapes(expression); break;
-                        case Tab.ObjectsAndMaterials: DrawObjectsAndMaterials(); break;
-                        case Tab.ShaderProperties: DrawShaderProperties(); break;
+                        DrawAfkTimeline();
+                    }
+                    else
+                    {
+                        _tab = (Tab)GUILayout.Toolbar((int)_tab, TabLabels, GUILayout.Height(24));
+                        switch (_tab)
+                        {
+                            case Tab.BlendShapes: DrawBlendShapes(expression); break;
+                            case Tab.ObjectsAndMaterials: DrawObjectsAndMaterials(); break;
+                            case Tab.ShaderProperties: DrawShaderProperties(); break;
+                        }
                     }
                 }
             }
@@ -154,10 +164,14 @@ namespace Samon.FacialExpressionEditor.Editor
                 GUILayout.Space(8);
                 GUILayout.Label("表情", GUILayout.Width(28));
 
+                // 表情の後ろに、元FXのAFK（あれば）を並べる。
                 var expressions = Set.expressions;
-                var index = expression != null ? expressions.IndexOf(expression) : -1;
-                var next = EditorGUILayout.Popup(index, expressions.Select(e => e.name).ToArray(), EditorStyles.toolbarPopup, GUILayout.Width(220));
-                if (next != index && next >= 0) SetTarget(_avatar, expressions[next].id);
+                var labels = expressions.Select(e => e.name).ToList();
+                var hasAfk = AfkExpression != null;
+                if (hasAfk) labels.Add("AFK（元FXのアニメーション）");
+                var index = IsAfk ? (hasAfk ? expressions.Count : -1) : expression != null ? expressions.IndexOf(expression) : -1;
+                var next = EditorGUILayout.Popup(index, labels.ToArray(), EditorStyles.toolbarPopup, GUILayout.Width(220));
+                if (next != index && next >= 0) SetTarget(_avatar, next < expressions.Count ? expressions[next].id : FaceVariant.AfkId);
 
                 GUILayout.FlexibleSpace();
             }
@@ -186,12 +200,20 @@ namespace Samon.FacialExpressionEditor.Editor
 
             if (_previewDirty || _previewTexture == null)
             {
-                // ビルドと同じ処理（差し替えとベース顔）を通したクリップで描く。
-                var clip = PreviewClips.ForExpression(expression, Variant, _avatar.gameObject);
+                // ビルドと同じ処理（差し替えとベース顔）を通したクリップで描く。AFKは今の時間の形。
                 _preview.Zoom = _zoom;
                 _preview.Yaw = _yaw;
-                _preview.Apply(clip);
-                PreviewClips.Release(clip);
+                if (IsAfk)
+                {
+                    var clip = AfkProcessedClip();
+                    _preview.Apply(clip, clip != null && clip.length > 0 ? _afkSeconds / clip.length : 0);
+                }
+                else
+                {
+                    var clip = PreviewClips.ForExpression(expression, Variant, _avatar.gameObject);
+                    _preview.Apply(clip, 1f);
+                    PreviewClips.Release(clip);
+                }
 
                 if (_previewTexture != null) DestroyImmediate(_previewTexture);
                 _previewTexture = _preview.RenderStatic(Mathf.RoundToInt(size * EditorGUIUtility.pixelsPerPoint));
@@ -215,6 +237,13 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawTargetInfo(Expression expression)
         {
             EditorGUILayout.Space();
+            if (IsAfk)
+            {
+                DrawAfkTargetInfo();
+                DrawRevertButton();
+                return;
+            }
+
             var variant = Variant;
             var entry = Override;
             if (entry != null)
@@ -244,15 +273,23 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
             }
 
-            using (new EditorGUI.DisabledScope(_snapshot == null || TargetClip == null))
+            DrawRevertButton();
+        }
+
+        private void DrawRevertButton()
+        {
+            using (new EditorGUI.DisabledScope(!IsAfk && (_snapshot == null || TargetClip == null)))
             {
                 if (GUILayout.Button("開いたときの状態に戻す") &&
                     EditorUtility.DisplayDialog("表情の編集", "このウィンドウで開いたときの状態に戻しますか？（Ctrl+Z で取り消せます）", "戻す", "キャンセル"))
                 {
                     var clip = TargetClip;
-                    Undo.RecordObject(clip, "開いたときの状態に戻す");
-                    ClipEditing.CopyCurves(_snapshot, clip);
-                    EditorUtility.SetDirty(clip);
+                    if (clip != null && _snapshot != null)
+                    {
+                        Undo.RecordObject(clip, "開いたときの状態に戻す");
+                        ClipEditing.CopyCurves(_snapshot, clip);
+                        EditorUtility.SetDirty(clip);
+                    }
                     RestoreFaceValues();
                     AfterEdit();
                 }
@@ -264,6 +301,12 @@ namespace Samon.FacialExpressionEditor.Editor
         /// </summary>
         private void RestoreFaceValues()
         {
+            if (IsAfk)
+            {
+                RestoreAfkCurves();
+                return;
+            }
+
             var variant = Variant;
             if (variant == null) return;
 
@@ -287,6 +330,7 @@ namespace Samon.FacialExpressionEditor.Editor
         /// </summary>
         private void Modify(string undoName, Action<AnimationClip> change)
         {
+            if (IsAfk) return;
             var clip = PrepareTargetClip();
             if (clip == null) return;
 

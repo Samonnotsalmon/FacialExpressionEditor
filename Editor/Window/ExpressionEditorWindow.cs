@@ -15,12 +15,12 @@ namespace Samon.FacialExpressionEditor.Editor
         private const float LibraryWidth = 300f;
         private const float DetailWidth = 280f;
 
-        private enum Tab { Menu, Parts, Face }
+        private enum Tab { Menu, Parts, Face, AfkContacts }
 
         // Fist：表情セットの表で、握り具合を使う手のFistのマスを選んだとき（握り込みの設定とプレビュー）。
         private enum SelectionKind { None, Expression, Clip, Part, Fist }
 
-        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口" };
+        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口", "AFK・コンタクト" };
 
         [SerializeField] private FacialExpressionAvatar _avatar;
         [SerializeField] private Tab _tab;
@@ -184,6 +184,7 @@ namespace Samon.FacialExpressionEditor.Editor
                         case Tab.Menu: DrawMenuTab(set); break;
                         case Tab.Parts: DrawPartsTab(set); break;
                         case Tab.Face: DrawFaceTab(set); break;
+                        case Tab.AfkContacts: DrawAfkContactsTab(set); break;
                     }
                     EditorGUILayout.EndScrollView();
                 }

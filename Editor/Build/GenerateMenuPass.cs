@@ -35,7 +35,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var plan = BuildPlan.Create(set);
             var face = FaceControlPlan.Get(context, set, plan);
             RemoveReplacedParameters(context, descriptor, set,
-                face.BlinkLayersToReplace.Concat(face.MouthCancelerLayersToReplace));
+                face.BlinkLayersToReplace.Concat(face.MouthCancelerLayersToReplace).Concat(face.DisabledLayers));
 
             var icons = set.menuIcons ? RenderIcons(context, set, plan, avatar.faceVariant) : new Dictionary<string, Texture2D>();
             var root = BuildRootMenu(context, set, plan, icons);
