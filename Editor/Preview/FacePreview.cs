@@ -36,6 +36,10 @@ namespace Samon.FacialExpressionEditor.Editor
 
         public GameObject Source { get; }
 
+        // カメラの寄り具合（1で標準、大きいほど寄る）と、横から見る角度（度）。表情の編集ウィンドウで使う。
+        public float Zoom { get; set; } = 1f;
+        public float Yaw { get; set; }
+
         private static readonly Color Background = new Color(0.19f, 0.19f, 0.2f);
 
 
@@ -239,7 +243,8 @@ namespace Samon.FacialExpressionEditor.Editor
             _utility.BeginStaticPreview(new Rect(0, 0, size, size));
             var camera = _utility.camera;
             var target = _eye + Vector3.down * (_distance * 0.06f);
-            camera.transform.position = target + _forward * _distance;
+            var direction = Quaternion.AngleAxis(Yaw, Vector3.up) * _forward;
+            camera.transform.position = target + direction * (_distance / Mathf.Max(0.1f, Zoom));
             camera.transform.LookAt(target);
             SyncBakedRenderers();
             _utility.Render(true);

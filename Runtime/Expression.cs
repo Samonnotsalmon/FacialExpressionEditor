@@ -14,6 +14,9 @@ namespace Samon.FacialExpressionEditor
         public string name;
         public AnimationClip clip;
 
+        // 作者のクリップを編集するために複製したとき、その元のクリップ（元FXの取り込みやライブラリで、同じ表情として扱う）。
+        public AnimationClip originalClip;
+
         // ベース顔を残すかどうかは、顔ごとに変わるので FaceVariant 側で持つ。
         // まばたき：オフなら、この表情の間はまばたきを止める（目を閉じる表情など）。
         public bool enableBlink = true;

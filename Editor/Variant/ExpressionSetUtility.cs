@@ -21,16 +21,62 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// クリップを使っている表情を返す。無ければクリップ名で表情を作って追加する（Undoは呼び出し側で記録する）。
+        /// クリップを使っている表情を返す（編集のために複製した表情は、元のクリップでも見つかる）。
+        /// 無ければクリップ名で表情を作って追加する（Undoは呼び出し側で記録する）。
         /// </summary>
         public static Expression FindOrCreateExpression(ExpressionSet set, AnimationClip clip)
         {
-            var expression = set.expressions.Find(e => e.clip == clip);
+            var expression = FindExpressionByClip(set, clip);
             if (expression != null) return expression;
 
             expression = new Expression { name = clip.name, clip = clip };
             set.expressions.Add(expression);
             return expression;
+        }
+
+        public static Expression FindExpressionByClip(ExpressionSet set, AnimationClip clip)
+        {
+            if (clip == null) return null;
+            return set.expressions.Find(e => e.clip == clip) ?? set.expressions.Find(e => e.originalClip == clip);
+        }
+
+        /// <summary>
+        /// 表情データで作ったクリップ（Expressions フォルダの中）かどうか。それ以外（作者のクリップなど）は、編集する前に複製する。
+        /// </summary>
+        public static bool OwnsClip(ExpressionSet set, AnimationClip clip)
+        {
+            var path = AssetDatabase.GetAssetPath(clip);
+            return !string.IsNullOrEmpty(path) && path.StartsWith($"{AssetPathUtility.FolderOf(set)}/Expressions/");
+        }
+
+        /// <summary>
+        /// 表情のクリップを 表情データのフォルダ/Expressions/ に複製し、表情をその複製に付け替える。元のクリップは originalClip に覚えておく。
+        /// クリップが無い表情には、空のクリップを作る。戻り値は新しいクリップ。
+        /// </summary>
+        public static AnimationClip MakeClipEditable(ExpressionSet set, Expression expression)
+        {
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Expressions");
+            var source = expression.clip;
+            var path = AssetDatabase.GenerateUniqueAssetPath(
+                $"{folder}/{AssetPathUtility.SafeFileName(source != null ? source.name : expression.name)}.anim");
+
+            AnimationClip clip;
+            if (source != null)
+            {
+                if (!AssetDatabase.CopyAsset(AssetDatabase.GetAssetPath(source), path)) return null;
+                clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+            }
+            else
+            {
+                clip = new AnimationClip();
+                AssetDatabase.CreateAsset(clip, path);
+            }
+
+            Undo.RecordObject(set, "表情を編集用に複製");
+            if (expression.originalClip == null) expression.originalClip = source;
+            expression.clip = clip;
+            EditorUtility.SetDirty(set);
+            return clip;
         }
 
         /// <summary>

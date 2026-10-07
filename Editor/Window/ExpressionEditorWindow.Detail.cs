@@ -132,6 +132,11 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawExpressionDetail(ExpressionSet set, Expression expression)
         {
+            if (GUILayout.Button("この表情を編集", GUILayout.Height(24)))
+            {
+                ExpressionClipEditorWindow.Open(_avatar, expression);
+            }
+
             EditorGUI.BeginChangeCheck();
             var name = EditorGUILayout.TextField("名前", expression.name);
             if (EditorGUI.EndChangeCheck()) Modify(set, "表情の名前を変更", () => expression.name = name);
@@ -257,9 +262,15 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField($"顔バリアント：{variant.name}", EditorStyles.boldLabel);
 
+            // ベース顔はすべての表情に適用する。この表情だけ変えるところは、表情の編集ウィンドウで「この顔だけの値」にする。
+            var faceValues = variant.FindFaceValues(expression.id);
+            var count = faceValues != null ? faceValues.values.Count : 0;
+            EditorGUILayout.LabelField(count > 0
+                    ? $"ベース顔を適用し、この表情だけの値が {count} 件あります（「この表情を編集」で変えられます）。"
+                    : "ベース顔を適用します。この表情だけ変えるときは「この表情を編集」で。",
+                EditorStyles.wordWrappedMiniLabel);
+
             var entry = variant.FindOverride(expression.id);
-            var edited = entry != null && FaceVariantUtility.IsEdited(entry, expression);
-            DrawBaseFaceForExpression(variant, expression, edited);
             if (entry == null)
             {
                 using (new EditorGUI.DisabledScope(expression.clip == null))
@@ -279,19 +290,9 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 EditorGUILayout.ObjectField("差し替えクリップ", entry.clip, typeof(AnimationClip), false);
             }
-            EditorGUILayout.LabelField(edited
-                    ? "差し替えクリップを編集しているので、そのまま使います（ベース顔も差し替えクリップの値のままで、上のチェックは効きません）。"
-                    : "差し替えクリップはまだ編集していないので、共有の表情と同じく、上のベース顔の設定が効きます。",
-                EditorStyles.wordWrappedMiniLabel);
             if (FaceVariantUtility.IsSourceUpdated(entry, expression))
             {
                 EditorGUILayout.HelpBox("複製した後に、共有の表情が更新されています。", MessageType.Info);
-            }
-            if (edited && !entry.baseFaceBaked && GUILayout.Button("差し替えクリップにベース顔を反映"))
-            {
-                FaceVariantUtility.BakeBaseFace(variant, entry);
-                AssetDatabase.SaveAssets();
-                InvalidateDetailPreview();
             }
             if (GUILayout.Button("共有に戻す"))
             {
@@ -301,68 +302,6 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
-        /// <summary>
-        /// この表情で、ベース顔のシェイプキーをそれぞれ残すか外すか。チェックを外すと、この表情ではそのシェイプキーを元Prefabの値に戻す。
-        /// 編集した差し替えクリップを使う表情（locked）では効かないので、変えられないようにする。
-        /// </summary>
-        private void DrawBaseFaceForExpression(FaceVariant variant, Expression expression, bool locked)
-        {
-            var keys = variant.baseFace.Where(k => k.enabled).ToList();
-            if (keys.Count == 0)
-            {
-                EditorGUILayout.LabelField("ベース顔：元Prefabとの違いはありません。", EditorStyles.wordWrappedMiniLabel);
-                return;
-            }
-
-            var kept = keys.Count(k => variant.ShouldKeep(expression.id, k));
-            EditorGUILayout.LabelField($"ベース顔（この表情で残す：{kept} / {keys.Count}）", EditorStyles.miniBoldLabel);
-
-            using var disabled = new EditorGUI.DisabledScope(locked);
-            foreach (var key in keys)
-            {
-                var keep = variant.ShouldKeep(expression.id, key);
-                using (new EditorGUI.DisabledScope(key.alwaysKeep))
-                {
-                    var label = key.alwaysKeep ? $"{key.blendShape}（常に残す）" : key.blendShape;
-                    var next = EditorGUILayout.ToggleLeft(new GUIContent(label, $"{key.referenceValue:0.#} → {key.variantValue:0.#}"), keep);
-                    if (next != keep) SetBaseFaceKeep(variant, expression, key, next);
-                }
-            }
-
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                if (GUILayout.Button("すべて残す", EditorStyles.miniButton))
-                {
-                    foreach (var key in keys.Where(k => !k.alwaysKeep)) SetBaseFaceKeep(variant, expression, key, true);
-                }
-                if (GUILayout.Button("すべて外す", EditorStyles.miniButton))
-                {
-                    foreach (var key in keys.Where(k => !k.alwaysKeep)) SetBaseFaceKeep(variant, expression, key, false);
-                }
-            }
-        }
-
-        /// <summary>
-        /// 顔バリアントの標準と同じなら指定を消し、違うときだけ表情ごとの指定として持つ。
-        /// </summary>
-        private void SetBaseFaceKeep(FaceVariant variant, Expression expression, BaseFaceKey key, bool keep)
-        {
-            Undo.RecordObject(variant, "ベース顔の扱いを変更");
-            var rule = variant.FindRule(expression.id);
-            if (rule == null)
-            {
-                rule = new ExpressionBaseFaceRule { expressionId = expression.id };
-                variant.expressionRules.Add(rule);
-            }
-
-            rule.keepKeys.Remove(key.Key);
-            rule.resetKeys.Remove(key.Key);
-            if (keep != variant.keepBaseFaceByDefault) (keep ? rule.keepKeys : rule.resetKeys).Add(key.Key);
-            if (rule.keepKeys.Count == 0 && rule.resetKeys.Count == 0) variant.expressionRules.Remove(rule);
-
-            EditorUtility.SetDirty(variant);
-            InvalidateDetailPreview();
-        }
         private void DrawClipDetail(ExpressionSet set, AnimationClip clip)
         {
             EditorGUILayout.LabelField(clip.name, EditorStyles.boldLabel);

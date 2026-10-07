@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -25,11 +26,56 @@ namespace Samon.FacialExpressionEditor.Editor
             return hash.ToString();
         }
 
+        // 中身のハッシュ。オブジェクトが変更されていない間（変更回数が同じ間）は使い回す。
+        private static readonly Dictionary<(int, int), string> ContentHashes = new Dictionary<(int, int), string>();
+
+        /// <summary>
+        /// アセットの中身から作るキー。保存前の変更（表情の編集ウィンドウでの編集など）でも変わり、
+        /// 保存やプレイモードに入るときのリロードでは変わらない（プレイ直前に用意したメニューのアイコンをビルドで使えるように）。
+        /// </summary>
         public static string AssetKey(Object asset)
         {
             if (asset == null) return "-";
-            var path = AssetDatabase.GetAssetPath(asset);
-            return AssetDatabase.AssetPathToGUID(path) + ":" + AssetDatabase.GetAssetDependencyHash(path);
+            var key = (asset.GetInstanceID(), EditorUtility.GetDirtyCount(asset));
+            if (!ContentHashes.TryGetValue(key, out var hash))
+            {
+                hash = ContentHash(asset);
+                ContentHashes[key] = hash;
+            }
+            return hash;
+        }
+
+        private static string ContentHash(Object asset)
+        {
+            var hash = new Hash128();
+            if (asset is AnimationClip clip)
+            {
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    hash.Append(binding.path);
+                    hash.Append(binding.propertyName);
+                    foreach (var key in AnimationUtility.GetEditorCurve(clip, binding).keys)
+                    {
+                        hash.Append(key.time);
+                        hash.Append(key.value);
+                    }
+                }
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    hash.Append(binding.path);
+                    hash.Append(binding.propertyName);
+                    foreach (var key in AnimationUtility.GetObjectReferenceCurve(clip, binding))
+                    {
+                        hash.Append(key.time);
+                        hash.Append(key.value != null ? AssetDatabase.GetAssetPath(key.value) + "/" + key.value.name : "-");
+                    }
+                }
+            }
+            else
+            {
+                hash.Append(EditorJsonUtility.ToJson(asset));
+            }
+            return hash.ToString();
         }
 
         public static string Clip(AnimationClip clip, string faceHash)

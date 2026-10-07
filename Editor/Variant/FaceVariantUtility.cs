@@ -32,7 +32,7 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// 元Prefabと値が違うシェイプキーを、ベース顔の候補として検出する。
         /// 表情データのクリップが動かすシェイプキーは有効、それ以外は無効の状態で追加する。
-        /// 既に登録済みのシェイプキーは、有効・無効と「常に残す」の設定を引き継ぐ。戻り値は、元Prefabが見つからなかったレンダラーのパス。
+        /// 既に登録済みのシェイプキーは、有効・無効の設定を引き継ぐ。戻り値は、元Prefabが見つからなかったレンダラーのパス。
         /// </summary>
         public static List<string> DetectBaseFace(FaceVariant variant, ExpressionSet set, GameObject avatarRoot)
         {
@@ -74,7 +74,6 @@ namespace Samon.FacialExpressionEditor.Editor
                         enabled = previous.TryGetValue((path, name), out var old)
                             ? old.enabled
                             : animated.Contains((path, name)),
-                        alwaysKeep = old != null && old.alwaysKeep,
                     });
                 }
             }
@@ -130,7 +129,7 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// 差し替えクリップに、残すベース顔の差分（バリアントの値 − 元Prefabの値）を書き込む。
+        /// 差し替えクリップに、ベース顔の差分（バリアントの値 − 元Prefabの値）を書き込む。
         /// 反映済みのものには何もしない。戻り値は反映したかどうか。
         /// </summary>
         public static bool BakeBaseFace(FaceVariant variant, ExpressionOverride entry)
@@ -140,7 +139,7 @@ namespace Samon.FacialExpressionEditor.Editor
             Undo.RecordObject(entry.clip, "ベース顔を反映");
             foreach (var key in variant.baseFace)
             {
-                if (!key.enabled || !variant.ShouldKeep(entry.expressionId, key)) continue;
+                if (!key.enabled) continue;
 
                 var binding = EditorCurveBinding.FloatCurve(key.path, typeof(SkinnedMeshRenderer), BlendShapePrefix + key.blendShape);
                 var curve = AnimationUtility.GetEditorCurve(entry.clip, binding);
@@ -235,6 +234,37 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
             }
             return true;
+        }
+
+        /// <summary>
+        /// この顔のこの表情だけの値を設定する。value が null なら外す（ベース顔を適用した値に戻る）。
+        /// </summary>
+        public static void SetFaceValue(FaceVariant variant, string expressionId, string path, string blendShape, float? value)
+        {
+            Undo.RecordObject(variant, value != null ? "この顔だけの値を変更" : "この顔だけの値を外す");
+            var faceValues = variant.FindFaceValues(expressionId);
+            if (faceValues == null)
+            {
+                if (value == null) return;
+                faceValues = new ExpressionFaceValues { expressionId = expressionId };
+                variant.faceValues.Add(faceValues);
+            }
+
+            var entry = faceValues.Find(path, blendShape);
+            if (value == null)
+            {
+                if (entry != null) faceValues.values.Remove(entry);
+                if (faceValues.values.Count == 0) variant.faceValues.Remove(faceValues);
+            }
+            else if (entry == null)
+            {
+                faceValues.values.Add(new BlendShapeValue { path = path, blendShape = blendShape, value = value.Value });
+            }
+            else
+            {
+                entry.value = value.Value;
+            }
+            EditorUtility.SetDirty(variant);
         }
 
         /// <summary>

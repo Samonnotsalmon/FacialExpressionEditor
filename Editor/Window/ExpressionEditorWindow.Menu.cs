@@ -392,7 +392,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private static bool InMenu(ExpressionSet set, AnimationClip clip)
         {
-            var expression = set.expressions.Find(e => e.clip == clip);
+            var expression = ExpressionSetUtility.FindExpressionByClip(set, clip);
             return expression != null &&
                    set.menu.Any(n => n.kind == MenuNodeKind.Expression && n.expressionId == expression.id);
         }

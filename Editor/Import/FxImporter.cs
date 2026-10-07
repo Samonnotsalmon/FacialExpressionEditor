@@ -114,7 +114,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     var index = (int)entry.Gesture;
                     if (!string.IsNullOrEmpty(table[index])) continue;
 
-                    var expression = set.expressions.Find(e => e.clip == entry.Clip);
+                    var expression = ExpressionSetUtility.FindExpressionByClip(set, entry.Clip);
                     if (expression == null)
                     {
                         expression = new Expression { name = entry.Clip.name, clip = entry.Clip };
@@ -182,10 +182,12 @@ namespace Samon.FacialExpressionEditor.Editor
             var changed = 0;
             foreach (var expression in only ?? set.expressions)
             {
-                if (expression.clip == null || !found.Contains(expression.clip)) continue;
+                // 編集のために複製した表情は、元のクリップで元FXと照らし合わせる。
+                var clip = expression.originalClip != null ? expression.originalClip : expression.clip;
+                if (clip == null || !found.Contains(clip)) continue;
 
-                var blink = !eyesOff.Contains(expression.clip);
-                var lipSync = !mouthOff.Contains(expression.clip);
+                var blink = !eyesOff.Contains(clip);
+                var lipSync = !mouthOff.Contains(clip);
                 if (expression.enableBlink == blink && expression.enableLipSync == lipSync) continue;
 
                 expression.enableBlink = blink;

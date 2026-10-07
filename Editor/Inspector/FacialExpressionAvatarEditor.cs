@@ -154,7 +154,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     var expression = ExpressionSetUtility.CreateExpression(set, _newExpressionName.Trim(),
                         _newExpressionSource, copyFrom, avatar.gameObject, avatar.faceVariant);
-                    if (expression != null) EditorGUIUtility.PingObject(expression.clip);
+                    // 作った表情は、そのまま表情の編集ウィンドウで編集できるようにする。
+                    if (expression != null) ExpressionClipEditorWindow.Open(avatar, expression);
                     GUIUtility.ExitGUI();
                 }
             }
@@ -163,7 +164,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawCreateVariant(FacialExpressionAvatar avatar, ExpressionSet set)
         {
             EditorGUILayout.HelpBox(
-                "ベース顔を変えたアバターでは、顔バリアントを作ると、表情中のベース顔の扱いと表情の差し替えを設定できます。" +
+                "ベース顔を変えたアバターでは、顔バリアントを作ると、ベース顔をすべての表情に適用できます（表情ごとの調整は表情の編集ウィンドウで）。" +
                 "同じ顔の別のアバターは、作った顔バリアントを指定するだけで共有できます。", MessageType.None);
 
             if (_newVariantName == null) _newVariantName = avatar.gameObject.name;
@@ -190,15 +191,6 @@ namespace Samon.FacialExpressionEditor.Editor
                     MessageType.Warning);
             }
 
-            var keep = EditorGUILayout.Popup("表情中のベース顔（標準）", variant.keepBaseFaceByDefault ? 0 : 1,
-                new[] { "残す（差分を表情に上乗せ）", "リセット（元の表情そのまま）" }) == 0;
-            if (keep != variant.keepBaseFaceByDefault)
-            {
-                Undo.RecordObject(variant, "ベース顔の標準を変更");
-                variant.keepBaseFaceByDefault = keep;
-                EditorUtility.SetDirty(variant);
-            }
-
             if (GUILayout.Button("ベース顔を検出し直す"))
             {
                 var missing = FaceVariantUtility.DetectBaseFace(variant, set, avatar.gameObject);
@@ -210,24 +202,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             DrawBaseFace(variant);
-            DrawUnbakedOverrides(variant);
             DrawExpressions(set, variant);
-        }
-
-        private static void DrawUnbakedOverrides(FaceVariant variant)
-        {
-            var unbaked = variant.overrides.Where(o => o.clip != null && !o.baseFaceBaked).ToList();
-            if (unbaked.Count == 0) return;
-
-            EditorGUILayout.HelpBox(
-                $"ベース顔をまだ反映していない差し替えクリップが {unbaked.Count} 件あります。\n" +
-                "反映すると、「残す」になっているシェイプキーの差分をクリップに書き込みます（1回だけ）。", MessageType.Info);
-            if (GUILayout.Button($"差し替えクリップにベース顔を反映（{unbaked.Count} 件）"))
-            {
-                foreach (var entry in unbaked) FaceVariantUtility.BakeBaseFace(variant, entry);
-                AssetDatabase.SaveAssets();
-                GUIUtility.ExitGUI();
-            }
         }
 
         private void DrawBaseFace(FaceVariant variant)
@@ -261,22 +236,16 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 var label = $"{key.blendShape}   {key.referenceValue:0.#} → {key.variantValue:0.#}";
                 var enabled = EditorGUILayout.ToggleLeft(label, key.enabled);
-                bool alwaysKeep;
-                using (new EditorGUI.DisabledScope(!key.enabled))
-                {
-                    alwaysKeep = EditorGUILayout.ToggleLeft("常に残す", key.alwaysKeep, GUILayout.Width(80));
-                }
-                if (enabled == key.enabled && alwaysKeep == key.alwaysKeep) return;
+                if (enabled == key.enabled) return;
 
                 Undo.RecordObject(variant, "ベース顔を変更");
                 key.enabled = enabled;
-                key.alwaysKeep = alwaysKeep;
                 EditorUtility.SetDirty(variant);
             }
         }
 
         /// <summary>
-        /// 表情ごとのベース顔の扱い（標準／残す／リセット）と、このバリアント用の差し替え。
+        /// 表情ごとの、このバリアント用の差し替え。
         /// </summary>
         private void DrawExpressions(ExpressionSet set, FaceVariant variant)
         {

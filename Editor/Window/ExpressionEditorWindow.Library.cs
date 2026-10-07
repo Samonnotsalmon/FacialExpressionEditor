@@ -94,7 +94,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (DrawCell(rect, ClipThumbnail(clip), clip.name, IsSelected(SelectionKind.Clip, null, clip),
                         used ? null : "未割り当て"))
                 {
-                    var expression = set.expressions.Find(e => e.clip == clip);
+                    var expression = ExpressionSetUtility.FindExpressionByClip(set, clip);
                     if (expression != null) Select(SelectionKind.Expression, expression.id, null);
                     else Select(SelectionKind.Clip, null, clip);
                 }

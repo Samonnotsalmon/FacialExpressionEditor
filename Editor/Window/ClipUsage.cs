@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Samon.FacialExpressionEditor.Editor
 {
     /// <summary>
-    /// クリップがどこで使われているか（ジェスチャー、組み合わせの上書き、固定だけの項目、パーツ、トリガー）。
+    /// クリップがどこで使われているか（ジェスチャー、組み合わせの上書き、固定だけの項目、パーツ）。
     /// ジェスチャーに割り当てた表情は「表情選択」に自動で並ぶので、それは使用箇所として数えない。
     /// どこにも使われていないクリップが「未割り当て」になる。使用箇所ごとに、そこから外す処理も持つ。
     /// </summary>
@@ -84,7 +84,11 @@ namespace Samon.FacialExpressionEditor.Editor
         private void Add(ExpressionSet set, string expressionId, string label, Action remove)
         {
             var expression = set.FindExpression(expressionId);
-            if (expression != null) Add(expression.clip, label, remove);
+            if (expression == null) return;
+
+            // 編集のために複製した表情は、元のクリップ（作者のクリップ）も使用中として扱う。
+            Add(expression.clip, label, remove);
+            if (expression.originalClip != null && expression.originalClip != expression.clip) Add(expression.originalClip, label, remove);
         }
 
         private void Add(AnimationClip clip, string label, Action remove)

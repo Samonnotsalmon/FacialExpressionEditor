@@ -16,6 +16,15 @@ namespace Samon.FacialExpressionEditor
     }
 
     /// <summary>
+    /// シェイプキーと、その値。
+    /// </summary>
+    [Serializable]
+    public class BlendShapeValue : BlendShapeRef
+    {
+        public float value;
+    }
+
+    /// <summary>
     /// まばたきで動かすシェイプキーと、目を閉じたときの値。
     /// </summary>
     [Serializable]

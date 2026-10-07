@@ -63,6 +63,7 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorApplication.projectChanged += OnProjectChanged;
             EditorApplication.update += OnEditorUpdate;
             Undo.undoRedoPerformed += OnUndoRedo;
+            ExpressionClipEditorWindow.Edited += OnClipEdited;
             if (_avatar == null) _avatar = FindAvatars().FirstOrDefault();
         }
 
@@ -71,6 +72,7 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorApplication.projectChanged -= OnProjectChanged;
             EditorApplication.update -= OnEditorUpdate;
             Undo.undoRedoPerformed -= OnUndoRedo;
+            ExpressionClipEditorWindow.Edited -= OnClipEdited;
             DisposePreview();
             _thumbnails?.Dispose();
         }
@@ -87,6 +89,16 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             InvalidateDetailPreview();
             _faceDefaults = null;
+            Repaint();
+        }
+
+        /// <summary>
+        /// 表情の編集ウィンドウで表情を編集したら、プレビューを描き直す（サムネイルはキーが変わるので描き直される）。
+        /// </summary>
+        private void OnClipEdited()
+        {
+            InvalidateDetailPreview();
+            MarkLibraryDirty();
             Repaint();
         }
 
