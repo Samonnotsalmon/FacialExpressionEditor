@@ -15,13 +15,14 @@ namespace Samon.FacialExpressionEditor
         public AnimationClip clip;
 
         // ベース顔を残すかどうかは、顔ごとに変わるので FaceVariant 側で持つ。
+        // まばたき：オフなら、この表情の間はまばたきを止める（目を閉じる表情など）。
         public bool enableBlink = true;
+        // 視線：オフなら、この表情の間は目の動き（VRChatの視線とまぶた）を止める。
+        public bool enableEyeTracking = true;
+        // リップシンク：オフなら、この表情の間は口を動かさない。
         public bool enableLipSync = true;
+        // 口モーフキャンセラー：オンなら、話している間は口のシェイプキーをベース顔の値に戻す。
         public bool mouthMorphCancel = true;
-
-        // Fistの握り具合で clip からブレンドする先。未設定ならブレンドしない。
-        public AnimationClip leftTriggerClip;
-        public AnimationClip rightTriggerClip;
 
         // オフなら ExpressionSet.defaultTransitionDuration を使う。
         public bool overrideTransitionDuration;

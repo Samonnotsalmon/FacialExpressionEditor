@@ -66,12 +66,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 usage.Add(part.clip, $"パーツ：{part.name}", () => set.parts.Remove(part));
             }
 
-            foreach (var expression in set.expressions)
-            {
-                usage.Add(expression.leftTriggerClip, $"トリガー：{expression.name}", () => expression.leftTriggerClip = null);
-                usage.Add(expression.rightTriggerClip, $"トリガー：{expression.name}", () => expression.rightTriggerClip = null);
-            }
-
             return usage;
         }
 

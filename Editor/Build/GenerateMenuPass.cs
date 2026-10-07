@@ -32,9 +32,11 @@ namespace Samon.FacialExpressionEditor.Editor
             var descriptor = context.AvatarRootObject.GetComponent<VRCAvatarDescriptor>();
             if (descriptor == null) return;
 
-            RemoveReplacedParameters(context, descriptor, set);
-
             var plan = BuildPlan.Create(set);
+            var face = FaceControlPlan.Get(context, set, plan);
+            RemoveReplacedParameters(context, descriptor, set,
+                face.BlinkLayersToReplace.Concat(face.MouthCancelerLayersToReplace));
+
             var icons = set.menuIcons ? RenderIcons(context, set, plan, avatar.faceVariant) : new Dictionary<string, Texture2D>();
             var root = BuildRootMenu(context, set, plan, icons);
             if (root == null) return;
@@ -278,12 +280,13 @@ namespace Samon.FacialExpressionEditor.Editor
         /// 置き換える元FXレイヤーだけが使っていたパラメータを、メニューとExpression Parametersから取り除く。
         /// 元のアセットは変更せず、複製したものをアバターに設定し直す。
         /// </summary>
-        private static void RemoveReplacedParameters(BuildContext context, VRCAvatarDescriptor descriptor, ExpressionSet set)
+        private static void RemoveReplacedParameters(BuildContext context, VRCAvatarDescriptor descriptor, ExpressionSet set,
+            IEnumerable<string> otherReplacedLayers)
         {
             var fx = FxImporter.GetFx(descriptor);
             if (fx == null || descriptor.expressionParameters == null) return;
 
-            var replaced = new HashSet<string>(set.originalGestureLayers.Concat(set.originalPartLayers));
+            var replaced = new HashSet<string>(set.originalGestureLayers.Concat(set.originalPartLayers).Concat(otherReplacedLayers));
             if (replaced.Count == 0) return;
 
             var usedByReplaced = AnimatorParameterUsage.Collect(fx.layers.Where(l => replaced.Contains(l.name)));

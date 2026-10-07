@@ -383,6 +383,7 @@ namespace Samon.FacialExpressionEditor.Editor
             else
             {
                 set.gestureSets.Add(new GestureSet { name = "セット1" });
+                set.faceControlImported = true;
                 AssetDatabase.CreateAsset(set, path);
             }
             AssetDatabase.SaveAssets();

@@ -167,6 +167,77 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
+        /// ビルドとプレビューで使う差し替え。中身が共有の表情と同じ（複製したまま編集していない）差し替えクリップは、
+        /// 差し替えていないものとして扱い、ベース顔の設定がそのまま効くようにする。
+        /// </summary>
+        public static ExpressionOverride EffectiveOverride(FaceVariant variant, Expression expression)
+        {
+            var entry = variant != null ? variant.FindOverride(expression.id) : null;
+            return entry != null && IsEdited(entry, expression) ? entry : null;
+        }
+
+        // 中身の比較はカーブを全部読むので、クリップが変わらない間は結果を使い回す。
+        private static readonly Dictionary<(int, int, Hash128, int, int, Hash128), bool> EditedCache =
+            new Dictionary<(int, int, Hash128, int, int, Hash128), bool>();
+
+        /// <summary>
+        /// 差し替えクリップの中身が、共有の表情クリップと違うかどうか。
+        /// </summary>
+        public static bool IsEdited(ExpressionOverride entry, Expression expression)
+        {
+            if (entry?.clip == null) return false;
+            if (expression.clip == null) return true;
+
+            var key = (entry.clip.GetInstanceID(), EditorUtility.GetDirtyCount(entry.clip), DependencyHash(entry.clip),
+                expression.clip.GetInstanceID(), EditorUtility.GetDirtyCount(expression.clip), DependencyHash(expression.clip));
+            if (!EditedCache.TryGetValue(key, out var edited))
+            {
+                edited = !SameCurves(entry.clip, expression.clip);
+                EditedCache[key] = edited;
+            }
+            return edited;
+        }
+
+        private static Hash128 DependencyHash(AnimationClip clip)
+        {
+            return AssetDatabase.GetAssetDependencyHash(AssetDatabase.GetAssetPath(clip));
+        }
+
+        private static bool SameCurves(AnimationClip a, AnimationClip b)
+        {
+            var floatA = AnimationUtility.GetCurveBindings(a);
+            var floatB = new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(b));
+            if (floatA.Length != floatB.Count) return false;
+            foreach (var binding in floatA)
+            {
+                if (!floatB.Contains(binding)) return false;
+                var keysA = AnimationUtility.GetEditorCurve(a, binding).keys;
+                var keysB = AnimationUtility.GetEditorCurve(b, binding).keys;
+                if (keysA.Length != keysB.Length) return false;
+                for (var i = 0; i < keysA.Length; i++)
+                {
+                    if (!Mathf.Approximately(keysA[i].time, keysB[i].time) || !Mathf.Approximately(keysA[i].value, keysB[i].value)) return false;
+                }
+            }
+
+            var objectA = AnimationUtility.GetObjectReferenceCurveBindings(a);
+            var objectB = new HashSet<EditorCurveBinding>(AnimationUtility.GetObjectReferenceCurveBindings(b));
+            if (objectA.Length != objectB.Count) return false;
+            foreach (var binding in objectA)
+            {
+                if (!objectB.Contains(binding)) return false;
+                var keysA = AnimationUtility.GetObjectReferenceCurve(a, binding);
+                var keysB = AnimationUtility.GetObjectReferenceCurve(b, binding);
+                if (keysA.Length != keysB.Length) return false;
+                for (var i = 0; i < keysA.Length; i++)
+                {
+                    if (!Mathf.Approximately(keysA[i].time, keysB[i].time) || keysA[i].value != keysB[i].value) return false;
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
         /// 差し替えをやめて共有の表情に戻す。複製したクリップのファイルは残す。
         /// </summary>
         public static void RevertOverride(FaceVariant variant, string expressionId)

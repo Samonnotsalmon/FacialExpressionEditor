@@ -36,7 +36,8 @@ namespace Samon.FacialExpressionEditor.Editor
             var size = DetailWidth - 10;
             var rect = GUILayoutUtility.GetRect(size, size, GUILayout.ExpandWidth(false));
 
-            var expression = _selectionKind == SelectionKind.Expression ? set.FindExpression(_selectedId) : null;
+            var isFist = _selectionKind == SelectionKind.Fist;
+            var expression = _selectionKind == SelectionKind.Expression || isFist ? set.FindExpression(_selectedId) : null;
             var part = _selectionKind == SelectionKind.Part ? set.parts.Find(p => p.id == _selectedId) : null;
             PrepareDetailClip(expression, part);
 
@@ -51,7 +52,8 @@ namespace Samon.FacialExpressionEditor.Editor
                     }
                     else
                     {
-                        _preview.Apply(_detailClip, _triggerWeight);
+                        // 握り具合はFistのマスを選んだときだけ。表情そのものは、最後まで再生した形（ゲーム内で固定したときと同じ）。
+                        _preview.Apply(_detailClip, isFist ? _triggerWeight : 1f);
                     }
                     if (_detailTexture != null) DestroyImmediate(_detailTexture);
                     _detailTexture = _preview.RenderStatic(Mathf.RoundToInt(size * EditorGUIUtility.pixelsPerPoint));
@@ -61,10 +63,10 @@ namespace Samon.FacialExpressionEditor.Editor
                 GUI.DrawTexture(rect, _detailTexture, ScaleMode.ScaleToFit, false);
             }
 
-            if (_detailTimeVarying)
+            if (isFist && _detailTimeVarying)
             {
                 EditorGUI.BeginChangeCheck();
-                _triggerWeight = EditorGUILayout.Slider("握り具合（Fist）", _triggerWeight, 0f, 1f);
+                _triggerWeight = EditorGUILayout.Slider("握り具合", _triggerWeight, 0f, 1f);
                 if (EditorGUI.EndChangeCheck()) _detailTextureDirty = true;
             }
 
@@ -72,6 +74,10 @@ namespace Samon.FacialExpressionEditor.Editor
             switch (_selectionKind)
             {
                 case SelectionKind.Expression when expression != null:
+                    DrawExpressionDetail(set, expression);
+                    break;
+                case SelectionKind.Fist when expression != null:
+                    DrawFistDetail(expression, _selectedHand);
                     DrawExpressionDetail(set, expression);
                     break;
                 case SelectionKind.Clip when _selectedClip != null:
@@ -92,7 +98,12 @@ namespace Samon.FacialExpressionEditor.Editor
             if (_detailClipReady) return;
             _detailClipReady = true;
 
-            if (expression != null) _detailClip = PreviewClips.ForExpression(expression, Variant, _avatar.gameObject);
+            if (expression != null)
+            {
+                _detailClip = _selectionKind == SelectionKind.Fist
+                    ? PreviewClips.ForFist(expression, Variant, _avatar.gameObject)
+                    : PreviewClips.ForExpression(expression, Variant, _avatar.gameObject);
+            }
             else if (part != null) _detailClip = PreviewClips.ForPart(part);
             else if (_selectionKind == SelectionKind.Clip && _selectedClip != null)
             {
@@ -102,6 +113,21 @@ namespace Samon.FacialExpressionEditor.Editor
 
             _detailTimeVarying = _detailClip != null && part == null && PreviewClips.IsTimeVarying(_detailClip);
             _detailTextureDirty = true;
+        }
+
+        /// <summary>
+        /// 握り具合をオンにしたFistのマスを選んだときの説明（プレビューのスライダーで握り具合を確認できる）。
+        /// </summary>
+        private void DrawFistDetail(Expression expression, Hand hand)
+        {
+            var handName = hand == Hand.Left ? "左手" : "右手";
+            EditorGUILayout.LabelField($"{handName}のFist（握り具合）", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(
+                PreviewClips.IsTimeVarying(expression.clip)
+                    ? "この表情はクリップ自体が握り具合で動くように作られているので、そのまま握り具合で動かします。上のスライダーで確認できます。"
+                    : $"握り具合0でベース顔（無表情）、握り切ると「{expression.name}」になります。上のスライダーで確認できます。",
+                EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.Space();
         }
 
         private void DrawExpressionDetail(ExpressionSet set, Expression expression)
@@ -131,6 +157,8 @@ namespace Samon.FacialExpressionEditor.Editor
                     if (overrideDuration) expression.transitionDuration = duration;
                 });
             }
+
+            DrawFaceControlForExpression(set, expression);
 
             if (set.menu.Any(n => n.kind == MenuNodeKind.Expression && n.expressionId == expression.id))
             {
@@ -188,13 +216,50 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
+        /// <summary>
+        /// この表情の間のまばたき・視線・リップシンク・口モーフキャンセラー。
+        /// </summary>
+        private void DrawFaceControlForExpression(ExpressionSet set, Expression expression)
+        {
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("この表情の間の動き", EditorStyles.boldLabel);
+
+            var hasCanceler = MouthMorphsInUse(set).Count > 0;
+            EditorGUI.BeginChangeCheck();
+            var blink = EditorGUILayout.ToggleLeft("まばたき", expression.enableBlink);
+            var eyes = EditorGUILayout.ToggleLeft("視線（目の動き）", expression.enableEyeTracking);
+            var lipSync = EditorGUILayout.ToggleLeft("リップシンク", expression.enableLipSync);
+            bool cancel;
+            using (new EditorGUI.DisabledScope(!lipSync || !hasCanceler))
+            {
+                cancel = EditorGUILayout.ToggleLeft(
+                    hasCanceler ? "口モーフキャンセラー" : "口モーフキャンセラー（シェイプキー未設定）", expression.mouthMorphCancel);
+            }
+            if (EditorGUI.EndChangeCheck())
+            {
+                Modify(set, "表情の間の動きを変更", () =>
+                {
+                    expression.enableBlink = blink;
+                    expression.enableEyeTracking = eyes;
+                    expression.enableLipSync = lipSync;
+                    expression.mouthMorphCancel = cancel;
+                });
+            }
+
+            if (!expression.enableBlink && expression.enableEyeTracking && !set.replaceBlink)
+            {
+                EditorGUILayout.LabelField("まばたきを置き換えない設定なので、この表情では視線も止まります。", WarningMiniLabel);
+            }
+        }
+
         private void DrawVariantDetail(FaceVariant variant, Expression expression)
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField($"顔バリアント：{variant.name}", EditorStyles.boldLabel);
 
-            DrawBaseFaceForExpression(variant, expression);
             var entry = variant.FindOverride(expression.id);
+            var edited = entry != null && FaceVariantUtility.IsEdited(entry, expression);
+            DrawBaseFaceForExpression(variant, expression, edited);
             if (entry == null)
             {
                 using (new EditorGUI.DisabledScope(expression.clip == null))
@@ -214,11 +279,15 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 EditorGUILayout.ObjectField("差し替えクリップ", entry.clip, typeof(AnimationClip), false);
             }
+            EditorGUILayout.LabelField(edited
+                    ? "差し替えクリップを編集しているので、そのまま使います（ベース顔も差し替えクリップの値のままで、上のチェックは効きません）。"
+                    : "差し替えクリップはまだ編集していないので、共有の表情と同じく、上のベース顔の設定が効きます。",
+                EditorStyles.wordWrappedMiniLabel);
             if (FaceVariantUtility.IsSourceUpdated(entry, expression))
             {
                 EditorGUILayout.HelpBox("複製した後に、共有の表情が更新されています。", MessageType.Info);
             }
-            if (!entry.baseFaceBaked && GUILayout.Button("差し替えクリップにベース顔を反映"))
+            if (edited && !entry.baseFaceBaked && GUILayout.Button("差し替えクリップにベース顔を反映"))
             {
                 FaceVariantUtility.BakeBaseFace(variant, entry);
                 AssetDatabase.SaveAssets();
@@ -234,8 +303,9 @@ namespace Samon.FacialExpressionEditor.Editor
 
         /// <summary>
         /// この表情で、ベース顔のシェイプキーをそれぞれ残すか外すか。チェックを外すと、この表情ではそのシェイプキーを元Prefabの値に戻す。
+        /// 編集した差し替えクリップを使う表情（locked）では効かないので、変えられないようにする。
         /// </summary>
-        private void DrawBaseFaceForExpression(FaceVariant variant, Expression expression)
+        private void DrawBaseFaceForExpression(FaceVariant variant, Expression expression, bool locked)
         {
             var keys = variant.baseFace.Where(k => k.enabled).ToList();
             if (keys.Count == 0)
@@ -247,6 +317,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var kept = keys.Count(k => variant.ShouldKeep(expression.id, k));
             EditorGUILayout.LabelField($"ベース顔（この表情で残す：{kept} / {keys.Count}）", EditorStyles.miniBoldLabel);
 
+            using var disabled = new EditorGUI.DisabledScope(locked);
             foreach (var key in keys)
             {
                 var keep = variant.ShouldKeep(expression.id, key);

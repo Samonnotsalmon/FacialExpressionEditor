@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using VRC.SDK3.Avatars.Components;
 
 namespace Samon.FacialExpressionEditor.Editor
 {
@@ -14,10 +15,12 @@ namespace Samon.FacialExpressionEditor.Editor
         private const float LibraryWidth = 300f;
         private const float DetailWidth = 280f;
 
-        private enum Tab { Menu, Parts }
-        private enum SelectionKind { None, Expression, Clip, Part }
+        private enum Tab { Menu, Parts, Face }
 
-        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ" };
+        // Fist：表情セットの表で、握り具合を使う手のFistのマスを選んだとき（握り込みの設定とプレビュー）。
+        private enum SelectionKind { None, Expression, Clip, Part, Fist }
+
+        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口" };
 
         [SerializeField] private FacialExpressionAvatar _avatar;
         [SerializeField] private Tab _tab;
@@ -25,6 +28,7 @@ namespace Samon.FacialExpressionEditor.Editor
         [SerializeField] private string _selectedId;
         [SerializeField] private AnimationClip _selectedClip;
         [SerializeField] private float _triggerWeight = 1f;
+        [SerializeField] private Hand _selectedHand;
 
         private FacePreview _preview;
         private string _faceHash = "";
@@ -34,6 +38,11 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private ExpressionSet Set => _avatar != null ? _avatar.expressionSet : null;
         private FaceVariant Variant => _avatar != null ? _avatar.faceVariant : null;
+        private VRCAvatarDescriptor Descriptor => _avatar != null ? _avatar.GetComponent<VRCAvatarDescriptor>() : null;
+
+        // 元アバターのまばたきと口モーフキャンセラー。元FXを調べるので、変わったときだけ作り直す。
+        private AvatarFaceDefaults _faceDefaults;
+        private AvatarFaceDefaults FaceDefaults => _faceDefaults ??= AvatarFaceDefaults.Find(Descriptor, Set);
 
         [MenuItem("Tools/Samon/表情エディタ")]
         private static void OpenFromMenu() => Open(null);
@@ -70,12 +79,14 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             MarkLibraryDirty();
             InvalidateDetailPreview();
+            _faceDefaults = null;
             Repaint();
         }
 
         private void OnUndoRedo()
         {
             InvalidateDetailPreview();
+            _faceDefaults = null;
             Repaint();
         }
 
@@ -93,6 +104,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             if (_avatar == avatar) return;
             _avatar = avatar;
+            _faceDefaults = null;
             DisposePreview();
             MarkLibraryDirty();
             Select(SelectionKind.None, null, null);
@@ -122,6 +134,18 @@ namespace Samon.FacialExpressionEditor.Editor
                 Modify(set, "表情メニューを作成", () => ExpressionSetUtility.EnsureMenu(set));
             }
 
+            // この機能より前に作った表情データは、表情ごとのまばたき・リップシンクを元FXから一度だけ取り込む。
+            if (Event.current.type == EventType.Layout && !set.faceControlImported)
+            {
+                var changed = 0;
+                Modify(set, "まばたき・リップシンクの設定を取り込み", () =>
+                {
+                    changed = FxImporter.ImportFaceControl(Descriptor, set);
+                    set.faceControlImported = true;
+                });
+                if (changed > 0) ShowNotification(new GUIContent($"元FXから、{changed} 件の表情のまばたき・リップシンクの設定を取り込みました"), 4);
+            }
+
             EnsurePreview();
             RefreshLibraryIfNeeded(set);
 
@@ -147,6 +171,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     {
                         case Tab.Menu: DrawMenuTab(set); break;
                         case Tab.Parts: DrawPartsTab(set); break;
+                        case Tab.Face: DrawFaceTab(set); break;
                     }
                     EditorGUILayout.EndScrollView();
                 }
@@ -263,19 +288,21 @@ namespace Samon.FacialExpressionEditor.Editor
         }
         // ---- 選択 ----
 
-        private void Select(SelectionKind kind, string id, AnimationClip clip)
+        private void Select(SelectionKind kind, string id, AnimationClip clip, Hand hand = default)
         {
             _selectionKind = kind;
             _selectedId = id;
             _selectedClip = clip;
+            _selectedHand = hand;
             InvalidateDetailPreview();
             GUI.FocusControl(null);
         }
 
-        private bool IsSelected(SelectionKind kind, string id, AnimationClip clip = null)
+        private bool IsSelected(SelectionKind kind, string id, AnimationClip clip = null, Hand hand = default)
         {
             if (_selectionKind != kind) return false;
-            return kind == SelectionKind.Clip ? _selectedClip == clip : _selectedId == id;
+            if (kind == SelectionKind.Clip) return _selectedClip == clip;
+            return _selectedId == id && (kind != SelectionKind.Fist || _selectedHand == hand);
         }
 
         // ---- 編集 ----
@@ -289,6 +316,7 @@ namespace Samon.FacialExpressionEditor.Editor
             change();
             EditorUtility.SetDirty(set);
             InvalidateDetailPreview();
+            _faceDefaults = null;
         }
 
         // ---- ドラッグ＆ドロップ ----

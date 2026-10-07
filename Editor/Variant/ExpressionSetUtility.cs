@@ -138,15 +138,21 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// 表情セットのジェスチャーに割り当てた表情（左手の表 → 右手の表 → 組み合わせの順、重複なし）。
-        /// FaceEmoと同じく、これらはゲーム内の「表情選択」メニューに自動で並び、固定できる。
+        /// 表情セットのジェスチャーに割り当てた表情（重複なし）。FaceEmoと同じく、これらはゲーム内の「表情選択」メニューに自動で並び、固定できる。
+        /// 並びは、優先する手の Fist → HandOpen → … → ThumbsUp → Neutral、反対の手も同じ順、最後に組み合わせ。
         /// </summary>
         public static List<Expression> GestureExpressions(ExpressionSet set, GestureSet gestureSet)
         {
-            gestureSet.mapping.EnsureSize();
-            return gestureSet.mapping.left
-                .Concat(gestureSet.mapping.right)
-                .Concat(gestureSet.mapping.combos.Select(c => c.expressionId))
+            var mapping = gestureSet.mapping;
+            mapping.EnsureSize();
+            var dominant = mapping.dominantHand == Hand.Left ? mapping.left : mapping.right;
+            var other = mapping.dominantHand == Hand.Left ? mapping.right : mapping.left;
+
+            // Neutral（0）はふだん空なので、各手の最後に回す。
+            var order = Enumerable.Range(1, GestureMapping.GestureCount - 1).Append(0).ToList();
+            return order.Select(g => dominant[g])
+                .Concat(order.Select(g => other[g]))
+                .Concat(mapping.combos.Select(c => c.expressionId))
                 .Select(set.FindExpression)
                 .Where(e => e != null)
                 .Distinct()

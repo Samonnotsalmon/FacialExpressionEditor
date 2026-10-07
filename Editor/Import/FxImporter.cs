@@ -91,6 +91,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var menuNames = MenuToggleNames(descriptor.expressionsMenu);
             var previous = set.gestureSets;
             set.gestureSets = new List<GestureSet>();
+            var added = new List<Expression>();
 
             for (var g = 0; g < groups.Count; g++)
             {
@@ -118,6 +119,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     {
                         expression = new Expression { name = entry.Clip.name, clip = entry.Clip };
                         set.expressions.Add(expression);
+                        added.Add(expression);
                         result.AddedExpressions++;
                     }
 
@@ -138,8 +140,60 @@ namespace Samon.FacialExpressionEditor.Editor
             ExpressionSetUtility.AddMenuFromSets(set);
 
             set.originalGestureLayers = new List<string>(result.GestureLayers);
+
+            // 新しく追加した表情のまばたき・リップシンクは、元FXの指定に合わせる（既存の表情の設定は変えない）。
+            ImportFaceControl(descriptor, set, added);
+            set.faceControlImported = true;
+
             EditorUtility.SetDirty(set);
             return result;
+        }
+
+        /// <summary>
+        /// 元FXのジェスチャーレイヤーのステートにある視線・リップシンクの指定から、表情ごとのまばたき・リップシンクを設定する。
+        /// 元FXで目をアニメーションにしていた表情（しなのなど）は、まばたきを止める表情として取り込む（視線は動かしたままにする）。
+        /// only を指定したときは、その表情だけを設定する。戻り値は設定を変えた表情の数。
+        /// </summary>
+        public static int ImportFaceControl(VRCAvatarDescriptor descriptor, ExpressionSet set, IEnumerable<Expression> only = null)
+        {
+            var fx = GetFx(descriptor);
+            if (fx == null) return 0;
+
+            var found = new HashSet<AnimationClip>();
+            var eyesOff = new HashSet<AnimationClip>();
+            var mouthOff = new HashSet<AnimationClip>();
+            foreach (var layer in fx.layers.Where(l => set.originalGestureLayers.Contains(l.name)))
+            {
+                foreach (var state in AllStates(layer.stateMachine))
+                {
+                    var clip = FirstClip(state.motion);
+                    if (clip == null) continue;
+
+                    found.Add(clip);
+                    foreach (var tracking in state.behaviours.OfType<VRCAnimatorTrackingControl>())
+                    {
+                        if (tracking.trackingEyes == VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.Animation) eyesOff.Add(clip);
+                        if (tracking.trackingMouth == VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.Animation) mouthOff.Add(clip);
+                    }
+                }
+            }
+
+            Undo.RecordObject(set, "まばたき・リップシンクの設定を取り込み");
+            var changed = 0;
+            foreach (var expression in only ?? set.expressions)
+            {
+                if (expression.clip == null || !found.Contains(expression.clip)) continue;
+
+                var blink = !eyesOff.Contains(expression.clip);
+                var lipSync = !mouthOff.Contains(expression.clip);
+                if (expression.enableBlink == blink && expression.enableLipSync == lipSync) continue;
+
+                expression.enableBlink = blink;
+                expression.enableLipSync = lipSync;
+                changed++;
+            }
+            EditorUtility.SetDirty(set);
+            return changed;
         }
 
         /// <summary>
@@ -308,7 +362,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
-        private static IEnumerable<AnimatorStateTransition> AllTransitions(AnimatorStateMachine stateMachine)
+        internal static IEnumerable<AnimatorStateTransition> AllTransitions(AnimatorStateMachine stateMachine)
         {
             foreach (var t in stateMachine.anyStateTransitions) yield return t;
             foreach (var child in stateMachine.states)
@@ -321,7 +375,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
-        private static IEnumerable<AnimatorState> AllStates(AnimatorStateMachine stateMachine)
+        internal static IEnumerable<AnimatorState> AllStates(AnimatorStateMachine stateMachine)
         {
             foreach (var child in stateMachine.states) yield return child.state;
             foreach (var child in stateMachine.stateMachines)

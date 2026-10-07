@@ -8,26 +8,31 @@ namespace Samon.FacialExpressionEditor.Editor
 {
     /// <summary>
     /// 表情とパーツのビルド用クリップを作る。表情には顔バリアントの差し替えとベース顔の処理を適用する。
+    /// クリップの名前は英数字だけにする（FxNames）。
     /// </summary>
     internal class ExpressionClipBuilder
     {
+        private readonly ExpressionSet _set;
         private readonly FaceVariant _variant;
         private readonly GameObject _avatarRoot;
         private readonly Dictionary<string, VirtualClip> _cache = new Dictionary<string, VirtualClip>();
 
-        public ExpressionClipBuilder(FaceVariant variant, GameObject avatarRoot)
+        public ExpressionClipBuilder(ExpressionSet set, FaceVariant variant, GameObject avatarRoot)
         {
+            _set = set;
             _variant = variant;
             _avatarRoot = avatarRoot;
         }
+
+        public string NameOf(Expression expression) => FxNames.Expression(_set, expression);
 
         public VirtualClip Build(Expression expression)
         {
             if (_cache.TryGetValue(expression.id, out var cached)) return cached;
 
-            var overridden = _variant != null ? _variant.FindOverride(expression.id) : null;
+            var overridden = FaceVariantUtility.EffectiveOverride(_variant, expression);
             var source = overridden != null ? overridden.clip : expression.clip;
-            var clip = VirtualClip.Create(expression.name);
+            var clip = VirtualClip.Create(NameOf(expression));
             if (source != null)
             {
                 clip.Settings = AnimationUtility.GetAnimationClipSettings(source);
@@ -45,6 +50,28 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
+        /// Fistの握り具合で動かすクリップ。握り具合0でベース顔、握り切ると表情になる（FistBlend）。
+        /// クリップ自体が時間で動く表情（しなのの目閉じなど）は、表情のクリップをそのまま使う。
+        /// </summary>
+        public VirtualClip BuildFist(Expression expression)
+        {
+            var clip = Build(expression);
+            if (FistBlend.IsTimeVarying(ClipCurves.Of(clip))) return clip;
+
+            var key = $"{expression.id}|fist";
+            if (_cache.TryGetValue(key, out var cached)) return cached;
+
+            var fist = VirtualClip.Create($"{NameOf(expression)} (Grip)");
+            var settings = fist.Settings;
+            settings.loopTime = false;
+            fist.Settings = settings;
+            FistBlend.FromBaseFace(ClipCurves.Of(clip), _avatarRoot, ClipCurves.Of(fist));
+
+            _cache[key] = fist;
+            return fist;
+        }
+
+        /// <summary>
         /// 切り替え演出つきのクリップを作る。頭で挟む表情（目閉じなど）を holdTime の間見せ、fadeTime かけて目的の表情に移る。
         /// 挟む表情が動かさないプロパティは目的の表情の値のまま、目的の表情が動かさないプロパティはアバターの今の値に戻す。
         /// </summary>
@@ -55,7 +82,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var hold = Mathf.Max(0, effect.holdTime);
             var end = hold + Mathf.Max(0.0001f, effect.fadeTime);
 
-            var clip = VirtualClip.Create($"{target.name}（{between.name}を挟む）");
+            var clip = VirtualClip.Create($"{NameOf(target)} (via {NameOf(between)})");
             var settings = clip.Settings;
             settings.loopTime = false;
             clip.Settings = settings;
@@ -110,18 +137,22 @@ namespace Samon.FacialExpressionEditor.Editor
         /// </summary>
         public VirtualClip BuildPart(FacialPart part)
         {
-            var clip = VirtualClip.Create(part.name);
+            var clip = VirtualClip.Create(FxNames.Part(_set, part));
             if (part.clip != null) CopyCurves(part.clip, clip, new HashSet<string>(part.properties));
             return clip;
         }
 
         /// <summary>
         /// Write Defaultsがオフのとき用。各クリップで動かしていないプロパティに、アバターの現在値を書き込む。
+        /// extraFloatBindings は、どのクリップも動かしていなくても書き込むもの（上のレイヤーが止まっている間に値を戻すため）。
         /// </summary>
-        public void FillMissingWithDefaults(IEnumerable<VirtualClip> clips)
+        public void FillMissingWithDefaults(IEnumerable<VirtualClip> clips, IEnumerable<EditorCurveBinding> extraFloatBindings = null)
         {
             var list = clips.ToList();
-            var floatBindings = list.SelectMany(c => c.GetFloatCurveBindings()).Distinct().ToList();
+            var floatBindings = list.SelectMany(c => c.GetFloatCurveBindings())
+                .Concat(extraFloatBindings ?? Enumerable.Empty<EditorCurveBinding>())
+                .Distinct()
+                .ToList();
             var objectBindings = list.SelectMany(c => c.GetObjectCurveBindings()).Distinct().ToList();
 
             foreach (var clip in list)

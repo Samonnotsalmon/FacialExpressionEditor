@@ -13,7 +13,7 @@ namespace Samon.FacialExpressionEditor.Editor
     {
         public static AnimationClip ForExpression(Expression expression, FaceVariant variant, GameObject avatarRoot)
         {
-            var overridden = variant != null ? variant.FindOverride(expression.id) : null;
+            var overridden = FaceVariantUtility.EffectiveOverride(variant, expression);
             var source = overridden != null ? overridden.clip : expression.clip;
             var clip = source != null ? Object.Instantiate(source) : new AnimationClip();
             clip.hideFlags = HideFlags.HideAndDontSave;
@@ -24,6 +24,21 @@ namespace Samon.FacialExpressionEditor.Editor
                     b => AnimationUtility.GetEditorCurve(clip, b),
                     (b, c) => AnimationUtility.SetEditorCurve(clip, b, c));
             }
+            return clip;
+        }
+
+        /// <summary>
+        /// Fistの握り具合で動かすクリップ（ビルドと同じ FistBlend）。握り具合0でベース顔、握り切ると表情。
+        /// クリップ自体が時間で動く表情は、表情のクリップそのもの。
+        /// </summary>
+        public static AnimationClip ForFist(Expression expression, FaceVariant variant, GameObject avatarRoot)
+        {
+            var expressionClip = ForExpression(expression, variant, avatarRoot);
+            if (IsTimeVarying(expressionClip)) return expressionClip;
+
+            var clip = new AnimationClip { hideFlags = HideFlags.HideAndDontSave };
+            FistBlend.FromBaseFace(ClipCurves.Of(expressionClip), avatarRoot, ClipCurves.Of(clip));
+            Release(expressionClip);
             return clip;
         }
 
@@ -53,9 +68,7 @@ namespace Samon.FacialExpressionEditor.Editor
         public static bool IsTimeVarying(AnimationClip clip)
         {
             if (clip == null || clip.length <= 0) return false;
-            return AnimationUtility.GetCurveBindings(clip)
-                .Select(b => AnimationUtility.GetEditorCurve(clip, b))
-                .Any(c => c != null && c.keys.Length > 1 && c.keys.Any(k => !Mathf.Approximately(k.value, c.keys[0].value)));
+            return FistBlend.IsTimeVarying(ClipCurves.Of(clip));
         }
 
         public static void Release(AnimationClip clip)

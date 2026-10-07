@@ -27,24 +27,16 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorGUI.BeginChangeCheck();
             var name = EditorGUILayout.TextField("名前", gestureSet.name);
             var dominant = (Hand)EditorGUILayout.Popup("優先する手", (int)mapping.dominantHand, HandLabels);
-            bool useLeft, useRight;
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                EditorGUILayout.PrefixLabel("Fistの握り具合");
-                useLeft = EditorGUILayout.ToggleLeft("左手で使う", mapping.useLeftFistWeight, GUILayout.Width(100));
-                useRight = EditorGUILayout.ToggleLeft("右手で使う", mapping.useRightFistWeight, GUILayout.Width(100));
-            }
             if (EditorGUI.EndChangeCheck())
             {
                 Modify(set, "表情セットを変更", () =>
                 {
                     gestureSet.name = name;
                     mapping.dominantHand = dominant;
-                    mapping.useLeftFistWeight = useLeft;
-                    mapping.useRightFistWeight = useRight;
                 });
             }
-            EditorGUILayout.LabelField("握り具合を使う手は、Fistの表情が握り具合に合わせて動きます（目閉じなど）。使わない手は、握るとそのまま表情が出ます。",
+            EditorGUILayout.LabelField("Fistの「握り具合」をオンにした手は、握り具合0でベース顔（無表情）、握り切るとFistの表情になります。" +
+                                       "オフの手は、握るとそのまま表情が出ます。",
                 EditorStyles.wordWrappedMiniLabel);
 
             EditorGUILayout.Space();
@@ -73,10 +65,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 GUI.Label(new Rect(row.x, row.y + SlotHeight / 2 - 9, labelWidth - 4, 18), GestureLabels[i]);
 
                 var index = i;
+                var fistMapping = i == (int)HandGesture.Fist ? mapping : null;
                 DrawSlot(new Rect(row.x + labelWidth, row.y, slotWidth, SlotHeight), set,
-                    mapping.left[index], id => mapping.left[index] = id, $"{gestureSet.name} 左手 {GestureLabels[index]}");
+                    mapping.left[index], id => mapping.left[index] = id, $"{gestureSet.name} 左手 {GestureLabels[index]}",
+                    Hand.Left, fistMapping);
                 DrawSlot(new Rect(row.x + labelWidth + slotWidth + 4, row.y, slotWidth, SlotHeight), set,
-                    mapping.right[index], id => mapping.right[index] = id, $"{gestureSet.name} 右手 {GestureLabels[index]}");
+                    mapping.right[index], id => mapping.right[index] = id, $"{gestureSet.name} 右手 {GestureLabels[index]}",
+                    Hand.Right, fistMapping);
             }
 
             EditorGUILayout.Space();
@@ -102,9 +97,14 @@ namespace Samon.FacialExpressionEditor.Editor
                     Modify(set, "組み合わせを変更", () => { combo.left = left; combo.right = right; });
                 }
 
+                // 優先する手がFistで握り具合をオンにしていれば、その手の握り具合で動く（ビルドと同じ）。
+                var dominant = mapping.dominantHand;
+                var dominantGesture = dominant == Hand.Left ? combo.left : combo.right;
+                var gripHand = dominantGesture == HandGesture.Fist && mapping.UsesFistWeight(dominant) ? dominant : (Hand?)null;
+
                 var slotX = row.x + popupWidth * 2 + 24;
                 DrawSlot(new Rect(slotX, row.y, 200, SlotHeight), set, combo.expressionId,
-                    id => combo.expressionId = id, "組み合わせ");
+                    id => combo.expressionId = id, "組み合わせ", gripHand ?? Hand.Left, null, gripHand != null);
 
                 if (GUI.Button(new Rect(slotX + 206, row.y + 30, 44, 18), "削除"))
                 {
@@ -125,10 +125,15 @@ namespace Samon.FacialExpressionEditor.Editor
 
         /// <summary>
         /// 表情を1つ割り当てる枠。クリップをドロップすると割り当て、クリックで選択、×で外す。
+        /// fistMapping があればFistのマスで、下に「握り具合」のオン・オフを出す（hand の手の設定）。
+        /// 握り具合がオンのマス（組み合わせでは grip）を選ぶと、右のプレビューで握り具合を確認できる。
         /// </summary>
-        private void DrawSlot(Rect rect, ExpressionSet set, string expressionId, Action<string> assign, string undoName)
+        private void DrawSlot(Rect rect, ExpressionSet set, string expressionId, Action<string> assign, string undoName,
+            Hand hand = Hand.Left, GestureMapping fistMapping = null, bool grip = false)
         {
             var expression = set.FindExpression(expressionId);
+            var thumbRect = new Rect(rect.x, rect.y, rect.height, rect.height);
+            if (fistMapping != null) grip = fistMapping.UsesFistWeight(hand);
 
             var dropped = AcceptClipDrop(rect);
             if (dropped != null)
@@ -144,23 +149,29 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     EditorGUI.DrawRect(rect, new Color(0, 0, 0, 0.12f));
                 }
-                GUI.Label(rect, "ここにドロップ", DropHint);
+                GUI.Label(fistMapping != null ? new Rect(rect.x, rect.y, rect.width, rect.height - 20) : rect, "ここにドロップ", DropHint);
+                if (fistMapping != null) DrawGripToggle(new Rect(rect.x + 6, rect.yMax - 20, rect.width - 12, 18), set, fistMapping, hand);
                 return;
             }
 
-            var thumbRect = new Rect(rect.x, rect.y, rect.height, rect.height);
             HandleDragSource(rect, expression.clip);
-            if (DrawCell(thumbRect, ExpressionThumbnail(expression), "", IsSelected(SelectionKind.Expression, expression.id)))
+            var selected = grip
+                ? IsSelected(SelectionKind.Fist, expression.id, null, hand)
+                : IsSelected(SelectionKind.Expression, expression.id);
+            if (DrawCell(thumbRect, ExpressionThumbnail(expression), "", selected))
             {
-                Select(SelectionKind.Expression, expression.id, null);
+                if (grip) Select(SelectionKind.Fist, expression.id, null, hand);
+                else Select(SelectionKind.Expression, expression.id, null);
             }
 
             var textRect = new Rect(thumbRect.xMax + 6, rect.y + 4, rect.width - thumbRect.width - 34, 18);
             GUI.Label(textRect, expression.name, EditorStyles.boldLabel);
             var noteY = textRect.yMax;
-            if (Variant != null && Variant.FindOverride(expression.id) != null)
+            var overrideEntry = Variant != null ? Variant.FindOverride(expression.id) : null;
+            if (overrideEntry != null)
             {
-                GUI.Label(new Rect(textRect.x, noteY, textRect.width, 16), "このバリアントで差し替え中", EditorStyles.miniLabel);
+                var label = FaceVariantUtility.IsEdited(overrideEntry, expression) ? "このバリアントで差し替え中" : "差し替え（未編集）";
+                GUI.Label(new Rect(textRect.x, noteY, textRect.width, 16), label, EditorStyles.miniLabel);
                 noteY += 16;
             }
             if (_usage.IsDuplicated(expression.clip))
@@ -175,6 +186,29 @@ namespace Samon.FacialExpressionEditor.Editor
                 Modify(set, undoName + "を外す", () => assign(null));
                 GUIUtility.ExitGUI();
             }
+
+            if (fistMapping != null)
+            {
+                DrawGripToggle(new Rect(thumbRect.xMax + 6, rect.yMax - 20, rect.width - thumbRect.width - 8, 18), set, fistMapping, hand);
+            }
+        }
+
+        /// <summary>
+        /// Fistのマスの「握り具合」のオン・オフ（表情セットの、その手の設定）。
+        /// </summary>
+        private void DrawGripToggle(Rect rect, ExpressionSet set, GestureMapping mapping, Hand hand)
+        {
+            var on = mapping.UsesFistWeight(hand);
+            var next = GUI.Toggle(rect, on, new GUIContent("握り具合（0でベース顔）",
+                "オンにすると、握り具合0でベース顔（無表情）、握り切るとこのマスの表情になります。オフなら、握るとそのまま表情が出ます。"));
+            if (next == on) return;
+
+            Modify(set, "Fistの握り具合を変更", () =>
+            {
+                if (hand == Hand.Left) mapping.useLeftFistWeight = next;
+                else mapping.useRightFistWeight = next;
+            });
+            if (!next && IsSelected(SelectionKind.Fist, _selectedId, null, hand)) Select(SelectionKind.Expression, _selectedId, null);
         }
     }
 }

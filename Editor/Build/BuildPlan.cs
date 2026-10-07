@@ -89,7 +89,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 plan.Modes.Add(mode);
             }
 
-            // 表情選択：メニューの並び順で、表情セットは左手の表 → 右手の表 → 組み合わせの順、固定だけの表情はその表情を並べる。
+            // 表情選択：メニューの並び順で、表情セットは優先する手の Fist から（GestureExpressions の順）、固定だけの表情はその表情を並べる。
             void AddEmote(Expression expression)
             {
                 if (expression != null && !plan.EmoteValues.ContainsKey(expression.id)) plan.EmoteValues[expression.id] = plan.EmoteValues.Count + 1;
