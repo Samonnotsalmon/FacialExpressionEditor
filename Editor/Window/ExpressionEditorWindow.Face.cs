@@ -276,7 +276,7 @@ namespace Samon.FacialExpressionEditor.Editor
             if (string.IsNullOrWhiteSpace(search)) return;
 
             var descriptor = Descriptor;
-            var root = descriptor != null ? descriptor.transform : _avatar.transform;
+            var root = descriptor != null ? descriptor.transform : AvatarRoot.transform;
             var shown = 0;
             foreach (var renderer in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {

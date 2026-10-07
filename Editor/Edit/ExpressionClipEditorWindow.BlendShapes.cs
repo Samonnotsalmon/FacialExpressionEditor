@@ -162,7 +162,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             _shown = new Dictionary<EditorCurveBinding, float>();
             _shownOf = key;
-            var preview = PreviewClips.ForExpression(expression, variant, _avatar.gameObject);
+            var preview = PreviewClips.ForExpression(expression, variant, AvatarRoot);
             foreach (var binding in AnimationUtility.GetCurveBindings(preview))
             {
                 var curve = AnimationUtility.GetEditorCurve(preview, binding);

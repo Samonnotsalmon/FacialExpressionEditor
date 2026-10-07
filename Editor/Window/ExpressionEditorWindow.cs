@@ -9,6 +9,7 @@ namespace Samon.FacialExpressionEditor.Editor
     /// <summary>
     /// 表情の割り当て画面。左にクリップライブラリ、中央に表情メニュー（とジェスチャー）・パーツ、右にプレビューと設定。
     /// ライブラリやプロジェクトウィンドウのクリップを、ドラッグ＆ドロップで割り当てる。
+    /// アバターのプレハブをドロップして始めると、表情データと表情設定のプレハブを作る（プレハブは各アバターの中へ入れて使う）。
     /// </summary>
     internal partial class ExpressionEditorWindow : EditorWindow
     {
@@ -22,6 +23,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口", "AFK・コンタクト" };
 
+        // 編集している表情設定（プロジェクトのプレハブか、シーンのアバターの中にあるもの）。
         [SerializeField] private FacialExpressionAvatar _avatar;
         [SerializeField] private Tab _tab;
         [SerializeField] private SelectionKind _selectionKind;
@@ -38,7 +40,13 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private ExpressionSet Set => _avatar != null ? _avatar.expressionSet : null;
         private FaceVariant Variant => _avatar != null ? _avatar.faceVariant : null;
-        private VRCAvatarDescriptor Descriptor => _avatar != null ? _avatar.GetComponent<VRCAvatarDescriptor>() : null;
+        // プレビューと元FXの読み取りに使うアバター。
+        private GameObject AvatarRoot => AvatarSetup.AvatarRootOf(_avatar);
+        private VRCAvatarDescriptor Descriptor => AvatarRoot != null ? AvatarRoot.GetComponent<VRCAvatarDescriptor>() : null;
+
+        // 表情設定の一覧。プロジェクトかシーンが変わったときだけ探し直す。
+        private List<FacialExpressionAvatar> _setups;
+        private List<FacialExpressionAvatar> Setups => _setups ??= AvatarSetup.FindSetups();
 
         // 元アバターのまばたきと口モーフキャンセラー。元FXを調べるので、変わったときだけ作り直す。
         private AvatarFaceDefaults _faceDefaults;
@@ -46,6 +54,15 @@ namespace Samon.FacialExpressionEditor.Editor
 
         [MenuItem("Tools/Samon/表情エディタ")]
         private static void OpenFromMenu() => Open(null);
+
+        /// <summary>
+        /// 「新しく始める」画面で開く。avatar を渡すと、そのアバターをドロップした状態から始める。
+        /// </summary>
+        public static void OpenStart(GameObject avatar)
+        {
+            Open(null);
+            GetWindow<ExpressionEditorWindow>().BeginStart(avatar);
+        }
 
         public static void Open(FacialExpressionAvatar avatar)
         {
@@ -61,15 +78,17 @@ namespace Samon.FacialExpressionEditor.Editor
             _thumbnails = new ThumbnailCache();
             _tab = (Tab)Mathf.Clamp((int)_tab, 0, TabLabels.Length - 1);
             EditorApplication.projectChanged += OnProjectChanged;
+            EditorApplication.hierarchyChanged += OnHierarchyChanged;
             EditorApplication.update += OnEditorUpdate;
             Undo.undoRedoPerformed += OnUndoRedo;
             ExpressionClipEditorWindow.Edited += OnClipEdited;
-            if (_avatar == null) _avatar = FindAvatars().FirstOrDefault();
+            if (_avatar == null) _avatar = Setups.FirstOrDefault();
         }
 
         private void OnDisable()
         {
             EditorApplication.projectChanged -= OnProjectChanged;
+            EditorApplication.hierarchyChanged -= OnHierarchyChanged;
             EditorApplication.update -= OnEditorUpdate;
             Undo.undoRedoPerformed -= OnUndoRedo;
             ExpressionClipEditorWindow.Edited -= OnClipEdited;
@@ -77,8 +96,16 @@ namespace Samon.FacialExpressionEditor.Editor
             _thumbnails?.Dispose();
         }
 
+        private void OnHierarchyChanged()
+        {
+            _setups = null;
+            Repaint();
+        }
+
         private void OnProjectChanged()
         {
+            _setups = null;
+            _startInfo = null;
             MarkLibraryDirty();
             InvalidateDetailPreview();
             _faceDefaults = null;
@@ -114,6 +141,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void SetAvatar(FacialExpressionAvatar avatar)
         {
+            _starting = false;
             if (_avatar == avatar) return;
             _avatar = avatar;
             _faceDefaults = null;
@@ -126,17 +154,23 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             DrawToolbar();
 
-            if (_avatar == null)
+            if (_starting || _avatar == null)
             {
-                EditorGUILayout.HelpBox("シーン上のアバター（ルート）に「表情設定」コンポーネントを付けてください。", MessageType.Info);
+                DrawStart();
+                return;
+            }
+
+            if (AvatarRoot == null)
+            {
+                DrawMissingAvatar();
                 return;
             }
 
             var set = Set;
             if (set == null)
             {
-                EditorGUILayout.HelpBox("このアバターには表情データが設定されていません。アバターのインスペクタで作成してください。", MessageType.Info);
-                if (GUILayout.Button("アバターを選択")) Selection.activeObject = _avatar;
+                EditorGUILayout.HelpBox("この表情設定には表情データがありません。「新しく始める」で作ってください。", MessageType.Info);
+                if (GUILayout.Button("新しく始める", GUILayout.Width(160))) BeginStart(AvatarRoot);
                 return;
             }
 
@@ -170,9 +204,10 @@ namespace Samon.FacialExpressionEditor.Editor
 
             using (new EditorGUILayout.HorizontalScope())
             {
-                using (new EditorGUILayout.VerticalScope(GUILayout.Width(LibraryWidth)))
+                using (var library = new EditorGUILayout.VerticalScope(GUILayout.Width(LibraryWidth)))
                 {
                     DrawLibrary(set);
+                    AcceptFolderDrop(library.rect, set);
                 }
 
                 using (new EditorGUILayout.VerticalScope())
@@ -200,14 +235,15 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
-                var avatars = FindAvatars();
-                var index = avatars.IndexOf(_avatar);
-                var labels = avatars.Select(a => $"{a.gameObject.name}（{a.gameObject.scene.name}）").ToArray();
-                GUILayout.Label("アバター", GUILayout.Width(48));
+                var setups = Setups;
+                var index = _starting ? -1 : setups.IndexOf(_avatar);
+                var labels = setups.Select(AvatarSetup.DisplayName).ToArray();
+                GUILayout.Label("表情設定", GUILayout.Width(56));
                 var next = EditorGUILayout.Popup(index, labels, EditorStyles.toolbarPopup, GUILayout.Width(240));
-                if (next != index && next >= 0) SetAvatar(avatars[next]);
+                if (next != index && next >= 0) SetAvatar(setups[next]);
+                if (GUILayout.Button("新しく始める", EditorStyles.toolbarButton)) BeginStart(null);
 
-                if (_avatar != null)
+                if (_avatar != null && !_starting)
                 {
                     GUILayout.Space(8);
                     GUILayout.Label($"表情データ：{(Set != null ? Set.name : "なし")}", EditorStyles.miniLabel);
@@ -217,12 +253,21 @@ namespace Samon.FacialExpressionEditor.Editor
 
                 GUILayout.FlexibleSpace();
 
-                if (_avatar != null && GUILayout.Button("アバターを選択", EditorStyles.toolbarButton))
+                if (_avatar != null && !_starting)
                 {
-                    Selection.activeObject = _avatar;
+                    DrawSetupHandle();
+                    using (new EditorGUI.DisabledScope(Set == null || FxImporter.GetFx(Descriptor) == null))
+                    {
+                        if (GUILayout.Button(new GUIContent("元FXから取り込む", "元FXのジェスチャーで出している表情を、表情セットに取り込みます（取り込み直し）。"),
+                                EditorStyles.toolbarButton))
+                        {
+                            ImportFromFx();
+                        }
+                    }
                 }
                 if (GUILayout.Button("表示を更新", EditorStyles.toolbarButton))
                 {
+                    _setups = null;
                     DisposePreview();
                     _thumbnails.Clear();
                     MarkLibraryDirty();
@@ -230,23 +275,54 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
-        private static List<FacialExpressionAvatar> FindAvatars()
+        /// <summary>
+        /// 表情設定のプレハブ（ドラッグしてアバターへ入れられる）か、シーンの表情設定を選ぶボタン。
+        /// </summary>
+        private void DrawSetupHandle()
         {
-            return FindObjectsByType<FacialExpressionAvatar>(FindObjectsInactive.Include, FindObjectsSortMode.None)
-                .Where(a => !EditorUtility.IsPersistent(a) && a.gameObject.scene.IsValid())
-                .OrderBy(a => a.gameObject.scene.name)
-                .ThenBy(a => a.gameObject.name)
-                .ToList();
+            var inScene = AvatarSetup.IsInScene(_avatar);
+            var content = inScene
+                ? new GUIContent("表情設定を選択", "Hierarchy で表情設定を選びます。")
+                : new GUIContent($"プレハブ：{_avatar.gameObject.name}", "ドラッグして Hierarchy のアバターの中に入れます。クリックで Project に表示します。");
+            var rect = GUILayoutUtility.GetRect(content, EditorStyles.toolbarButton, GUILayout.MaxWidth(260));
+            if (!inScene)
+            {
+                EditorGUIUtility.AddCursorRect(rect, MouseCursor.Pan);
+                HandleDragSource(rect, _avatar.gameObject);
+            }
+            if (GUI.Button(rect, content, EditorStyles.toolbarButton))
+            {
+                Selection.activeObject = _avatar.gameObject;
+                EditorGUIUtility.PingObject(_avatar.gameObject);
+            }
+        }
+
+        private void ImportFromFx()
+        {
+            var set = Set;
+            if (!EditorUtility.DisplayDialog("元FXから取り込む",
+                    "元FXのジェスチャーで出している表情を、表情セット（ジェスチャーの割り当て）に取り込みます。\n" +
+                    "表情セットと置き換える元FXレイヤーは、元FXの内容で設定し直します（同じクリップの表情の設定は残ります）。",
+                    "取り込む", "キャンセル"))
+            {
+                return;
+            }
+
+            FxImporter.Result result = null;
+            Modify(set, "元FXから取り込み", () => result = FxImporter.ImportGestures(Descriptor, set));
+            MarkLibraryDirty();
+            EditorUtility.DisplayDialog("元FXから取り込む", result.Summary(), "OK");
         }
 
         // ---- プレビューとサムネイル ----
 
         private void EnsurePreview()
         {
-            if (_preview != null && _preview.Source == _avatar.gameObject) return;
+            var root = AvatarRoot;
+            if (_preview != null && _preview.Source == root) return;
             DisposePreview();
-            _preview = new FacePreview(_avatar.gameObject);
-            _faceHash = ThumbnailKeys.FaceHash(_avatar.gameObject);
+            _preview = new FacePreview(root);
+            _faceHash = ThumbnailKeys.FaceHash(root);
 
             // 表情セットのメニューのアイコン（無表情）に使うので、無表情のサムネイルも描いておく。
             _thumbnails.Get(ThumbnailKeys.Neutral(_faceHash), () =>
@@ -280,7 +356,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var variant = Variant;
             return _thumbnails.Get(ThumbnailKeys.Expression(expression, variant, _faceHash), () =>
             {
-                var clip = PreviewClips.ForExpression(expression, variant, _avatar.gameObject);
+                var clip = PreviewClips.ForExpression(expression, variant, AvatarRoot);
                 _preview.Apply(clip);
                 PreviewClips.Release(clip);
                 return _preview.RenderStatic(ThumbnailCache.Size);
@@ -334,12 +410,12 @@ namespace Samon.FacialExpressionEditor.Editor
 
         // ---- ドラッグ＆ドロップ ----
 
-        private AnimationClip _dragCandidate;
+        private Object _dragCandidate;
 
         /// <summary>
-        /// rect 内でドラッグを始めたら、クリップをドラッグする。
+        /// rect 内でドラッグを始めたら、クリップ（や表情設定のプレハブ）をドラッグする。
         /// </summary>
-        private void HandleDragSource(Rect rect, AnimationClip clip)
+        private void HandleDragSource(Rect rect, Object clip)
         {
             var e = Event.current;
             if (clip == null) return;

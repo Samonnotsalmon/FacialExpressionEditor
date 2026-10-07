@@ -43,7 +43,9 @@ namespace Samon.FacialExpressionEditor.Editor
         private FaceVariant Variant => _avatar != null ? _avatar.faceVariant : null;
         private Expression Expression => IsAfk ? AfkExpression : Set != null ? Set.FindExpression(_expressionId) : null;
         private ExpressionOverride Override => Variant != null ? Variant.FindOverride(_expressionId) : null;
-        private Transform Root => _avatar != null ? _avatar.transform : null;
+        // プレビューと元FXの読み取りに使うアバター（表情設定が入っているアバターか、編集に使うアバター）。
+        private GameObject AvatarRoot => AvatarSetup.AvatarRootOf(_avatar);
+        private Transform Root => AvatarRoot != null ? AvatarRoot.transform : null;
 
         // 今編集している（次に書き込む）クリップ。差し替えがあればそちら。AFKでは元のクリップを変えないので無し。
         private AnimationClip TargetClip => IsAfk ? null : Override != null ? Override.clip : Expression?.clip;
@@ -113,7 +115,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void OnGUI()
         {
-            if (_avatar == null || Set == null)
+            if (_avatar == null || Set == null || AvatarRoot == null)
             {
                 EditorGUILayout.HelpBox("表情エディタで表情を選び、「この表情を編集」から開いてください。", MessageType.Info);
                 return;
@@ -160,7 +162,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
-                GUILayout.Label($"{_avatar.gameObject.name}（{_avatar.gameObject.scene.name}）", EditorStyles.miniLabel);
+                GUILayout.Label(AvatarSetup.DisplayName(_avatar), EditorStyles.miniLabel);
                 GUILayout.Space(8);
                 GUILayout.Label("表情", GUILayout.Width(28));
 
@@ -191,10 +193,10 @@ namespace Samon.FacialExpressionEditor.Editor
 
             if (Event.current.type != EventType.Repaint) return;
 
-            if (_preview == null || _preview.Source != _avatar.gameObject)
+            if (_preview == null || _preview.Source != AvatarRoot)
             {
                 DisposePreview();
-                _preview = new FacePreview(_avatar.gameObject);
+                _preview = new FacePreview(AvatarRoot);
                 _previewDirty = true;
             }
 
@@ -210,7 +212,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
                 else
                 {
-                    var clip = PreviewClips.ForExpression(expression, Variant, _avatar.gameObject);
+                    var clip = PreviewClips.ForExpression(expression, Variant, AvatarRoot);
                     _preview.Apply(clip, 1f);
                     PreviewClips.Release(clip);
                 }
@@ -365,7 +367,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     var clip = entry.clip;
                     Undo.RecordObject(clip, "ベース顔を反映");
-                    BaseFaceProcessor.Apply(variant, expression.id, false, _avatar.gameObject,
+                    BaseFaceProcessor.Apply(variant, expression.id, false, AvatarRoot,
                         b => AnimationUtility.GetEditorCurve(clip, b),
                         (b, c) => AnimationUtility.SetEditorCurve(clip, b, c),
                         includeFaceValues: false);
@@ -420,6 +422,6 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private static string PathOf(Transform transform, Transform root) => AnimationUtility.CalculateTransformPath(transform, root);
 
-        private VRCAvatarDescriptor Descriptor => _avatar != null ? _avatar.GetComponent<VRCAvatarDescriptor>() : null;
+        private VRCAvatarDescriptor Descriptor => AvatarRoot != null ? AvatarRoot.GetComponent<VRCAvatarDescriptor>() : null;
     }
 }

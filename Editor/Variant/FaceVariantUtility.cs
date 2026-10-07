@@ -31,25 +31,44 @@ namespace Samon.FacialExpressionEditor.Editor
 
         /// <summary>
         /// 元Prefabと値が違うシェイプキーを、ベース顔の候補として検出する。
-        /// 表情データのクリップが動かすシェイプキーは有効、それ以外は無効の状態で追加する。
+        /// 表情データのクリップが動かすシェイプキーと、顔のメッシュのシェイプキーは有効、それ以外は無効の状態で追加する。
         /// 既に登録済みのシェイプキーは、有効・無効の設定を引き継ぐ。戻り値は、元Prefabが見つからなかったレンダラーのパス。
         /// </summary>
         public static List<string> DetectBaseFace(FaceVariant variant, ExpressionSet set, GameObject avatarRoot)
         {
-            var missingReference = new List<string>();
-            var animated = AnimatedBlendShapes(set);
-            var previous = variant.baseFace
+            var detected = CompareWithOriginal(set, avatarRoot, variant.baseFace, out var missingReference);
+            Undo.RecordObject(variant, "ベース顔を検出");
+            variant.baseFace = detected;
+            EditorUtility.SetDirty(variant);
+            return missingReference;
+        }
+
+        /// <summary>
+        /// アバターの顔と元Prefabの違い（ベース顔の候補）。顔バリアントは作らない。
+        /// 調べるのは、表情データのクリップが動かすメッシュと顔のメッシュ。previous にあるシェイプキーは有効・無効を引き継ぐ。
+        /// </summary>
+        public static List<BaseFaceKey> CompareWithOriginal(ExpressionSet set, GameObject avatarRoot, IEnumerable<BaseFaceKey> previous,
+            out List<string> missingReference)
+        {
+            missingReference = new List<string>();
+            var animated = set != null ? AnimatedBlendShapes(set) : new HashSet<(string path, string blendShape)>();
+            var previousKeys = (previous ?? Enumerable.Empty<BaseFaceKey>())
                 .GroupBy(k => (k.path, k.blendShape))
                 .ToDictionary(g => g.Key, g => g.First());
             var detected = new List<BaseFaceKey>();
 
-            foreach (var path in animated.Select(a => a.path).Distinct())
+            var face = AvatarSetup.FaceRenderer(avatarRoot);
+            var facePath = face != null ? AnimationUtility.CalculateTransformPath(face.transform, avatarRoot.transform) : null;
+            var paths = animated.Select(a => a.path).ToList();
+            if (facePath != null) paths.Add(facePath);
+
+            foreach (var path in paths.Distinct())
             {
                 var transform = string.IsNullOrEmpty(path) ? avatarRoot.transform : avatarRoot.transform.Find(path);
                 var renderer = transform != null ? transform.GetComponent<SkinnedMeshRenderer>() : null;
                 if (renderer == null || renderer.sharedMesh == null) continue;
 
-                var reference = PrefabUtility.GetCorrespondingObjectFromOriginalSource(renderer);
+                var reference = OriginalRenderer(renderer);
                 if (reference == null || reference.sharedMesh == null)
                 {
                     missingReference.Add(path);
@@ -71,17 +90,33 @@ namespace Samon.FacialExpressionEditor.Editor
                         blendShape = name,
                         referenceValue = referenceValue,
                         variantValue = value,
-                        enabled = previous.TryGetValue((path, name), out var old)
+                        enabled = previousKeys.TryGetValue((path, name), out var old)
                             ? old.enabled
-                            : animated.Contains((path, name)),
+                            : animated.Contains((path, name)) || path == facePath,
                     });
                 }
             }
+            return detected;
+        }
 
-            Undo.RecordObject(variant, "ベース顔を検出");
-            variant.baseFace = detected;
-            EditorUtility.SetDirty(variant);
-            return missingReference;
+        /// <summary>
+        /// 比べる元の顔のレンダラー。プレハブの元をたどり、モデル（FBX）のすぐ上のプレハブ（作者のプレハブ）を使う。
+        /// プレハブが無くモデルだけなら、モデルを使う。プレハブでなければ null。
+        /// </summary>
+        public static SkinnedMeshRenderer OriginalRenderer(SkinnedMeshRenderer renderer)
+        {
+            SkinnedMeshRenderer found = null;
+            SkinnedMeshRenderer model = null;
+            var current = renderer;
+            for (var depth = 0; depth < 16; depth++)
+            {
+                var source = PrefabUtility.GetCorrespondingObjectFromSource(current);
+                if (source == null) break;
+                if (PrefabUtility.GetPrefabAssetType(source.gameObject) == PrefabAssetType.Model) model = source;
+                else found = source;
+                current = source;
+            }
+            return found ?? model;
         }
 
         /// <summary>

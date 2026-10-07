@@ -30,33 +30,20 @@ namespace Samon.FacialExpressionEditor.Editor
                 new GUIContent("表情データ"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(FacialExpressionAvatar.faceVariant)),
                 new GUIContent("顔バリアント"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(FacialExpressionAvatar.sourceAvatar)),
+                new GUIContent("編集に使うアバター", "表情エディタで、プレビューと元FXの読み取りに使うアバター（プレハブ）。アバターの中に入れたときは、入れた先のアバターを使います。"));
             serializedObject.ApplyModifiedProperties();
 
-            var descriptor = avatar.GetComponent<VRCAvatarDescriptor>();
-            if (descriptor == null)
-            {
-                EditorGUILayout.HelpBox("アバターのルート（VRC Avatar Descriptorがあるオブジェクト）に付けてください。", MessageType.Warning);
-                return;
-            }
-
-            // FXが無い・ジェスチャーやパーツが無いアバターでも、空の表情データから組み立てられるようにする。
-            var fx = FxImporter.GetFx(descriptor);
+            // アバターの中にあればそのアバター、無ければ編集に使うアバター。
+            var root = AvatarSetup.AvatarRootOf(avatar);
+            var descriptor = root != null ? root.GetComponent<VRCAvatarDescriptor>() : null;
             var set = avatar.expressionSet;
 
             EditorGUILayout.Space();
             if (set == null)
             {
-                using (new EditorGUI.DisabledScope(fx == null))
-                {
-                    if (GUILayout.Button("表情データを作成して、元FXから取り込む", GUILayout.Height(28)))
-                    {
-                        CreateSet(avatar, descriptor, true);
-                    }
-                }
-                if (GUILayout.Button("空の表情データを作成", GUILayout.Height(28)))
-                {
-                    CreateSet(avatar, descriptor, false);
-                }
+                EditorGUILayout.HelpBox("表情データがありません。表情エディタの「新しく始める」で作れます。", MessageType.Info);
+                if (GUILayout.Button("表情エディタで始める", GUILayout.Height(28))) ExpressionEditorWindow.OpenStart(root);
                 return;
             }
 
@@ -65,18 +52,26 @@ namespace Samon.FacialExpressionEditor.Editor
                 ExpressionEditorWindow.Open(avatar);
             }
 
+            if (descriptor == null)
+            {
+                EditorGUILayout.HelpBox("この表情設定をアバターの中に入れると、ビルド時に表情が付きます。" +
+                                        "ここで編集するには、アバターの中に入れるか「編集に使うアバター」を指定してください。", MessageType.Info);
+                return;
+            }
+
+            var fx = FxImporter.GetFx(descriptor);
             DrawExpressionSet(avatar, descriptor, set, fx);
-            DrawNewExpression(avatar, set);
+            DrawNewExpression(avatar, root, set);
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("顔バリアント", EditorStyles.boldLabel);
             if (avatar.faceVariant == null)
             {
-                DrawCreateVariant(avatar, set);
+                DrawCreateVariant(avatar, root, set);
             }
             else
             {
-                DrawVariant(avatar, set, avatar.faceVariant);
+                DrawVariant(root, set, avatar.faceVariant);
             }
         }
 
@@ -98,7 +93,8 @@ namespace Samon.FacialExpressionEditor.Editor
                             "表情セット（ジェスチャーの割り当て）と、置き換える元FXレイヤーを元FXの内容で設定し直します。\n" +
                             "表情ごとの設定は同じクリップなら残り、同じ名前の表情セットは使い方の設定が残ります。", "取り込む", "キャンセル"))
                     {
-                        ShowResult(FxImporter.ImportGestures(descriptor, set));
+                        var result = FxImporter.ImportGestures(descriptor, set);
+                        EditorUtility.DisplayDialog("元FXから取り込み", result.Summary(), "OK");
                     }
                 }
 
@@ -119,7 +115,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
-        private void DrawNewExpression(FacialExpressionAvatar avatar, ExpressionSet set)
+        private void DrawNewExpression(FacialExpressionAvatar avatar, GameObject root, ExpressionSet set)
         {
             _showNewExpression = EditorGUILayout.Foldout(_showNewExpression, "新しい表情を作成", true);
             if (!_showNewExpression) return;
@@ -153,7 +149,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (GUILayout.Button("作成"))
                 {
                     var expression = ExpressionSetUtility.CreateExpression(set, _newExpressionName.Trim(),
-                        _newExpressionSource, copyFrom, avatar.gameObject, avatar.faceVariant);
+                        _newExpressionSource, copyFrom, root, avatar.faceVariant);
                     // 作った表情は、そのまま表情の編集ウィンドウで編集できるようにする。
                     if (expression != null) ExpressionClipEditorWindow.Open(avatar, expression);
                     GUIUtility.ExitGUI();
@@ -161,27 +157,27 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
-        private void DrawCreateVariant(FacialExpressionAvatar avatar, ExpressionSet set)
+        private void DrawCreateVariant(FacialExpressionAvatar avatar, GameObject root, ExpressionSet set)
         {
             EditorGUILayout.HelpBox(
                 "ベース顔を変えたアバターでは、顔バリアントを作ると、ベース顔をすべての表情に適用できます（表情ごとの調整は表情の編集ウィンドウで）。" +
                 "同じ顔の別のアバターは、作った顔バリアントを指定するだけで共有できます。", MessageType.None);
 
-            if (_newVariantName == null) _newVariantName = avatar.gameObject.name;
+            if (_newVariantName == null) _newVariantName = root.name;
             _newVariantName = EditorGUILayout.TextField("名前", _newVariantName);
 
             if (GUILayout.Button("このアバターの顔で顔バリアントを作成", GUILayout.Height(24)))
             {
-                var variant = FaceVariantUtility.Create(set, avatar.gameObject, _newVariantName);
+                var variant = FaceVariantUtility.Create(set, root, _newVariantName);
                 Undo.RecordObject(avatar, "顔バリアントを設定");
                 avatar.faceVariant = variant;
                 EditorUtility.SetDirty(avatar);
             }
         }
 
-        private void DrawVariant(FacialExpressionAvatar avatar, ExpressionSet set, FaceVariant variant)
+        private void DrawVariant(GameObject root, ExpressionSet set, FaceVariant variant)
         {
-            var mismatched = FaceVariantUtility.Mismatched(variant, avatar.gameObject);
+            var mismatched = FaceVariantUtility.Mismatched(variant, root);
             if (mismatched.Count > 0)
             {
                 EditorGUILayout.HelpBox(
@@ -193,7 +189,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             if (GUILayout.Button("ベース顔を検出し直す"))
             {
-                var missing = FaceVariantUtility.DetectBaseFace(variant, set, avatar.gameObject);
+                var missing = FaceVariantUtility.DetectBaseFace(variant, set, root);
                 if (missing.Count > 0)
                 {
                     EditorUtility.DisplayDialog("ベース顔の検出",
@@ -334,44 +330,6 @@ namespace Samon.FacialExpressionEditor.Editor
             Undo.RecordObject(avatar, "表情データを複製");
             avatar.expressionSet = copy;
             EditorUtility.SetDirty(avatar);
-        }
-
-        private static void CreateSet(FacialExpressionAvatar avatar, VRCAvatarDescriptor descriptor, bool importFromFx)
-        {
-            var path = EditorUtility.SaveFilePanelInProject("表情データの保存先", descriptor.gameObject.name + "_表情データ",
-                "asset", "表情データを保存する場所を選んでください。", "Assets");
-            if (string.IsNullOrEmpty(path)) return;
-
-            var set = CreateInstance<ExpressionSet>();
-            FxImporter.Result result = null;
-            if (importFromFx)
-            {
-                AssetDatabase.CreateAsset(set, path);
-                result = FxImporter.ImportGestures(descriptor, set);
-            }
-            else
-            {
-                set.gestureSets.Add(new GestureSet { name = "セット1" });
-                set.faceControlImported = true;
-                AssetDatabase.CreateAsset(set, path);
-            }
-            AssetDatabase.SaveAssets();
-
-            Undo.RecordObject(avatar, "表情データを設定");
-            avatar.expressionSet = set;
-            EditorUtility.SetDirty(avatar);
-
-            if (result != null) ShowResult(result);
-        }
-
-        private static void ShowResult(FxImporter.Result result)
-        {
-            var layers = result.GestureLayers.Count > 0 ? string.Join(", ", result.GestureLayers) : "（見つかりませんでした）";
-            EditorUtility.DisplayDialog("元FXから取り込み",
-                $"表情セット：{string.Join(", ", result.GestureSets)}\n" +
-                $"新しく追加した表情：{result.AddedExpressions} 件\n" +
-                $"ライブラリに追加したフォルダ：{result.AddedFolders} 件\n" +
-                $"置き換える元FXレイヤー：{layers}", "OK");
         }
     }
 }

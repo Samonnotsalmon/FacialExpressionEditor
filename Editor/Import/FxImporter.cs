@@ -23,6 +23,15 @@ namespace Samon.FacialExpressionEditor.Editor
             public readonly List<string> GestureSets = new List<string>();
             public int AddedExpressions;
             public int AddedFolders;
+
+            public string Summary()
+            {
+                var layers = GestureLayers.Count > 0 ? string.Join(", ", GestureLayers) : "（見つかりませんでした）";
+                return $"表情セット：{string.Join(", ", GestureSets)}\n" +
+                       $"新しく追加した表情：{AddedExpressions} 件\n" +
+                       $"ライブラリに追加したフォルダ：{AddedFolders} 件\n" +
+                       $"置き換える元FXレイヤー：{layers}";
+            }
         }
 
         public static AnimatorController GetFx(VRCAvatarDescriptor descriptor)
@@ -36,6 +45,29 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// 元FXのジェスチャーで出している表情（取り込む前の確認用）。レイヤー名と、表情のクリップの数。
+        /// </summary>
+        public static (List<string> layers, int clips) PeekGestures(VRCAvatarDescriptor descriptor)
+        {
+            var layers = new List<string>();
+            var clips = new HashSet<AnimationClip>();
+            var fx = GetFx(descriptor);
+            if (fx == null) return (layers, 0);
+
+            foreach (var layer in fx.layers)
+            {
+                var layerClips = CollectGestureEntries(layer.stateMachine)
+                    .Select(e => e.Clip)
+                    .Where(c => !IsDummyClip(c, descriptor.gameObject))
+                    .ToList();
+                if (layerClips.Count == 0) continue;
+                layers.Add(layer.name);
+                clips.UnionWith(layerClips);
+            }
+            return (layers, clips.Count);
         }
 
         /// <summary>

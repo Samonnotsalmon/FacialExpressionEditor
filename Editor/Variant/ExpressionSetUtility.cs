@@ -317,13 +317,19 @@ namespace Samon.FacialExpressionEditor.Editor
 
         /// <summary>
         /// 表情で動くシェイプキー（既存の表情が動かすものと、顔バリアントのベース顔）に、アバターの今の値を書き込む。
+        /// ベース顔のシェイプキーは元Prefabの値にする（共有の表情なので。この顔の値はビルド時にベース顔として足される）。
         /// </summary>
         private static void WriteCurrentFace(AnimationClip clip, ExpressionSet set, GameObject avatarRoot, FaceVariant variant)
         {
             var keys = FaceVariantUtility.AnimatedBlendShapes(set);
+            var baseFace = new Dictionary<(string, string), float>();
             if (variant != null)
             {
-                foreach (var key in variant.baseFace.Where(k => k.enabled)) keys.Add((key.path, key.blendShape));
+                foreach (var key in variant.baseFace.Where(k => k.enabled))
+                {
+                    keys.Add((key.path, key.blendShape));
+                    baseFace[(key.path, key.blendShape)] = key.referenceValue;
+                }
             }
 
             foreach (var (path, blendShape) in keys.OrderBy(k => k.path).ThenBy(k => k.blendShape))
@@ -333,8 +339,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 var index = renderer != null && renderer.sharedMesh != null ? renderer.sharedMesh.GetBlendShapeIndex(blendShape) : -1;
                 if (index < 0) continue;
 
+                var value = baseFace.TryGetValue((path, blendShape), out var reference) ? reference : renderer.GetBlendShapeWeight(index);
                 var binding = EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), "blendShape." + blendShape);
-                AnimationUtility.SetEditorCurve(clip, binding, new AnimationCurve(new Keyframe(0, renderer.GetBlendShapeWeight(index))));
+                AnimationUtility.SetEditorCurve(clip, binding, new AnimationCurve(new Keyframe(0, value)));
             }
         }
     }

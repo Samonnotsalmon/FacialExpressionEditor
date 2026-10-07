@@ -101,8 +101,8 @@ namespace Samon.FacialExpressionEditor.Editor
             if (expression != null)
             {
                 _detailClip = _selectionKind == SelectionKind.Fist
-                    ? PreviewClips.ForFist(expression, Variant, _avatar.gameObject)
-                    : PreviewClips.ForExpression(expression, Variant, _avatar.gameObject);
+                    ? PreviewClips.ForFist(expression, Variant, AvatarRoot)
+                    : PreviewClips.ForExpression(expression, Variant, AvatarRoot);
             }
             else if (part != null) _detailClip = PreviewClips.ForPart(part);
             else if (_selectionKind == SelectionKind.Clip && _selectedClip != null)

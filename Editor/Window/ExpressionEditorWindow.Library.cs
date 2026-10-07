@@ -101,7 +101,42 @@ namespace Samon.FacialExpressionEditor.Editor
             }
             EditorGUILayout.EndScrollView();
 
-            EditorGUILayout.LabelField("クリップを中央の表やフォルダへドラッグして割り当てます。", EditorStyles.wordWrappedMiniLabel);
+            if (GUILayout.Button("＋ 新しい表情", EditorStyles.miniButton)) ShowNewExpressionMenu(set);
+            EditorGUILayout.LabelField("クリップを中央の表やフォルダへドラッグして割り当てます。Project のフォルダをここにドロップすると、ライブラリに入ります。",
+                EditorStyles.wordWrappedMiniLabel);
+        }
+
+        /// <summary>
+        /// 新しい表情を作る（今の顔から・空から・選んでいる表情をコピー）。作ったら選んで、表情の編集ウィンドウで開く。
+        /// </summary>
+        private void ShowNewExpressionMenu(ExpressionSet set)
+        {
+            var selected = _selectionKind == SelectionKind.Expression ? set.FindExpression(_selectedId) : null;
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent("今の顔から"), false, () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.CurrentFace, null));
+            menu.AddItem(new GUIContent("空から（何も動かさない）"), false, () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.Empty, null));
+            if (selected != null)
+            {
+                menu.AddItem(new GUIContent($"「{selected.name}」をコピー"), false,
+                    () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.CopyExpression, selected));
+            }
+            else
+            {
+                menu.AddDisabledItem(new GUIContent("選んでいる表情をコピー"));
+            }
+            menu.ShowAsContext();
+        }
+
+        private void CreateExpression(ExpressionSet set, ExpressionSetUtility.NewExpressionSource source, Expression copyFrom)
+        {
+            var name = copyFrom != null ? $"{copyFrom.name} のコピー" : "新しい表情";
+            for (var i = 2; set.expressions.Any(e => e.name == name); i++) name = copyFrom != null ? $"{copyFrom.name} のコピー {i}" : $"新しい表情 {i}";
+
+            var expression = ExpressionSetUtility.CreateExpression(set, name, source, copyFrom, AvatarRoot, Variant);
+            if (expression == null) return;
+            MarkLibraryDirty();
+            Select(SelectionKind.Expression, expression.id, null);
+            ExpressionClipEditorWindow.Open(_avatar, expression);
         }
 
         private List<AnimationClip> FilteredClips()

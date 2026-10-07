@@ -25,9 +25,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 var set = avatar.expressionSet;
                 if (set == null || !set.menuIcons) continue;
 
+                // ビルドされるのは、アバターの中に入っている表情設定だけ。
+                var root = avatar.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true);
+                if (root == null) continue;
+
                 try
                 {
-                    MenuIcons.EnsureCached(avatar.gameObject, set, avatar.faceVariant);
+                    MenuIcons.EnsureCached(root.gameObject, set, avatar.faceVariant);
                 }
                 catch (Exception e)
                 {

@@ -178,7 +178,7 @@ namespace Samon.FacialExpressionEditor.Editor
             _afkProcessedOf = key;
             if (clip == null || variant == null) return null;
 
-            _afkProcessed = PreviewClips.ForAfk(clip, variant, _avatar.gameObject);
+            _afkProcessed = PreviewClips.ForAfk(clip, variant, AvatarRoot);
             foreach (var binding in AnimationUtility.GetCurveBindings(_afkProcessed))
             {
                 var blendShape = ClipEditing.BlendShapeName(binding);
