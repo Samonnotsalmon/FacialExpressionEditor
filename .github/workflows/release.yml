@@ -1,7 +1,7 @@
 name: Release
 
-# package.json の version に合わせたタグ（v0.1.0 など）を送ると、
-# パッケージの zip を GitHub のリリースに置き、VCC 用の一覧（index.json）を GitHub Pages に作り直す。
+# package.json の version に合わせたタグ（v0.1.0 など）を送ると、パッケージの zip を GitHub のリリースに置き、
+# VCC 用の一覧を作り直す（Listing を main で動かす。GitHub Pages へは main からしか公開できないため）。
 # Actions の画面から手動で動かすと、今の package.json の version でリリースする（タグも作る）。
 on:
   push:
@@ -10,8 +10,7 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
+  actions: write
 
 concurrency:
   group: release
@@ -53,25 +52,7 @@ jobs:
             gh release create "$TAG" "$ZIP" package.json --title "$TAG" --target "$GITHUB_SHA" --generate-notes
           fi
 
-  listing:
-    needs: release
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build the listing
+      - name: Rebuild the listing
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 .github/scripts/build_listing.py site
-
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-      - id: deployment
-        uses: actions/deploy-pages@v4
+        run: gh workflow run listing.yml --ref main
