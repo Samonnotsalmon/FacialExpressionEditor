@@ -1,0 +1,77 @@
+name: Release
+
+# package.json の version に合わせたタグ（v0.1.0 など）を送ると、
+# パッケージの zip を GitHub のリリースに置き、VCC 用の一覧（index.json）を GitHub Pages に作り直す。
+# Actions の画面から手動で動かすと、今の package.json の version でリリースする（タグも作る）。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read package.json
+        id: package
+        run: |
+          echo "name=$(jq -r .name package.json)" >> "$GITHUB_OUTPUT"
+          echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Check the tag
+        if: github.ref_type == 'tag'
+        run: |
+          if [ "$GITHUB_REF_NAME" != "v${{ steps.package.outputs.version }}" ]; then
+            echo "::error::タグ $GITHUB_REF_NAME と package.json の version（${{ steps.package.outputs.version }}）が違います"
+            exit 1
+          fi
+
+      # .gitattributes で export-ignore にしたもの（.github など）は入らない。package.json が zip の一番上に来る。
+      - name: Build the zip
+        run: git archive --format=zip -o "${{ steps.package.outputs.name }}-${{ steps.package.outputs.version }}.zip" HEAD
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.package.outputs.version }}
+          ZIP: ${{ steps.package.outputs.name }}-${{ steps.package.outputs.version }}.zip
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" package.json --clobber
+          else
+            gh release create "$TAG" "$ZIP" package.json --title "$TAG" --target "$GITHUB_SHA" --generate-notes
+          fi
+
+  listing:
+    needs: release
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the listing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/build_listing.py site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -19,3 +19,8 @@
 *.jpg     binary
 *.psd     binary
 *.fbx     binary
+
+# リリースの zip（git archive）に入れないもの
+.github        export-ignore
+.gitattributes export-ignore
+.gitignore     export-ignore
