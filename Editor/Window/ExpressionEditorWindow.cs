@@ -19,7 +19,8 @@ namespace Samon.FacialExpressionEditor.Editor
         private enum Tab { Menu, Parts, Face, AfkContacts }
 
         // Fist：表情セットの表で、握り具合を使う手のFistのマスを選んだとき（握り込みの設定とプレビュー）。
-        private enum SelectionKind { None, Expression, Clip, Part, Fist }
+        // OriginalClip：元FXの、コンタクト・PhysBoneなどで顔を動かすレイヤーのクリップ（_selectedId はレイヤー名）。
+        private enum SelectionKind { None, Expression, Clip, Part, Fist, OriginalClip }
 
         private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口", "AFK・コンタクト" };
 
@@ -53,7 +54,12 @@ namespace Samon.FacialExpressionEditor.Editor
         private AvatarFaceDefaults FaceDefaults => _faceDefaults ??= AvatarFaceDefaults.Find(Descriptor, Set);
 
         [MenuItem("Tools/Samon/表情エディタ")]
-        private static void OpenFromMenu() => Open(null);
+        private static void OpenFromMenu()
+        {
+            // メニューから開いたときは、アバターを選ぶところから始める。
+            Open(null);
+            GetWindow<ExpressionEditorWindow>().BeginSelectAvatar();
+        }
 
         /// <summary>
         /// 「新しく始める」画面で開く。avatar を渡すと、そのアバターをドロップした状態から始める。
@@ -391,6 +397,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             if (_selectionKind != kind) return false;
             if (kind == SelectionKind.Clip) return _selectedClip == clip;
+            if (kind == SelectionKind.OriginalClip) return _selectedClip == clip && _selectedId == id;
             return _selectedId == id && (kind != SelectionKind.Fist || _selectedHand == hand);
         }
 

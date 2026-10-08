@@ -10,6 +10,9 @@ namespace Samon.FacialExpressionEditor
     [Serializable]
     public class GestureSet
     {
+        // 名前の付いていない表情セットが1つだけのときの名前。
+        public const string DefaultName = "Core";
+
         public string id = Expression.NewId();
         public string name;
 

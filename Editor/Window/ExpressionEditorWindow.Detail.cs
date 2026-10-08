@@ -52,8 +52,9 @@ namespace Samon.FacialExpressionEditor.Editor
                     }
                     else
                     {
-                        // 握り具合はFistのマスを選んだときだけ。表情そのものは、最後まで再生した形（ゲーム内で固定したときと同じ）。
-                        _preview.Apply(_detailClip, isFist ? _triggerWeight : 1f);
+                        // 握り具合はFistのマスを選んだときだけ（元FXのレイヤーで値で少しずつ動くものも、スライダーで確かめる）。
+                        // 表情そのものは、最後まで再生した形（ゲーム内で固定したときと同じ）。
+                        _preview.Apply(_detailClip, UsesDetailSlider ? _triggerWeight : 1f);
                     }
                     if (_detailTexture != null) DestroyImmediate(_detailTexture);
                     _detailTexture = _preview.RenderStatic(Mathf.RoundToInt(size * EditorGUIUtility.pixelsPerPoint));
@@ -63,10 +64,10 @@ namespace Samon.FacialExpressionEditor.Editor
                 GUI.DrawTexture(rect, _detailTexture, ScaleMode.ScaleToFit, false);
             }
 
-            if (isFist && _detailTimeVarying)
+            if (UsesDetailSlider)
             {
                 EditorGUI.BeginChangeCheck();
-                _triggerWeight = EditorGUILayout.Slider("握り具合", _triggerWeight, 0f, 1f);
+                _triggerWeight = EditorGUILayout.Slider(isFist ? "握り具合" : "パラメータの値", _triggerWeight, 0f, 1f);
                 if (EditorGUI.EndChangeCheck()) _detailTextureDirty = true;
             }
 
@@ -85,6 +86,9 @@ namespace Samon.FacialExpressionEditor.Editor
                     break;
                 case SelectionKind.Part when part != null:
                     DrawPartDetail(set, part);
+                    break;
+                case SelectionKind.OriginalClip when _selectedClip != null:
+                    DrawOriginalClipDetail(_selectedId, _selectedClip);
                     break;
                 default:
                     EditorGUILayout.LabelField("表情を選ぶと、ここに設定が出ます。", EditorStyles.wordWrappedMiniLabel);
@@ -105,7 +109,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     : PreviewClips.ForExpression(expression, Variant, AvatarRoot);
             }
             else if (part != null) _detailClip = PreviewClips.ForPart(part);
-            else if (_selectionKind == SelectionKind.Clip && _selectedClip != null)
+            else if ((_selectionKind == SelectionKind.Clip || _selectionKind == SelectionKind.OriginalClip) && _selectedClip != null)
             {
                 _detailClip = Object.Instantiate(_selectedClip);
                 _detailClip.hideFlags = HideFlags.HideAndDontSave;
@@ -251,10 +255,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 });
             }
 
-            if (!expression.enableBlink && expression.enableEyeTracking && !set.replaceBlink)
-            {
-                EditorGUILayout.LabelField("まばたきを置き換えない設定なので、この表情では視線も止まります。", WarningMiniLabel);
-            }
         }
 
         private void DrawVariantDetail(FaceVariant variant, Expression expression)
@@ -302,6 +302,46 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
+        // プレビューの下に、握り具合（Fist）やパラメータの値（元FXのレイヤー）のスライダーを出すか。
+        private bool UsesDetailSlider =>
+            (_selectionKind == SelectionKind.Fist || _selectionKind == SelectionKind.OriginalClip) && _detailTimeVarying;
+
+        /// <summary>
+        /// 元FXの、コンタクト・PhysBoneなどで顔を動かすレイヤーのクリップ。何で出るかと、ビルドでの扱い。
+        /// </summary>
+        private void DrawOriginalClipDetail(string layer, AnimationClip clip)
+        {
+            EditorGUILayout.LabelField(clip.name, EditorStyles.boldLabel);
+            var trigger = FxAnalysis.FaceLayerTriggers.TryGetValue(layer, out var list) ? list.Find(t => t.Clip == clip) : null;
+            EditorGUILayout.LabelField($"元FXの「{layer}」レイヤーの表情です。", EditorStyles.wordWrappedMiniLabel);
+            if (trigger != null && !string.IsNullOrEmpty(trigger.Parameter))
+            {
+                EditorGUILayout.LabelField(TriggerText(trigger), EditorStyles.wordWrappedMiniLabel);
+            }
+            if (_detailTimeVarying)
+            {
+                EditorGUILayout.LabelField("上のスライダーで、パラメータの値ごとの顔を確かめられます。", EditorStyles.wordWrappedMiniLabel);
+            }
+            EditorGUILayout.LabelField("ビルドでの扱いは「AFK・コンタクト」タブの「顔を動かしている元FXのレイヤー」で変えられます。",
+                EditorStyles.wordWrappedMiniLabel);
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.ObjectField("クリップ", clip, typeof(AnimationClip), false);
+            }
+        }
+
+        // 「PhysBone「Tail」をつかんでいる間（Tail_IsGrabbed）」のような説明。
+        private string TriggerText(OriginalFxAnalysis.FaceLayerClip trigger)
+        {
+            var source = FxAnalysis.ParameterSources.TryGetValue(trigger.Parameter, out var s) ? s : null;
+            var what = source ?? $"パラメータ「{trigger.Parameter}」";
+            if (trigger.Gradual) return $"{what}に合わせて、少しずつ出ます（{trigger.Parameter}）。";
+            if (source == null) return $"{what}で出ます。";
+            return source.StartsWith("メニュー")
+                ? $"{what}をオンにしている間に出ます（{trigger.Parameter}）。"
+                : $"{what}間に出ます（{trigger.Parameter}）。";
+        }
+
         private void DrawClipDetail(ExpressionSet set, AnimationClip clip)
         {
             EditorGUILayout.LabelField(clip.name, EditorStyles.boldLabel);
@@ -319,6 +359,11 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawPartDetail(ExpressionSet set, FacialPart part)
         {
+            if (GUILayout.Button("このパーツを編集", GUILayout.Height(24)))
+            {
+                ExpressionClipEditorWindow.OpenPart(_avatar, part);
+            }
+
             EditorGUI.BeginChangeCheck();
             var name = EditorGUILayout.TextField("名前", part.name);
             var group = EditorGUILayout.TextField("排他グループ", part.exclusiveGroup);

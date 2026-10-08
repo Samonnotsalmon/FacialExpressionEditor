@@ -106,7 +106,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 Shown = ShownValues(expression),
             };
 
-            var variant = Variant;
+            // パーツは今の表情に重ねるものなので、ベース顔（青い行）は出さない。
+            var variant = IsPart ? null : Variant;
             if (variant != null)
             {
                 foreach (var key in variant.baseFace.Where(k => k.enabled && k.path == _shapes.Path))
@@ -162,7 +163,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             _shown = new Dictionary<EditorCurveBinding, float>();
             _shownOf = key;
-            var preview = PreviewClips.ForExpression(expression, variant, AvatarRoot);
+            var preview = PreviewClipFor(expression);
             foreach (var binding in AnimationUtility.GetCurveBindings(preview))
             {
                 var curve = AnimationUtility.GetEditorCurve(preview, binding);

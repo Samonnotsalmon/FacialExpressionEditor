@@ -124,7 +124,7 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// 表情を1つ割り当てる枠。クリップをドロップすると割り当て、クリックで選択、×で外す。
+        /// 表情を1つ割り当てる枠。クリップをドロップすると割り当て、クリックで選択、×で外す。＋で新しい表情を作って割り当てる。
         /// fistMapping があればFistのマスで、下に「握り具合」のオン・オフを出す（hand の手の設定）。
         /// 握り具合がオンのマス（組み合わせでは grip）を選ぶと、右のプレビューで握り具合を確認できる。
         /// </summary>
@@ -150,6 +150,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     EditorGUI.DrawRect(rect, new Color(0, 0, 0, 0.12f));
                 }
                 GUI.Label(fistMapping != null ? new Rect(rect.x, rect.y, rect.width, rect.height - 20) : rect, "ここにドロップ", DropHint);
+                DrawNewExpressionButton(new Rect(rect.xMax - 24, rect.y + 4, 22, 18), set, null, assign, undoName);
                 if (fistMapping != null) DrawGripToggle(new Rect(rect.x + 6, rect.yMax - 20, rect.width - 12, 18), set, fistMapping, hand);
                 return;
             }
@@ -164,7 +165,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 else Select(SelectionKind.Expression, expression.id, null);
             }
 
-            var textRect = new Rect(thumbRect.xMax + 6, rect.y + 4, rect.width - thumbRect.width - 34, 18);
+            var textRect = new Rect(thumbRect.xMax + 6, rect.y + 4, rect.width - thumbRect.width - 58, 18);
             GUI.Label(textRect, expression.name, EditorStyles.boldLabel);
             var noteY = textRect.yMax;
             var overrideEntry = Variant != null ? Variant.FindOverride(expression.id) : null;
@@ -181,6 +182,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     new GUIContent($"重複（{_usage.Of(expression.clip).Count} か所）", places), WarningMiniLabel);
             }
 
+            DrawNewExpressionButton(new Rect(rect.xMax - 48, rect.y + 4, 22, 18), set, expression, assign, undoName);
             if (GUI.Button(new Rect(rect.xMax - 24, rect.y + 4, 22, 18), "×"))
             {
                 Modify(set, undoName + "を外す", () => assign(null));
@@ -190,6 +192,17 @@ namespace Samon.FacialExpressionEditor.Editor
             if (fistMapping != null)
             {
                 DrawGripToggle(new Rect(thumbRect.xMax + 6, rect.yMax - 20, rect.width - thumbRect.width - 8, 18), set, fistMapping, hand);
+            }
+        }
+
+        /// <summary>
+        /// 新しい表情を作って、このマスに割り当てるボタン（今の顔から・空から・今の表情をコピー）。
+        /// </summary>
+        private void DrawNewExpressionButton(Rect rect, ExpressionSet set, Expression current, Action<string> assign, string place)
+        {
+            if (GUI.Button(rect, new GUIContent("＋", "新しい表情を作って、ここに割り当てます")))
+            {
+                ShowNewExpressionMenu(set, current, assign, place);
             }
         }
 

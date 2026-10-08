@@ -74,18 +74,16 @@ namespace Samon.FacialExpressionEditor.Editor
                 .Distinct()
                 .ToList();
 
-            if (set.replaceBlink && expressions.Any(e => !e.enableBlink))
+            // まばたきは必ず置き換える（まばたきのシェイプキーが見つかれば）。
+            var blinkShapes = set.customBlink ? set.blinkShapes : defaults.BlinkShapes;
+            plan.BlinkShapes = blinkShapes
+                .Select(s => (Binding(s), s.closedValue))
+                .Where(s => AnimationUtility.GetFloatValue(avatarRoot, s.Item1, out _))
+                .ToList();
+            if (plan.ReplacesBlink)
             {
-                var shapes = set.customBlink ? set.blinkShapes : defaults.BlinkShapes;
-                plan.BlinkShapes = shapes
-                    .Select(s => (Binding(s), s.closedValue))
-                    .Where(s => AnimationUtility.GetFloatValue(avatarRoot, s.Item1, out _))
-                    .ToList();
-                if (plan.ReplacesBlink)
-                {
-                    if (!set.customBlink) plan.BlinkClip = defaults.BlinkClip;
-                    if (defaults.BlinkLayer != null) plan.BlinkLayersToReplace.Add(defaults.BlinkLayer);
-                }
+                if (!set.customBlink) plan.BlinkClip = defaults.BlinkClip;
+                if (defaults.BlinkLayer != null) plan.BlinkLayersToReplace.Add(defaults.BlinkLayer);
             }
 
             plan.ControlsEyes = expressions.Any(e => !plan.EyesTracked(e));

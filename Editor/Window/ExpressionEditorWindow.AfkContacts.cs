@@ -11,6 +11,7 @@ namespace Samon.FacialExpressionEditor.Editor
     internal partial class ExpressionEditorWindow
     {
         private const float ContactRowHeight = 88f;
+        private const float OriginalCellSize = 72f;
         private static readonly string[] LayerModeLabels = { "そのまま", "顔のカーブだけ取り除く", "使わない" };
 
         // 元FXの顔に関わるレイヤー。元FXを調べるので、FaceDefaults を作り直したときだけ作り直す。
@@ -197,21 +198,48 @@ namespace Samon.FacialExpressionEditor.Editor
                 return;
             }
 
-            EditorGUILayout.LabelField("表情とぶつかるときは、顔のカーブだけ取り除くか（ほかの演出は残ります）、レイヤーごと使わないようにできます。",
+            EditorGUILayout.LabelField("コンタクトやPhysBone、メニューで出る元のアバターの表情です。サムネイルを選ぶと、右のプレビューで確かめられます。" +
+                                       "表情とぶつかるときは、顔のカーブだけ取り除くか（ほかの演出は残ります）、レイヤーごと使わないようにできます。",
                 EditorStyles.wordWrappedMiniLabel);
+            var analysis = FxAnalysis;
             foreach (var name in layers)
             {
-                var setting = set.originalLayerSettings.Find(s => s.layerName == name);
-                var mode = setting != null ? setting.mode : OriginalLayerMode.Keep;
-                EditorGUI.BeginChangeCheck();
-                var next = (OriginalLayerMode)EditorGUILayout.Popup(name, (int)mode, LayerModeLabels);
-                if (!EditorGUI.EndChangeCheck()) continue;
-
-                Modify(set, "元FXのレイヤーの扱いを変更", () =>
+                EditorGUILayout.Space(4);
+                var triggers = analysis.FaceLayerTriggers.TryGetValue(name, out var list) ? list : new List<OriginalFxAnalysis.FaceLayerClip>();
+                using (new EditorGUILayout.HorizontalScope())
                 {
-                    set.originalLayerSettings.RemoveAll(s => s.layerName == name);
-                    if (next != OriginalLayerMode.Keep) set.originalLayerSettings.Add(new OriginalLayerSetting { layerName = name, mode = next });
-                });
+                    // 顔を動かすクリップのサムネイル（選ぶと右のプレビューに出す）。
+                    foreach (var trigger in triggers)
+                    {
+                        var rect = GUILayoutUtility.GetRect(OriginalCellSize, OriginalCellSize + 16, GUILayout.Width(OriginalCellSize));
+                        if (DrawCell(rect, ClipThumbnail(trigger.Clip), trigger.Clip.name, IsSelected(SelectionKind.OriginalClip, name, trigger.Clip)))
+                        {
+                            Select(SelectionKind.OriginalClip, name, trigger.Clip);
+                        }
+                    }
+
+                    using (new EditorGUILayout.VerticalScope())
+                    {
+                        EditorGUILayout.LabelField(name, EditorStyles.boldLabel);
+                        foreach (var trigger in triggers.Where(t => !string.IsNullOrEmpty(t.Parameter)))
+                        {
+                            EditorGUILayout.LabelField($"{trigger.Clip.name}：{TriggerText(trigger)}", EditorStyles.wordWrappedMiniLabel);
+                        }
+
+                        var setting = set.originalLayerSettings.Find(s => s.layerName == name);
+                        var mode = setting != null ? setting.mode : OriginalLayerMode.Keep;
+                        EditorGUI.BeginChangeCheck();
+                        var next = (OriginalLayerMode)EditorGUILayout.Popup("ビルドでの扱い", (int)mode, LayerModeLabels);
+                        if (EditorGUI.EndChangeCheck())
+                        {
+                            Modify(set, "元FXのレイヤーの扱いを変更", () =>
+                            {
+                                set.originalLayerSettings.RemoveAll(s => s.layerName == name);
+                                if (next != OriginalLayerMode.Keep) set.originalLayerSettings.Add(new OriginalLayerSetting { layerName = name, mode = next });
+                            });
+                        }
+                    }
+                }
             }
         }
     }

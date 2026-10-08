@@ -10,6 +10,9 @@ namespace Samon.FacialExpressionEditor.Editor
     /// </summary>
     public static class ExpressionSetUtility
     {
+        // メニューに無い表情をまとめて置くフォルダの名前。
+        public const string AddFolderName = "Add";
+
         public enum NewExpressionSource
         {
             // アバターの今の顔（ベース顔）をそのままクリップにする。
@@ -75,6 +78,61 @@ namespace Samon.FacialExpressionEditor.Editor
             Undo.RecordObject(set, "表情を編集用に複製");
             if (expression.originalClip == null) expression.originalClip = source;
             expression.clip = clip;
+            EditorUtility.SetDirty(set);
+            return clip;
+        }
+
+        // ---- パーツ ----
+
+        /// <summary>
+        /// 表情データで作ったパーツのクリップ（Parts フォルダの中）かどうか。それ以外（作者のクリップなど）は、編集する前に複製する。
+        /// </summary>
+        public static bool OwnsPartClip(ExpressionSet set, AnimationClip clip)
+        {
+            var path = AssetDatabase.GetAssetPath(clip);
+            return !string.IsNullOrEmpty(path) && path.StartsWith($"{AssetPathUtility.FolderOf(set)}/Parts/");
+        }
+
+        /// <summary>
+        /// 空のクリップのパーツを 表情データのフォルダ/Parts/ に作り、表情データに追加する。
+        /// </summary>
+        public static FacialPart CreatePart(ExpressionSet set, string name)
+        {
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Parts");
+            var clip = new AnimationClip();
+            AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(name)}.anim"));
+            AssetDatabase.SaveAssets();
+
+            var part = new FacialPart { name = name, clip = clip };
+            Undo.RecordObject(set, "新しいパーツを作成");
+            set.parts.Add(part);
+            EditorUtility.SetDirty(set);
+            return part;
+        }
+
+        /// <summary>
+        /// パーツのクリップを 表情データのフォルダ/Parts/ に複製し、パーツをその複製に付け替える。戻り値は新しいクリップ。
+        /// </summary>
+        public static AnimationClip MakePartClipEditable(ExpressionSet set, FacialPart part)
+        {
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Parts");
+            var source = part.clip;
+            var path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(source != null ? source.name : part.name)}.anim");
+
+            AnimationClip clip;
+            if (source != null)
+            {
+                if (!AssetDatabase.CopyAsset(AssetDatabase.GetAssetPath(source), path)) return null;
+                clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+            }
+            else
+            {
+                clip = new AnimationClip();
+                AssetDatabase.CreateAsset(clip, path);
+            }
+
+            Undo.RecordObject(set, "パーツを編集用に複製");
+            part.clip = clip;
             EditorUtility.SetDirty(set);
             return clip;
         }
@@ -236,7 +294,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         /// <summary>
         /// 旧形式（表情セットの「ジェスチャーで使う」と固定メニューのフォルダ）から、表情メニューを作る。
-        /// メニューが空のときだけ行う。旧固定メニューのうち、ジェスチャーに割り当てていない表情は「その他」に置く。
+        /// メニューが空のときだけ行う。旧固定メニューのうち、ジェスチャーに割り当てていない表情は「Add」に置く。
         /// </summary>
         public static bool EnsureMenu(ExpressionSet set)
         {
@@ -254,7 +312,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 .ToList();
             if (fixedOnly.Count > 0)
             {
-                var folder = new MenuNode { kind = MenuNodeKind.Folder, name = "その他" };
+                var folder = new MenuNode { kind = MenuNodeKind.Folder, name = AddFolderName };
                 set.menu.Add(folder);
                 foreach (var id in fixedOnly)
                 {

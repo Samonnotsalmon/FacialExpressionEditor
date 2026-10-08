@@ -34,10 +34,7 @@ namespace Samon.FacialExpressionEditor
 
         public List<FacialPart> parts = new List<FacialPart>();
 
-        // VRChatのまばたきを止め、まばたきのアニメーションに置き換える。
-        // 表情ごとにまばたきを止めても、視線は動かせる。オフなら、まばたきを止める表情では視線も止まる。
-        public bool replaceBlink = true;
-
+        // まばたきは必ず、VRChatのまばたきを止めてまばたきのアニメーションに置き換える（表情ごとにまばたきを止めても、視線は動かせる）。
         // まばたきと口モーフキャンセラーは、標準では元アバターのもの（元FXのアニメーション、無ければアバターの設定）を使う。
         // 自分で編集するときだけ、下の一覧を使う。
         public bool customBlink;

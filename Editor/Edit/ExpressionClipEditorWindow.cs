@@ -13,6 +13,7 @@ namespace Samon.FacialExpressionEditor.Editor
     /// - 編集はすぐクリップに書き込む（Ctrl+Z で戻せる。「開いたときの状態に戻す」もある）
     /// - 顔バリアントの差し替えがある表情は、そのバリアント専用のクリップを編集する（そのことを表示する）
     /// - 作者のクリップ（表情データの Expressions フォルダの外）は、最初に編集したときに複製して、複製を編集する
+    /// - パーツ（汗・涙・頬染めなど）と、元FXのAFKのアニメーションも開ける
     /// </summary>
     internal partial class ExpressionClipEditorWindow : EditorWindow
     {
@@ -41,8 +42,8 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private ExpressionSet Set => _avatar != null ? _avatar.expressionSet : null;
         private FaceVariant Variant => _avatar != null ? _avatar.faceVariant : null;
-        private Expression Expression => IsAfk ? AfkExpression : Set != null ? Set.FindExpression(_expressionId) : null;
-        private ExpressionOverride Override => Variant != null ? Variant.FindOverride(_expressionId) : null;
+        private Expression Expression => IsAfk ? AfkExpression : IsPart ? PartExpression(Part) : Set != null ? Set.FindExpression(_expressionId) : null;
+        private ExpressionOverride Override => Variant != null && !IsPart ? Variant.FindOverride(_expressionId) : null;
         // プレビューと元FXの読み取りに使うアバター（表情設定が入っているアバターか、編集に使うアバター）。
         private GameObject AvatarRoot => AvatarSetup.AvatarRootOf(_avatar);
         private Transform Root => AvatarRoot != null ? AvatarRoot.transform : null;
@@ -166,14 +167,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 GUILayout.Space(8);
                 GUILayout.Label("表情", GUILayout.Width(28));
 
-                // 表情の後ろに、元FXのAFK（あれば）を並べる。
-                var expressions = Set.expressions;
-                var labels = expressions.Select(e => e.name).ToList();
-                var hasAfk = AfkExpression != null;
-                if (hasAfk) labels.Add("AFK（元FXのアニメーション）");
-                var index = IsAfk ? (hasAfk ? expressions.Count : -1) : expression != null ? expressions.IndexOf(expression) : -1;
-                var next = EditorGUILayout.Popup(index, labels.ToArray(), EditorStyles.toolbarPopup, GUILayout.Width(220));
-                if (next != index && next >= 0) SetTarget(_avatar, next < expressions.Count ? expressions[next].id : FaceVariant.AfkId);
+                // 表情の後ろに、元FXのAFK（あれば）とパーツを並べる。
+                var targets = Set.expressions.Select(e => (id: e.id, label: e.name)).ToList();
+                if (AfkExpression != null) targets.Add((FaceVariant.AfkId, "AFK（元FXのアニメーション）"));
+                targets.AddRange(Set.parts.Select(p => (id: p.id, label: $"パーツ：{p.name}")));
+                var index = targets.FindIndex(t => t.id == _expressionId);
+                var next = EditorGUILayout.Popup(index, targets.Select(t => t.label).ToArray(), EditorStyles.toolbarPopup, GUILayout.Width(220));
+                if (next != index && next >= 0) SetTarget(_avatar, targets[next].id);
 
                 GUILayout.FlexibleSpace();
             }
@@ -212,7 +212,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
                 else
                 {
-                    var clip = PreviewClips.ForExpression(expression, Variant, AvatarRoot);
+                    var clip = PreviewClipFor(expression);
                     _preview.Apply(clip, 1f);
                     PreviewClips.Release(clip);
                 }
@@ -239,9 +239,10 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawTargetInfo(Expression expression)
         {
             EditorGUILayout.Space();
-            if (IsAfk)
+            if (IsAfk || IsPart)
             {
-                DrawAfkTargetInfo();
+                if (IsAfk) DrawAfkTargetInfo();
+                else DrawPartTargetInfo(Part);
                 DrawRevertButton();
                 return;
             }
@@ -336,9 +337,12 @@ namespace Samon.FacialExpressionEditor.Editor
             var clip = PrepareTargetClip();
             if (clip == null) return;
 
+            var part = Part;
+            var before = part != null ? PartPropertyValues(clip) : null;
             Undo.RecordObject(clip, undoName);
             change(clip);
             EditorUtility.SetDirty(clip);
+            if (part != null) SyncPartProperties(part, before, clip);
             AfterEdit();
         }
 
@@ -352,6 +356,8 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private AnimationClip PrepareTargetClip()
         {
+            if (IsPart) return PreparePartClip(Part);
+
             var set = Set;
             var expression = Expression;
             var variant = Variant;

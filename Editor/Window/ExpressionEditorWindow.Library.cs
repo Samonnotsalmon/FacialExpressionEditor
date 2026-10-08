@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 
 namespace Samon.FacialExpressionEditor.Editor
@@ -15,14 +16,21 @@ namespace Samon.FacialExpressionEditor.Editor
         private const float LibraryCellHeight = 102f;
 
         [SerializeField] private LibraryFilter _libraryFilter;
+        // 絞り込んでいるフォルダ（0 ならすべて、1 から順に登録フォルダ）。
         [SerializeField] private int _libraryFolderIndex;
         [SerializeField] private string _librarySearch = "";
+        [SerializeField] private bool _showLibraryFolders = true;
 
         private Vector2 _libraryScroll;
         private bool _libraryDirty = true;
         private List<AnimationClip> _libraryClips = new List<AnimationClip>();
         private List<string> _libraryFolders = new List<string>();
+        private Dictionary<string, int> _libraryFolderCounts = new Dictionary<string, int>();
         private List<AnimationClip> _filteredClips = new List<AnimationClip>();
+
+        // 登録フォルダの一覧（Unity の標準のリスト。選ぶと絞り込み、下の＋で追加、－で選んでいるものを外す）。
+        private ReorderableList _folderList;
+        private ExpressionSet _folderListOf;
 
         private void MarkLibraryDirty() => _libraryDirty = true;
 
@@ -58,6 +66,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 .Distinct()
                 .OrderBy(AssetDatabase.GetAssetPath)
                 .ToList();
+            _libraryFolderCounts = _libraryFolders.ToDictionary(f => f, f => _libraryClips.Count(c => AssetDatabase.GetAssetPath(c).StartsWith(f + "/")));
+            _folderList = null;
         }
 
         private void DrawLibrary(ExpressionSet set)
@@ -67,15 +77,7 @@ namespace Samon.FacialExpressionEditor.Editor
             _libraryFilter = (LibraryFilter)GUILayout.Toolbar((int)_libraryFilter, FilterLabels, EditorStyles.miniButton);
             _librarySearch = EditorGUILayout.TextField(_librarySearch, EditorStyles.toolbarSearchField);
 
-            var folderLabels = new[] { "すべてのフォルダ" }.Concat(_libraryFolders.Select(ShortFolderName)).ToArray();
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                _libraryFolderIndex = Mathf.Clamp(EditorGUILayout.Popup(_libraryFolderIndex, folderLabels), 0, folderLabels.Length - 1);
-                if (GUILayout.Button("フォルダを追加", EditorStyles.miniButton, GUILayout.Width(90)))
-                {
-                    AddLibraryFolder(set);
-                }
-            }
+            DrawLibraryFolders(set);
 
             var clips = _filteredClips;
             var unassigned = _libraryClips.Count(c => !_usage.IsUsed(c));
@@ -101,39 +103,46 @@ namespace Samon.FacialExpressionEditor.Editor
             }
             EditorGUILayout.EndScrollView();
 
-            if (GUILayout.Button("＋ 新しい表情", EditorStyles.miniButton)) ShowNewExpressionMenu(set);
+            if (GUILayout.Button("＋ 新しい表情", EditorStyles.miniButton))
+            {
+                ShowNewExpressionMenu(set, _selectionKind == SelectionKind.Expression ? set.FindExpression(_selectedId) : null);
+            }
             EditorGUILayout.LabelField("クリップを中央の表やフォルダへドラッグして割り当てます。Project のフォルダをここにドロップすると、ライブラリに入ります。",
                 EditorStyles.wordWrappedMiniLabel);
         }
 
         /// <summary>
-        /// 新しい表情を作る（今の顔から・空から・選んでいる表情をコピー）。作ったら選んで、表情の編集ウィンドウで開く。
+        /// 新しい表情を作る（今の顔から・空から・表情をコピー）。作ったら選んで、表情の編集ウィンドウで開く。
+        /// assign を渡すと、作った表情をそこ（ジェスチャーのマスなど）に割り当てる。
         /// </summary>
-        private void ShowNewExpressionMenu(ExpressionSet set)
+        private void ShowNewExpressionMenu(ExpressionSet set, Expression copySource, System.Action<string> assign = null, string place = null)
         {
-            var selected = _selectionKind == SelectionKind.Expression ? set.FindExpression(_selectedId) : null;
             var menu = new GenericMenu();
-            menu.AddItem(new GUIContent("今の顔から"), false, () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.CurrentFace, null));
-            menu.AddItem(new GUIContent("空から（何も動かさない）"), false, () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.Empty, null));
-            if (selected != null)
+            menu.AddItem(new GUIContent("今の顔から"), false,
+                () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.CurrentFace, null, assign, place));
+            menu.AddItem(new GUIContent("空から（何も動かさない）"), false,
+                () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.Empty, null, assign, place));
+            if (copySource != null)
             {
-                menu.AddItem(new GUIContent($"「{selected.name}」をコピー"), false,
-                    () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.CopyExpression, selected));
+                menu.AddItem(new GUIContent($"「{copySource.name}」をコピー"), false,
+                    () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.CopyExpression, copySource, assign, place));
             }
             else
             {
-                menu.AddDisabledItem(new GUIContent("選んでいる表情をコピー"));
+                menu.AddDisabledItem(new GUIContent(assign == null ? "選んでいる表情をコピー" : "表情をコピー"));
             }
             menu.ShowAsContext();
         }
 
-        private void CreateExpression(ExpressionSet set, ExpressionSetUtility.NewExpressionSource source, Expression copyFrom)
+        private void CreateExpression(ExpressionSet set, ExpressionSetUtility.NewExpressionSource source, Expression copyFrom,
+            System.Action<string> assign, string place)
         {
             var name = copyFrom != null ? $"{copyFrom.name} のコピー" : "新しい表情";
             for (var i = 2; set.expressions.Any(e => e.name == name); i++) name = copyFrom != null ? $"{copyFrom.name} のコピー {i}" : $"新しい表情 {i}";
 
             var expression = ExpressionSetUtility.CreateExpression(set, name, source, copyFrom, AvatarRoot, Variant);
             if (expression == null) return;
+            if (assign != null) Modify(set, $"{place}に新しい表情を割り当て", () => assign(expression.id));
             MarkLibraryDirty();
             Select(SelectionKind.Expression, expression.id, null);
             ExpressionClipEditorWindow.Open(_avatar, expression);
@@ -187,6 +196,73 @@ namespace Samon.FacialExpressionEditor.Editor
 
             Modify(set, "ライブラリにフォルダを追加", () => FxImporter.AddFolder(set, folder));
             MarkLibraryDirty();
+        }
+
+        /// <summary>
+        /// 登録フォルダの一覧。Unity の標準のリスト（Tags and Layers や Package Manager の Scoped Registries と同じ）で、
+        /// フォルダを選ぶとライブラリをそのフォルダに絞り込み、下の＋で追加、－で選んでいるフォルダを外す（確かめてから）。
+        /// </summary>
+        private void DrawLibraryFolders(ExpressionSet set)
+        {
+            _libraryFolderIndex = Mathf.Clamp(_libraryFolderIndex, 0, _libraryFolders.Count);
+            var filter = _libraryFolderIndex > 0 ? ShortFolderName(_libraryFolders[_libraryFolderIndex - 1]) : "すべて";
+            _showLibraryFolders = EditorGUILayout.Foldout(_showLibraryFolders, $"フォルダ（{_libraryFolders.Count}）　表示：{filter}", true);
+            if (!_showLibraryFolders) return;
+
+            if (_folderList == null || _folderListOf != set || _folderList.list != _libraryFolders)
+            {
+                _folderListOf = set;
+                _folderList = new ReorderableList(_libraryFolders, typeof(string), false, true, true, true)
+                {
+                    elementHeight = EditorGUIUtility.singleLineHeight + 2,
+                    drawHeaderCallback = rect => DrawFolderListHeader(rect),
+                    drawElementCallback = (rect, index, active, focused) =>
+                    {
+                        var folder = _libraryFolders[index];
+                        var count = _libraryFolderCounts.TryGetValue(folder, out var c) ? c : 0;
+                        GUI.Label(new Rect(rect.x, rect.y + 1, rect.width - 44, rect.height), new GUIContent(ShortFolderName(folder), folder));
+                        GUI.Label(new Rect(rect.xMax - 44, rect.y + 1, 44, rect.height), $"{count} 件", RightMiniLabel);
+                    },
+                    onSelectCallback = list => _libraryFolderIndex = list.index + 1,
+                    onAddCallback = list =>
+                    {
+                        AddLibraryFolder(set);
+                        GUIUtility.ExitGUI();
+                    },
+                    onCanRemoveCallback = list => list.index >= 0 && list.index < _libraryFolders.Count,
+                    onRemoveCallback = list => RemoveLibraryFolder(set, _libraryFolders[list.index]),
+                };
+            }
+            _folderList.index = _libraryFolderIndex - 1;
+            _folderList.DoLayoutList();
+        }
+
+        private void DrawFolderListHeader(Rect rect)
+        {
+            GUI.Label(rect, "クリックで絞り込み", EditorStyles.miniLabel);
+            if (_libraryFolderIndex > 0 && GUI.Button(new Rect(rect.xMax - 64, rect.y, 64, rect.height), "すべて表示", EditorStyles.miniButton))
+            {
+                _libraryFolderIndex = 0;
+            }
+        }
+
+        private static GUIStyle _rightMiniLabel;
+        private static GUIStyle RightMiniLabel => _rightMiniLabel ??= new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight };
+
+        private void RemoveLibraryFolder(ExpressionSet set, string folder)
+        {
+            if (!EditorUtility.DisplayDialog("フォルダを外す",
+                    $"「{folder}」をライブラリから外しますか？\nフォルダとアニメーションは消えません。表情に使っているクリップは、ライブラリに残ります。",
+                    "外す", "キャンセル"))
+            {
+                return;
+            }
+
+            var guid = AssetDatabase.AssetPathToGUID(folder);
+            Modify(set, "ライブラリからフォルダを外す", () => set.libraryFolderGuids.Remove(guid));
+            _libraryFolderIndex = 0;
+            MarkLibraryDirty();
+            GUIUtility.ExitGUI();
         }
 
         private static string ShortFolderName(string path)

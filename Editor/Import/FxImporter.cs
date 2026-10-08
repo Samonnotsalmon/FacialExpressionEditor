@@ -128,13 +128,21 @@ namespace Samon.FacialExpressionEditor.Editor
             for (var g = 0; g < groups.Count; g++)
             {
                 var signature = SignatureOf(groups[g]);
-                var name = NameFor(groups[g], menuNames) ?? $"セット{g + 1}";
-                var old = previous.Find(s => s.name == name);
+                // 名前はメニューの項目名。無ければ、1組だけなら Core、複数ならセット1, 2, …
+                var name = NameFor(groups[g], menuNames) ?? (groups.Count == 1 ? GestureSet.DefaultName : $"セット{g + 1}");
+                // 取り込み直しでは、同じ名前（どちらも1組だけならその組）の表情セットのIDを引き継ぐ（表情メニューの項目がつながったままになる）。
+                // 1組どうしで名前が違うときは、自分で付けた名前なら残し、自動の名前（セット1 など）なら新しい名前にする。
+                var old = previous.Find(s => s.name == name) ?? (groups.Count == 1 && previous.Count == 1 ? previous[0] : null);
+                if (old != null && old.name != name && !System.Text.RegularExpressions.Regex.IsMatch(old.name ?? "", @"^(セット\d+)?$"))
+                {
+                    name = old.name;
+                }
                 var gestureSet = new GestureSet
                 {
                     name = name,
                     useForGesture = old?.useForGesture ?? true,
                 };
+                if (old != null) gestureSet.id = old.id;
                 gestureSet.mapping.dominantHand = dominantHand;
 
                 foreach (var entry in entries)
@@ -170,12 +178,25 @@ namespace Samon.FacialExpressionEditor.Editor
             // 表情メニューに表情セットを置き、各セットの表情を「表情固定」フォルダに並べる
             // （既にメニューにあるものや、同じ名前のフォルダは作り直さないので、並べ替えた状態は残る）。
             ExpressionSetUtility.AddMenuFromSets(set);
+            // 前の取り込みで作り直して、つながらなくなった表情セットの項目を外す。
+            foreach (var node in set.menu.Where(n => n.kind == MenuNodeKind.GestureSet && set.FindGestureSet(n.gestureSetId) == null).ToList())
+            {
+                ExpressionSetUtility.RemoveNode(set, node);
+            }
 
             set.originalGestureLayers = new List<string>(result.GestureLayers);
 
             // 新しく追加した表情のまばたき・リップシンクは、元FXの指定に合わせる（既存の表情の設定は変えない）。
             ImportFaceControl(descriptor, set, added);
             set.faceControlImported = true;
+
+            // 前の取り込みで入った、パッケージの中のダミー（ProxyAnim など）の表情と、Assets の外のフォルダを外す。
+            foreach (var dummy in set.expressions.Where(e => e.clip != null && !AssetDatabase.GetAssetPath(e.clip).StartsWith("Assets/") &&
+                                                             IsDummyClip(e.clip, avatarRoot)).ToList())
+            {
+                ExpressionSetUtility.RemoveExpression(set, dummy);
+            }
+            set.libraryFolderGuids.RemoveAll(g => !AssetDatabase.GUIDToAssetPath(g).StartsWith("Assets/"));
 
             EditorUtility.SetDirty(set);
             return result;
@@ -232,7 +253,8 @@ namespace Samon.FacialExpressionEditor.Editor
 
         /// <summary>
         /// 指定した元FXレイヤーの各ステートのクリップを、パーツとして取り込む。
-        /// そのレイヤーはビルド時に取り除き、生成したパーツレイヤーに置き換える。戻り値は追加したパーツの数。
+        /// そのレイヤーはビルド時に取り除き、生成したパーツレイヤーに置き換える（元のメニューのトグルも外れる）。戻り値は追加したパーツの数。
+        /// パーツの名前は、そのステートにするメニューの項目名。無ければ、クリップが1つのレイヤーはクリップ名、それ以外はステート名。
         /// </summary>
         public static int ImportPartsFromLayer(VRCAvatarDescriptor descriptor, ExpressionSet set, string layerName)
         {
@@ -242,13 +264,24 @@ namespace Samon.FacialExpressionEditor.Editor
 
             Undo.RecordObject(set, "パーツを取り込み");
 
+            var menuNames = MenuToggleNames(descriptor.expressionsMenu);
+            var transitions = AllTransitions(layer.stateMachine).ToList();
+            var states = AllStates(layer.stateMachine)
+                .Where(s => s.motion is AnimationClip clip && !IsDummyClip(clip, descriptor.gameObject))
+                .ToList();
+
             var added = 0;
-            foreach (var state in AllStates(layer.stateMachine))
+            foreach (var state in states)
             {
-                if (!(state.motion is AnimationClip clip) || IsDummyClip(clip, descriptor.gameObject)) continue;
+                var clip = (AnimationClip)state.motion;
                 if (set.parts.Any(p => p.clip == clip)) continue;
 
-                set.parts.Add(new FacialPart { name = state.name, clip = clip, properties = DefaultPartProperties(clip) });
+                var menuName = transitions.Where(t => t.destinationState == state)
+                    .SelectMany(t => t.conditions)
+                    .Select(c => MenuNameOf(c, menuNames))
+                    .FirstOrDefault(n => n != null);
+                var name = menuName ?? (states.Count == 1 ? clip.name : state.name);
+                set.parts.Add(new FacialPart { name = name, clip = clip, properties = DefaultPartProperties(clip) });
                 added++;
             }
 
@@ -256,6 +289,38 @@ namespace Samon.FacialExpressionEditor.Editor
 
             EditorUtility.SetDirty(set);
             return added;
+        }
+
+        // 条件の「パラメータ = 値」にするメニューの項目名（無ければ null）。
+        private static string MenuNameOf(AnimatorCondition condition, Dictionary<(string, int), string> menuNames)
+        {
+            int value;
+            switch (condition.mode)
+            {
+                case AnimatorConditionMode.If: value = 1; break;
+                case AnimatorConditionMode.Equals: value = Mathf.RoundToInt(condition.threshold); break;
+                case AnimatorConditionMode.Greater when condition.threshold < 1: value = 1; break;
+                default: return null;
+            }
+            return menuNames.TryGetValue((condition.parameter, value), out var name) ? name : null;
+        }
+
+        /// <summary>
+        /// Expressions メニューのトグル・ボタンで動かすパラメータと、その項目名（パラメータごとに1つ）。
+        /// </summary>
+        internal static IEnumerable<(string parameter, string name)> MenuItemNames(VRCAvatarDescriptor descriptor)
+        {
+            return MenuToggleNames(descriptor != null ? descriptor.expressionsMenu : null)
+                .GroupBy(p => p.Key.Item1)
+                .Select(g => (g.Key, g.First().Value));
+        }
+
+        /// <summary>
+        /// Expressions メニューのトグル・ボタンで動かすパラメータ。
+        /// </summary>
+        internal static HashSet<string> MenuParameters(VRCAvatarDescriptor descriptor)
+        {
+            return new HashSet<string>(MenuToggleNames(descriptor != null ? descriptor.expressionsMenu : null).Keys.Select(k => k.Item1));
         }
 
         /// <summary>
@@ -285,6 +350,8 @@ namespace Samon.FacialExpressionEditor.Editor
             if (string.IsNullOrEmpty(path)) return false;
 
             var folder = AssetDatabase.IsValidFolder(path) ? path : Path.GetDirectoryName(path)?.Replace('\\', '/');
+            // パッケージの中（VRChat SDK のサンプルなど）は、ライブラリに入れない。
+            if (folder == null || !folder.StartsWith("Assets/")) return false;
             var guid = AssetDatabase.AssetPathToGUID(folder);
             if (string.IsNullOrEmpty(guid) || set.libraryFolderGuids.Contains(guid)) return false;
 
@@ -294,12 +361,14 @@ namespace Samon.FacialExpressionEditor.Editor
 
         /// <summary>
         /// カーブが無い、またはアバター上に存在しないオブジェクトしか動かさないクリップ（ダミー）かどうか。
+        /// 手の形（ヒューマノイドのマッスル）だけを動かすクリップ（VRChat SDK の proxy_hands_idle など）も、FXでは何も動かさないのでダミー。
         /// </summary>
         public static bool IsDummyClip(AnimationClip clip, GameObject avatarRoot)
         {
             if (clip == null) return true;
             var bindings = AnimationUtility.GetCurveBindings(clip)
-                .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip));
+                .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                .Where(b => b.type != typeof(Animator));
             return bindings.All(b => b.path != "" && avatarRoot.transform.Find(b.path) == null);
         }
 

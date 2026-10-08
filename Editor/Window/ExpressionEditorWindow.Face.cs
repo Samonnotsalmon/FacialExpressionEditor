@@ -14,10 +14,7 @@ namespace Samon.FacialExpressionEditor.Editor
     internal partial class ExpressionEditorWindow
     {
         private const float FlagColumnWidth = 64f;
-        private const int ShapeSearchLimit = 30;
 
-        private string _blinkSearch = "";
-        private string _morphSearch = "";
         [SerializeField] private bool _showBlinkShapes = true;
         [SerializeField] private bool _showMouthMorphs;
 
@@ -36,19 +33,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawBlinkSettings(ExpressionSet set)
         {
             EditorGUILayout.LabelField("まばたき", EditorStyles.boldLabel);
-
-            EditorGUI.BeginChangeCheck();
-            var replace = EditorGUILayout.ToggleLeft("まばたきを置き換える（まばたきを止める表情でも、視線は動かす）", set.replaceBlink);
-            if (EditorGUI.EndChangeCheck()) Modify(set, "まばたきの置き換えを変更", () => set.replaceBlink = replace);
-
-            if (!set.replaceBlink)
-            {
-                EditorGUILayout.LabelField("VRChatのまばたきのまま使います。まばたきを止める表情では、視線（目の動き）も止まります。",
-                    EditorStyles.wordWrappedMiniLabel);
-                return;
-            }
-
-            EditorGUILayout.LabelField("まばたきを止める表情がある場合、ビルド時にVRChatのまばたきを止め、下のまばたきのアニメーションに置き換えます。",
+            EditorGUILayout.LabelField("ビルド時にVRChatのまばたきを止め、下のまばたきのアニメーションに置き換えます（まばたきを止める表情でも、視線は動かせます）。",
                 EditorStyles.wordWrappedMiniLabel);
 
             var defaults = FaceDefaults;
@@ -78,7 +63,7 @@ namespace Samon.FacialExpressionEditor.Editor
             if (shapes.Count == 0)
             {
                 EditorGUILayout.HelpBox(set.customBlink
-                    ? "まばたきで動かすシェイプキーがありません。下で検索して追加してください。"
+                    ? "まばたきで動かすシェイプキーがありません。下の「シェイプキーを選ぶ…」で追加してください。"
                     : "元アバターにまばたきが見つかりません。「自分で編集する」をオンにして、シェイプキーを追加してください。", MessageType.Warning);
             }
 
@@ -107,9 +92,12 @@ namespace Samon.FacialExpressionEditor.Editor
 
             if (set.customBlink)
             {
-                DrawShapeSearch(ref _blinkSearch, (path, name) => set.blinkShapes.Any(s => s.path == path && s.blendShape == name),
-                    (path, name) => Modify(set, "まばたきのシェイプキーを追加",
-                        () => set.blinkShapes.Add(new BlinkShape { path = path, blendShape = name })));
+                DrawShapePickerButton((path, name) => set.blinkShapes.Any(s => s.path == path && s.blendShape == name),
+                    (path, name, on) => Modify(set, on ? "まばたきのシェイプキーを追加" : "まばたきのシェイプキーを外す", () =>
+                    {
+                        if (on) set.blinkShapes.Add(new BlinkShape { path = path, blendShape = name });
+                        else set.blinkShapes.RemoveAll(s => s.path == path && s.blendShape == name);
+                    }));
             }
         }
 
@@ -247,9 +235,12 @@ namespace Samon.FacialExpressionEditor.Editor
 
             if (set.customMouthMorphs)
             {
-                DrawShapeSearch(ref _morphSearch, (path, name) => set.mouthMorphs.Any(m => m.path == path && m.blendShape == name),
-                    (path, name) => Modify(set, "口モーフキャンセラーのシェイプキーを追加",
-                        () => set.mouthMorphs.Add(new BlendShapeRef { path = path, blendShape = name })));
+                DrawShapePickerButton((path, name) => set.mouthMorphs.Any(m => m.path == path && m.blendShape == name),
+                    (path, name, on) => Modify(set, on ? "口モーフキャンセラーのシェイプキーを追加" : "口モーフキャンセラーのシェイプキーを外す", () =>
+                    {
+                        if (on) set.mouthMorphs.Add(new BlendShapeRef { path = path, blendShape = name });
+                        else set.mouthMorphs.RemoveAll(m => m.path == path && m.blendShape == name);
+                    }));
             }
         }
 
@@ -268,39 +259,20 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// アバターのシェイプキーを名前で検索して追加する。
+        /// シェイプキーを一覧からチェックで選ぶドロップダウンを開くボタン。チェックを付けると加え、外すと除く。
         /// </summary>
-        private void DrawShapeSearch(ref string search, Func<string, string, bool> exists, Action<string, string> add)
+        private void DrawShapePickerButton(Func<string, string, bool> isOn, Action<string, string, bool> set)
         {
-            search = EditorGUILayout.TextField("シェイプキーを検索して追加", search);
-            if (string.IsNullOrWhiteSpace(search)) return;
-
-            var descriptor = Descriptor;
-            var root = descriptor != null ? descriptor.transform : AvatarRoot.transform;
-            var shown = 0;
-            foreach (var renderer in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            var content = new GUIContent("シェイプキーを選ぶ…", "一覧からチェックで選びます（複数選べます）");
+            var rect = GUILayoutUtility.GetRect(content, GUI.skin.button, GUILayout.Width(160));
+            if (GUI.Button(rect, content))
             {
-                if (renderer.sharedMesh == null) continue;
-                var path = AnimationUtility.CalculateTransformPath(renderer.transform, root);
-                for (var i = 0; i < renderer.sharedMesh.blendShapeCount && shown < ShapeSearchLimit; i++)
+                PopupWindow.Show(rect, new BlendShapePicker(AvatarRoot, isOn, (path, name, on) =>
                 {
-                    var name = renderer.sharedMesh.GetBlendShapeName(i);
-                    if (name.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0 || exists(path, name)) continue;
-
-                    shown++;
-                    using (new EditorGUILayout.HorizontalScope())
-                    {
-                        EditorGUILayout.LabelField(new GUIContent(name, path), new GUIContent(renderer.name));
-                        if (GUILayout.Button("追加", EditorStyles.miniButton, GUILayout.Width(40)))
-                        {
-                            add(path, name);
-                            GUIUtility.ExitGUI();
-                        }
-                    }
-                }
+                    set(path, name, on);
+                    Repaint();
+                }));
             }
-            if (shown == 0) EditorGUILayout.LabelField("見つかりません。", EditorStyles.miniLabel);
-            else if (shown >= ShapeSearchLimit) EditorGUILayout.LabelField($"先頭の {ShapeSearchLimit} 件だけ出しています。", EditorStyles.miniLabel);
         }
     }
 }
