@@ -188,7 +188,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 InvalidateDetailPreview();
             }
             DrawPlaybackSettings(set, expression);
-            DrawBaseFaceExclusions(expression);
             if (GUILayout.Button("目・口などのクリップを合成…")) ExpressionComposerWindow.Open(set, expression.clip);
 
             using (new EditorGUI.DisabledScope(true))

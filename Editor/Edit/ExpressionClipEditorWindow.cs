@@ -38,6 +38,8 @@ namespace Samon.FacialExpressionEditor.Editor
         // 開いたときのクリップの中身（「開いたときの状態に戻す」用）と、それがどの表情・どのクリップのものか。
         private AnimationClip _snapshot;
         private List<BlendShapeValue> _faceValuesSnapshot;
+        private List<string> _exclusionsSnapshot;
+        private Vector2 _correctionScroll;
         private string _snapshotExpressionId;
 
         private ExpressionSet Set => _avatar != null ? _avatar.expressionSet : null;
@@ -108,6 +110,7 @@ namespace Samon.FacialExpressionEditor.Editor
             _snapshotExpressionId = _expressionId;
             if (IsAfk) TakeAfkSnapshot();
 
+            _exclusionsSnapshot = Variant?.baseFaceExclusions.Find(e => e.expressionId == _expressionId)?.keys.ToList();
             var faceValues = Variant != null ? Variant.FindFaceValues(_expressionId) : null;
             _faceValuesSnapshot = faceValues?.values
                 .Select(v => new BlendShapeValue { path = v.path, blendShape = v.blendShape, value = v.value })
@@ -143,6 +146,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     DrawPreview(expression);
                     DrawTargetInfo(expression);
+                    _correctionScroll = EditorGUILayout.BeginScrollView(_correctionScroll);
+                    DrawBaseFaceExclusions(expression);
+                    EditorGUILayout.EndScrollView();
                 }
 
                 using (new EditorGUILayout.VerticalScope())
@@ -323,6 +329,8 @@ namespace Samon.FacialExpressionEditor.Editor
             if (variant == null) return;
 
             Undo.RecordObject(variant, "開いたときの状態に戻す");
+            variant.baseFaceExclusions.RemoveAll(e => e.expressionId == _expressionId);
+            if (_exclusionsSnapshot != null) variant.baseFaceExclusions.Add(new BaseFaceExclusion { expressionId = _expressionId, keys = _exclusionsSnapshot.ToList() });
             variant.faceValues.RemoveAll(v => v.expressionId == _expressionId);
             if (_faceValuesSnapshot != null && _faceValuesSnapshot.Count > 0)
             {

@@ -72,7 +72,22 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             var binding = FaceControlPlan.FindBlink(descriptor);
-            if (binding == null) return;
+            if (binding == null)
+            {
+                // Eye Lookが未設定のアバターでも、明確な両目閉じのキーから生成する。
+                var face = AvatarSetup.FaceRenderer(descriptor.gameObject);
+                if (face == null || face.sharedMesh == null) return;
+                foreach (var name in new[] { "vrc.blink", "blink", "eyeblink", "eye_close" })
+                {
+                    var index = Enumerable.Range(0, face.sharedMesh.blendShapeCount)
+                        .Where(i => string.Equals(face.sharedMesh.GetBlendShapeName(i), name, StringComparison.OrdinalIgnoreCase)).DefaultIfEmpty(-1).First();
+                    if (index < 0) continue;
+                    BlinkShapes.Add(new BlinkShape { path = AnimationUtility.CalculateTransformPath(face.transform, descriptor.transform), blendShape = face.sharedMesh.GetBlendShapeName(index), closedValue = 100 });
+                    BlinkSource = "目閉じシェイプキーから生成（" + face.sharedMesh.GetBlendShapeName(index) + "）";
+                    return;
+                }
+                return;
+            }
 
             BlinkShapes = new List<BlinkShape>
             {

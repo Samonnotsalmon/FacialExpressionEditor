@@ -47,12 +47,17 @@ namespace Samon.FacialExpressionEditor.Editor
                 EditorStyles.wordWrappedMiniLabel);
 
             var defaults = FaceDefaults;
-            EditorGUILayout.LabelField("使うまばたき", set.customBlink ? "自分で編集したもの" : defaults.BlinkSource);
+            EditorGUILayout.LabelField("使うまばたき", manual != null ? manual.name : set.customBlink ? "シェイプキーから生成" : defaults.BlinkSource);
             if (defaults.BlinkLayer != null)
             {
                 EditorGUILayout.LabelField($"元FXの「{defaults.BlinkLayer}」レイヤーは、生成したまばたきに置き換えます。", EditorStyles.wordWrappedMiniLabel);
             }
 
+            if (manual == null && !set.customBlink && defaults.BlinkClip != null)
+            {
+                using (new EditorGUI.DisabledScope(true)) EditorGUILayout.ObjectField("自動検出したクリップ", defaults.BlinkClip, typeof(AnimationClip), false);
+            }
+            EditorGUILayout.LabelField("クリップがない場合はシェイプキーから瞬きを生成して置き換えます。対象も見つからない場合は指定が必要です。", EditorStyles.wordWrappedMiniLabel);
             DrawCustomToggle(set, set.customBlink, "まばたきを編集", on =>
             {
                 set.customBlink = on;
@@ -70,11 +75,11 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             var shapes = BlinkShapesInUse(set);
-            if (shapes.Count == 0)
+            if (manual == null && shapes.Count == 0)
             {
                 EditorGUILayout.HelpBox(set.customBlink
                     ? "まばたきで動かすシェイプキーがありません。下の「シェイプキーを選ぶ…」で追加してください。"
-                    : "元アバターにまばたきが見つかりません。「自分で編集する」をオンにして、シェイプキーを追加してください。", MessageType.Warning);
+                    : "元アバターにまばたきが見つかりません。「自分で編集する」をオンにして、シェイプキーを追加してください。", MessageType.Error);
             }
 
             _showBlinkShapes = EditorGUILayout.Foldout(_showBlinkShapes, $"動かすシェイプキー（{shapes.Count} 件）", true);
@@ -121,6 +126,7 @@ namespace Samon.FacialExpressionEditor.Editor
                                        "目を閉じる表情は、視線も止めると自然になります。",
                 EditorStyles.wordWrappedMiniLabel);
 
+            EditorGUILayout.LabelField("ジェスチャーまたは固定メニューに割り当てた表情のみ表示します。", EditorStyles.wordWrappedMiniLabel);
             var descriptor = Descriptor;
             if (set.originalGestureLayers.Count > 0 && FxImporter.GetFx(descriptor) != null &&
                 GUILayout.Button("まばたき・リップシンクを元FXの設定に戻す"))
@@ -141,7 +147,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
             }
 
-            foreach (var expression in set.expressions)
+            foreach (var expression in ExpressionSetUtility.AssignedExpressions(set))
             {
                 var rect = EditorGUILayout.BeginHorizontal(GUILayout.Height(30));
                 if (IsSelected(SelectionKind.Expression, expression.id) && Event.current.type == EventType.Repaint)

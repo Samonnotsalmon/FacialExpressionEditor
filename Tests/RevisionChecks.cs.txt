@@ -74,6 +74,19 @@ try {
  Check(AnimationUtility.GetCurveBindings(created.clip).Length==2 && AnimationUtility.GetEditorCurve(createdPreview,eye).Evaluate(0)==13 && AnimationUtility.GetEditorCurve(createdPreview,mouth).Evaluate(0)==20,"New expression captures selected base mesh and applies saved base correction only once");
  var rename=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.RenameExpression(set,expression,"Renamed");
  Check(string.IsNullOrEmpty(rename) && expression.clip.name=="Renamed" && AssetDatabase.GetAssetPath(expression.clip).EndsWith("/Renamed.anim") && clip.name=="Original","Renaming changes owned asset and preserves source name");
+ var duplicateName=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(fresh,"Base face",Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.CurrentFace,null,root,baseline);
+ Check(duplicateName.name==duplicateName.clip.name && duplicateName.name==System.IO.Path.GetFileNameWithoutExtension(AssetDatabase.GetAssetPath(duplicateName.clip)) && duplicateName.name!=created.name,"Duplicate names use identical unique display and file names");
+ created.name="Custom display";
+ fresh.independentClips=true;
+ Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.SynchronizeExpressionNames(fresh);
+ Check(created.name=="Custom display" && created.clip.name==created.name && AssetDatabase.GetAssetPath(created.clip).EndsWith("/Custom display.anim"),"Existing display name is retained and synchronized to owned file");
+ var unused=new Samon.FacialExpressionEditor.Expression{name="Unused"}; fresh.expressions.Add(unused);
+ var gestureSet=new Samon.FacialExpressionEditor.GestureSet{name="Core"}; gestureSet.mapping.left[1]=created.id; gestureSet.mapping.right[2]=created.id; fresh.gestureSets.Add(gestureSet);
+ fresh.menu.Add(new Samon.FacialExpressionEditor.MenuNode{kind=Samon.FacialExpressionEditor.MenuNodeKind.Expression,expressionId=duplicateName.id});
+ var assigned=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.AssignedExpressions(fresh);
+ Check(assigned.Count==2 && assigned.Contains(created) && assigned.Contains(duplicateName) && !assigned.Contains(unused),"Control list includes assigned gesture and fixed expressions once and excludes unused expressions");
+ gestureSet.mapping.left[1]=null; gestureSet.mapping.right[2]=null;
+ Check(!Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.AssignedExpressions(fresh).Contains(created),"Removing assignments removes expression from control list");
  return new {passed=checks.Count,checks};
 } finally {
  UnityEngine.Object.DestroyImmediate(root);

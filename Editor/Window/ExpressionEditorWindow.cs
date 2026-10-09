@@ -155,6 +155,7 @@ namespace Samon.FacialExpressionEditor.Editor
             _starting = false;
             if (_avatar == avatar) return;
             _avatar = avatar;
+            if (Set != null) ExpressionSetUtility.SynchronizeExpressionNames(Set);
             _faceDefaults = null;
             DisposePreview();
             MarkLibraryDirty();

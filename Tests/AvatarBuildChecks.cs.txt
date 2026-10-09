@@ -37,7 +37,8 @@ try {
    avatar.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet=set;
    nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(avatar);
    var fx=(UnityEditor.Animations.AnimatorController)descriptor.baseAnimationLayers.First(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
-   if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Expression")) throw new Exception("Missing generated expression layer");
+   if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Expression")) throw new Exception("Missing generated expression layer: " + paths[i]);
+   if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Blink")) throw new Exception("Missing mandatory blink replacement: " + paths[i]);
    if(fx.layers.Any(l=>set.originalGestureLayers.Contains(l.name))) throw new Exception("Original gesture layers were not replaced");
    var visited=new System.Collections.Generic.HashSet<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu>();
    var names=new System.Collections.Generic.List<string>();
@@ -52,7 +53,7 @@ try {
     if(!fx.layers.First(l=>l.name=="[FacialExpressionEditor] Expression").stateMachine.states.Any(s=>s.state.name.Contains("suspend"))) throw new Exception("Missing dance suspension");
    }
    results.Add(new{avatar=paths[i],passed=true,fxLayers=fx.layers.Length,danceProtected=dance!=null});
-  } finally {UnityEngine.Object.DestroyImmediate(avatar); if(temporaryMenu!=null)UnityEngine.Object.DestroyImmediate(temporaryMenu);}
+  } finally {UnityEngine.Object.DestroyImmediate(avatar); if(temporaryMenu!=null && !AssetDatabase.Contains(temporaryMenu))UnityEngine.Object.DestroyImmediate(temporaryMenu);}
  }
  return results;
 } finally {Debug.unityLogger.filterLogType=previousFilter; AssetDatabase.DeleteAsset(folder);}

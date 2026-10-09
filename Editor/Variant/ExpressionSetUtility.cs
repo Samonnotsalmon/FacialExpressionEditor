@@ -10,10 +10,47 @@ namespace Samon.FacialExpressionEditor.Editor
     /// </summary>
     public static class ExpressionSetUtility
     {
+        public static List<Expression> AssignedExpressions(ExpressionSet set)
+        {
+            var ids = new HashSet<string>(set.gestureSets.SelectMany(g => GestureExpressions(set, g)).Select(e => e.id));
+            ids.UnionWith(set.menu.Where(n => n.kind == MenuNodeKind.Expression).Select(n => n.expressionId));
+            return set.expressions.Where(e => ids.Contains(e.id)).ToList();
+        }
+
+        // 表示名・クリップ内部名・ファイル名を同じ名前に揃える。
+        public static void MatchExpressionNameToFile(ExpressionSet set, Expression expression)
+        {
+            if (!OwnsClip(set, expression.clip)) return;
+            var name = System.IO.Path.GetFileNameWithoutExtension(AssetDatabase.GetAssetPath(expression.clip));
+            if (expression.name == name && expression.clip.name == name) return;
+            expression.name = name; expression.clip.name = name;
+            EditorUtility.SetDirty(set); EditorUtility.SetDirty(expression.clip);
+        }
+
+        public static void SynchronizeExpressionNames(ExpressionSet set)
+        {
+            if (!set.independentClips || !AssetDatabase.Contains(set)) return;
+            foreach (var expression in set.expressions.Where(e => e.clip != null))
+            {
+                if (!OwnsClip(set, expression.clip)) { MakeClipEditable(set, expression); continue; }
+                var path = AssetDatabase.GetAssetPath(expression.clip);
+                var desired = AssetPathUtility.SafeFileName(expression.name);
+                if (System.IO.Path.GetFileNameWithoutExtension(path) != desired)
+                {
+                    var target = AssetDatabase.GenerateUniqueAssetPath(System.IO.Path.GetDirectoryName(path).Replace('\\', '/') + "/" + desired + ".anim");
+                    var error = AssetDatabase.RenameAsset(path, System.IO.Path.GetFileNameWithoutExtension(target));
+                    if (!string.IsNullOrEmpty(error)) { Debug.LogWarning(error); continue; }
+                }
+                MatchExpressionNameToFile(set, expression);
+            }
+        }
+
         public static string RenameExpression(ExpressionSet set, Expression expression, string name)
         {
             name = name.Trim();
             if (string.IsNullOrEmpty(name)) return "名前を入力してください";
+            if (AssetPathUtility.SafeFileName(name) != name) return "ファイル名に使用できない文字が含まれています";
+            if (!OwnsClip(set, expression.clip)) MakeClipEditable(set, expression);
             if (OwnsClip(set, expression.clip))
             {
                 var error = AssetDatabase.RenameAsset(AssetDatabase.GetAssetPath(expression.clip), AssetPathUtility.SafeFileName(name));
@@ -21,6 +58,8 @@ namespace Samon.FacialExpressionEditor.Editor
             }
             Undo.RecordObject(set, "表情の名前を変更");
             expression.name = name;
+            expression.clip.name = name;
+            EditorUtility.SetDirty(expression.clip);
             EditorUtility.SetDirty(set);
             return null;
         }
@@ -76,7 +115,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Expressions");
             var source = expression.clip;
             var path = AssetDatabase.GenerateUniqueAssetPath(
-                $"{folder}/{AssetPathUtility.SafeFileName(source != null ? source.name : expression.name)}.anim");
+                $"{folder}/{AssetPathUtility.SafeFileName(expression.name)}.anim");
 
             AnimationClip clip;
             if (source != null)
@@ -94,6 +133,7 @@ namespace Samon.FacialExpressionEditor.Editor
             Undo.RecordObject(set, "表情を編集用に複製");
             if (expression.originalClip == null) expression.originalClip = source;
             expression.clip = clip;
+            MatchExpressionNameToFile(set, expression);
             EditorUtility.SetDirty(set);
             return clip;
         }
@@ -396,6 +436,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             Undo.RecordObject(set, "新しい表情を作成");
             var expression = new Expression { name = name, clip = clip };
+            MatchExpressionNameToFile(set, expression);
             set.expressions.Add(expression);
             EditorUtility.SetDirty(set);
             AssetDatabase.SaveAssets();
