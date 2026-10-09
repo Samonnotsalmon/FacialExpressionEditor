@@ -293,9 +293,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private static void DuplicateSet(FacialExpressionAvatar avatar, ExpressionSet set)
         {
-            var applied = AvatarSetup.DuplicateBesideSource(avatar);
-            Selection.activeGameObject = applied.gameObject;
-            ExpressionEditorWindow.Open(applied);
+            DedicatedSetupWindow.Open(avatar);
         }
     }
 }

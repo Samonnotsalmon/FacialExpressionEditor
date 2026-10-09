@@ -215,16 +215,39 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// 元設定の隣に専用フォルダを作る。同名があれば番号を付け、既存設定は上書きしない。
         /// </summary>
-        public static FacialExpressionAvatar DuplicateBesideSource(FacialExpressionAvatar source)
+        public static string DedicatedSetupName(FacialExpressionAvatar source)
         {
+            var name = AssetPathUtility.SafeFileName(source.gameObject.name);
+            if (name.EndsWith("_FEE")) name = name.Substring(0, name.Length - 4);
+            return name.EndsWith("_専用") ? name : name + "_専用";
+        }
+
+        public static string ValidateSetupName(string name)
+        {
+            name = (name ?? "").Trim();
+            if (string.IsNullOrEmpty(name)) return "名前を入力してください。";
+            if (AssetPathUtility.SafeFileName(name) != name || name.EndsWith(".") ||
+                System.Text.RegularExpressions.Regex.IsMatch(name, @"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                return "フォルダ名に使える名前を入力してください。";
+            return null;
+        }
+
+        public static string DedicatedSetupFolder(FacialExpressionAvatar source, string name)
+        {
+            var error = ValidateSetupName(name);
+            if (error != null) throw new System.ArgumentException(error);
             var originalFolder = AssetPathUtility.FolderOf(source.expressionSet);
             var parent = Path.GetDirectoryName(originalFolder)?.Replace('\\', '/');
             if (string.IsNullOrEmpty(parent)) parent = "Assets";
-            if (parent != "Assets" && !parent.StartsWith("Assets/")) parent = AssetPathUtility.EnsureFolder("Assets", "FacialExpressionEditor");
-            var name = AssetPathUtility.SafeFileName(source.gameObject.name);
-            if (name.EndsWith("_FEE")) name = name.Substring(0, name.Length - 4);
-            if (!name.EndsWith("_専用")) name += "_専用";
-            var folder = AssetDatabase.GenerateUniqueAssetPath(parent + "/" + name);
+            if (parent != "Assets" && !parent.StartsWith("Assets/")) parent = DataFolder;
+            return AssetDatabase.GenerateUniqueAssetPath(parent + "/" + name.Trim());
+        }
+
+        public static FacialExpressionAvatar DuplicateBesideSource(FacialExpressionAvatar source, string name = null)
+        {
+            var folder = DedicatedSetupFolder(source, name ?? DedicatedSetupName(source));
+            var parent = Path.GetDirectoryName(folder).Replace('\\', '/');
+            if (!AssetDatabase.IsValidFolder(parent)) AssetPathUtility.EnsureFolder("Assets", parent.Substring(7).Split('/'));
             AssetDatabase.CreateFolder(parent, Path.GetFileName(folder));
             return DuplicateForAvatar(source, folder, Path.GetFileName(folder) + "_FEE");
         }
