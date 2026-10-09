@@ -213,14 +213,20 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// 新しい表情データの保存先（Assets/FacialExpressionEditor/アバター名/。既にあれば番号を付ける）。
+        /// 元設定の隣に専用フォルダを作る。同名があれば番号を付け、既存設定は上書きしない。
         /// </summary>
-        public static string DefaultDataFolder(string avatarName)
+        public static FacialExpressionAvatar DuplicateBesideSource(FacialExpressionAvatar source)
         {
-            var name = AssetPathUtility.SafeFileName(avatarName, "Avatar");
-            var folder = $"{DataFolder}/{name}";
-            for (var i = 2; AssetDatabase.IsValidFolder(folder); i++) folder = $"{DataFolder}/{name} {i}";
-            return folder;
+            var originalFolder = AssetPathUtility.FolderOf(source.expressionSet);
+            var parent = Path.GetDirectoryName(originalFolder)?.Replace('\\', '/');
+            if (string.IsNullOrEmpty(parent)) parent = "Assets";
+            if (parent != "Assets" && !parent.StartsWith("Assets/")) parent = AssetPathUtility.EnsureFolder("Assets", "FacialExpressionEditor");
+            var name = AssetPathUtility.SafeFileName(source.gameObject.name);
+            if (name.EndsWith("_FEE")) name = name.Substring(0, name.Length - 4);
+            if (!name.EndsWith("_専用")) name += "_専用";
+            var folder = AssetDatabase.GenerateUniqueAssetPath(parent + "/" + name);
+            AssetDatabase.CreateFolder(parent, Path.GetFileName(folder));
+            return DuplicateForAvatar(source, folder, Path.GetFileName(folder) + "_FEE");
         }
     }
 }

@@ -293,17 +293,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private static void DuplicateSet(FacialExpressionAvatar avatar, ExpressionSet set)
         {
-            var defaultName = avatar.gameObject.name;
-            if (defaultName.EndsWith("_FEE")) defaultName = defaultName.Substring(0, defaultName.Length - 4);
-            var path = EditorUtility.SaveFilePanelInProject("専用Prefabの名前と保存先", defaultName + "_専用_FEE",
-                "prefab", "指定した名前の専用フォルダを作り、Prefab・表情データ・アニメーションをまとめて保存します。", AssetPathUtility.FolderOf(set));
-            if (string.IsNullOrEmpty(path)) return;
-            var parent = System.IO.Path.GetDirectoryName(path).Replace('\\', '/');
-            var name = AssetPathUtility.SafeFileName(System.IO.Path.GetFileNameWithoutExtension(path));
-            if (!name.EndsWith("_FEE")) name += "_FEE";
-            var folder = AssetDatabase.GenerateUniqueAssetPath(parent + "/" + name);
-            AssetDatabase.CreateFolder(parent, System.IO.Path.GetFileName(folder));
-            var applied = AvatarSetup.DuplicateForAvatar(avatar, folder, name);
+            var applied = AvatarSetup.DuplicateBesideSource(avatar);
             Selection.activeGameObject = applied.gameObject;
             ExpressionEditorWindow.Open(applied);
         }

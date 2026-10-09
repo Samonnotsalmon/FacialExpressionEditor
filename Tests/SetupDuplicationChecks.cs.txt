@@ -53,6 +53,11 @@ try {
  AssetDatabase.CreateFolder(folder,"Direct");
  var directCopy=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateForAvatar",component,folder+"/Direct","Direct_FEE");
  Check(direct!=null && direct.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>()!=null && direct.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>()==null && directCopy.transform.parent==direct.transform,"Root-mounted setup becomes a child prefab without removing avatar");
+ var sibling=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateBesideSource",prefab);
+ var siblingPath=AssetDatabase.GetAssetPath(sibling.expressionSet);
+ Check(System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(siblingPath)).Replace('\\','/')==folder,"Automatic duplicate folder is beside source folder");
+ var another=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateBesideSource",prefab);
+ Check(AssetDatabase.GetAssetPath(another.expressionSet)!=siblingPath && sibling.expressionSet!=another.expressionSet,"Repeated automatic duplication creates unique independent folders");
  return new {passed=checks.Count,checks};
 } finally {
  UnityEditor.SceneManagement.EditorSceneManager.CloseScene(scene,true);

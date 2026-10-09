@@ -111,7 +111,7 @@ namespace Samon.FacialExpressionEditor.Editor
             if (avatar == null) return;
 
             _startName = avatar.name;
-            _startDataFolder = AvatarSetup.DefaultDataFolder(avatar.name);
+            _startDataFolder = AvatarSetup.DataFolder;
             _startFolders.Clear();
             _startClips.Clear();
             _targetsAvatar = null;
