@@ -15,7 +15,7 @@ namespace Samon.FacialExpressionEditor.Editor
     /// <summary>
     /// 表情レイヤーとパーツレイヤーを生成し、元FXのジェスチャーレイヤー・パーツレイヤーと置き換える。
     /// </summary>
-    internal class GenerateFxPass : Pass<GenerateFxPass>
+    internal partial class GenerateFxPass : Pass<GenerateFxPass>
     {
         private const string LayerPrefix = "[FacialExpressionEditor] ";
         private const string NeutralName = "Neutral";
@@ -97,6 +97,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             ProcessOriginalFaceLayers(fx, face, variant, avatarRoot);
+            ApplyMotionCorrections(controllerContext.Controllers.Values, face, variant, avatarRoot);
 
             RedirectLayerControls(fx, set, new[] { expressionLayer, blinkLayer }.Where(l => l != null).ToList());
             // 元FXのまばたきのレイヤーは取り除くだけ（生成したまばたきは、表情レイヤーより後ろに置く必要があるため表情レイヤーの直後に入れる）。
@@ -108,13 +109,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 (face.BlinkLayersToReplace, new List<VirtualLayer>()),
                 (face.DisabledLayers, new List<VirtualLayer>()),
             });
-            if (face.DanceParameter != null)
-            {
-                // Restarting Emote Release would clear the saved fixed face on return.
-                var controlled = new[] { expressionLayer }.Concat(blinkLayer != null ? new[] { blinkLayer } : new VirtualLayer[0])
-                    .Concat(cancelerLayers).Concat(partLayers).ToList();
-                fx.Layers = fx.Layers.Concat(new[] { BuildDanceControl(cloneContext, face.DanceParameter, controlled) }).ToList();
-            }
+            BuildMotionIntegration(fx, cloneContext, face, expressionLayer, blinkLayer, cancelerLayers, partLayers);
         }
 
         /// <summary>
@@ -125,7 +120,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private static void ProcessOriginalFaceLayers(VirtualAnimatorController fx, FaceControlPlan face, FaceVariant variant, GameObject avatarRoot)
         {
             var done = new HashSet<VirtualClip>();
-            foreach (var layer in fx.Layers.Where(l => l.IsOriginalLayer))
+            foreach (var layer in fx.Layers)
             {
                 var afk = face.AfkLayers.Contains(layer.Name);
                 var strip = face.StripFaceLayers.Contains(layer.Name);
@@ -141,7 +136,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     {
                         foreach (var binding in faceCurves) clip.SetFloatCurve(binding, null);
                     }
-                    else if (variant != null)
+                    else if (variant != null && face.ApplyBaseFaceToAfk && !face.MotionRules.Any(r => r.sourceClips.Contains(OriginalObjectProperty?.GetValue(clip) as AnimationClip)))
                     {
                         BaseFaceProcessor.Apply(variant, FaceVariant.AfkId, false, avatarRoot, clip.GetFloatCurve, clip.SetFloatCurve,
                             includeFaceValues: false);
@@ -690,46 +685,6 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             return layers;
-        }
-
-        private static VirtualLayer BuildDanceControl(CloneContext context, string parameter, List<VirtualLayer> targets)
-        {
-            foreach (var target in targets)
-            {
-                // Stop state behaviours as well as curves while the avatar's own dance owns the face.
-                foreach (var transition in target.AllReachableNodes().OfType<VirtualStateTransition>())
-                    transition.Conditions = transition.Conditions.Add(Condition(parameter, AnimatorConditionMode.Equals, 0));
-                var machine = target.StateMachine;
-                var resume = machine.DefaultState;
-                var suspended = machine.AddState("Dance — suspend face", VirtualClip.Create("Dance suspend"), new Vector3(0, -100, 0));
-                suspended.WriteDefaultValues = false;
-                suspended.Transitions = ImmutableList.Create(Transition(resume, 0,
-                    Condition(parameter, AnimatorConditionMode.Equals, 0)));
-                machine.AnyStateTransitions = machine.AnyStateTransitions.Insert(0, Transition(suspended, 0,
-                    Condition(parameter, AnimatorConditionMode.NotEqual, 0)));
-            }
-
-            var layer = VirtualLayer.Create(context, LayerPrefix + "Dance priority");
-            var sm = layer.StateMachine;
-            var active = sm.AddState("Normal", VirtualClip.Create("Normal"), Vector3.zero);
-            var dance = sm.AddState("Dance", VirtualClip.Create("Dance"), new Vector3(300, 0, 0));
-            active.WriteDefaultValues = dance.WriteDefaultValues = false;
-            sm.DefaultState = active;
-            active.Transitions = ImmutableList.Create(Transition(dance, 0, Condition(parameter, AnimatorConditionMode.NotEqual, 0)));
-            dance.Transitions = ImmutableList.Create(Transition(active, 0, Condition(parameter, AnimatorConditionMode.Equals, 0)));
-            foreach (var pair in new[] { (state: active, weight: 1f), (state: dance, weight: 0f) })
-            {
-                pair.state.Behaviours = targets.Select(target =>
-                {
-                    var control = ScriptableObject.CreateInstance<VRCAnimatorLayerControl>();
-                    control.playable = VRC_AnimatorLayerControl.BlendableLayer.FX;
-                    control.layer = target.VirtualLayerIndex;
-                    control.goalWeight = pair.weight;
-                    control.blendDuration = 0;
-                    return (StateMachineBehaviour)control;
-                }).ToImmutableList();
-            }
-            return layer;
         }
 
         private static VirtualStateTransition Transition(VirtualState target, float duration, params AnimatorCondition[] conditions)

@@ -33,9 +33,12 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawAfkContactsTab(ExpressionSet set)
         {
+            DrawMotionIntegration(set);
+            EditorGUILayout.Space(12);
             DrawAfk();
             EditorGUILayout.Space(12);
-            DrawContacts(set);
+            _showLegacyContacts = EditorGUILayout.Foldout(_showLegacyContacts, "追加設定：コンタクト・PhysBone", true);
+            if (_showLegacyContacts) DrawContacts(set);
             EditorGUILayout.Space(12);
             DrawOriginalFaceLayers(set);
         }
@@ -43,6 +46,9 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawAfk()
         {
             EditorGUILayout.LabelField("AFK", EditorStyles.boldLabel);
+            var apply = EditorGUILayout.ToggleLeft("AFKクリップにベース顔の補正を反映する（既定）", Set.applyBaseFaceToAfk);
+            if (apply != Set.applyBaseFaceToAfk) Modify(Set, "AFKのベース補正", () => Set.applyBaseFaceToAfk = apply);
+            EditorGUILayout.LabelField("連携ルールで選んだクリップは、そのルールの補正指定を優先します。", EditorStyles.wordWrappedMiniLabel);
             var analysis = FxAnalysis;
             if (analysis.AfkLayers.Count == 0)
             {
@@ -50,7 +56,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 return;
             }
 
-            EditorGUILayout.LabelField($"元FXの「{string.Join("」「", analysis.AfkLayers)}」レイヤーのAFKのアニメーションをそのまま使い、顔にだけベース顔を適用します。" +
+            EditorGUILayout.LabelField($"元FXの「{string.Join("」「", analysis.AfkLayers)}」レイヤーのAFKの顔を確認・調整できます。" +
                                        "「AFKの顔を編集」で、時間ごとにキーを打って、この顔だけの動きにできます（目を閉じている間はベース顔を0にする、など）。",
                 EditorStyles.wordWrappedMiniLabel);
 

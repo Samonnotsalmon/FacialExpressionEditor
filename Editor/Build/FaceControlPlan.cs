@@ -25,7 +25,10 @@ namespace Samon.FacialExpressionEditor.Editor
         public AnimationClip BlinkClip { get; private set; }
         public bool ReplacesBlink => BlinkShapes.Count > 0 || BlinkClip != null;
         public AnimationClip MouthCancelClip { get; private set; }
-        public string DanceParameter { get; private set; }
+        public List<MotionIntegrationRule> MotionRules { get; private set; }
+        public Dictionary<string, AnimatorControllerParameterType> MotionParameters { get; private set; }
+        public Dictionary<string, AnimatorControllerParameter> MotionParameterDefaults { get; private set; }
+        public bool ApplyBaseFaceToAfk { get; private set; }
 
         // どれかの表情が視線・リップシンクを止める（このときは全ステートで指定し直す）。
         public bool ControlsEyes { get; private set; }
@@ -75,10 +78,15 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (mesh != null) descriptor.VisemeSkinnedMesh = mesh;
             }
             var defaults = AvatarFaceDefaults.Find(descriptor, set);
-            var sourceFx = FxImporter.GetFx(descriptor);
-            if (set.protectDance && !string.IsNullOrWhiteSpace(set.danceParameter) && sourceFx != null &&
-                sourceFx.parameters.Any(p => p.name == set.danceParameter && p.type == AnimatorControllerParameterType.Int))
-                plan.DanceParameter = set.danceParameter;
+            plan.MotionRules = MotionIntegration.Rules(set, descriptor).Where(r => r.enabled).ToList();
+            plan.MotionParameters = MotionIntegration.Parameters(descriptor);
+            plan.MotionParameterDefaults = MotionIntegration.Controllers(descriptor).SelectMany(s => s.controller.parameters).GroupBy(p => p.name).ToDictionary(g => g.Key, g => g.First());
+            plan.ApplyBaseFaceToAfk = set.applyBaseFaceToAfk;
+            var ruleErrors = MotionIntegration.Validate(set, descriptor, plan.MotionRules);
+            foreach (var rule in plan.MotionRules.Where(r => r.sourcePlayable == "FX" && !string.IsNullOrEmpty(r.sourceLayer)))
+                if (rule.sourceLayer == defaults.BlinkLayer || defaults.MouthCancelerLayers.Contains(rule.sourceLayer))
+                    ruleErrors.Add(rule.name + "：連携元が自動置換する瞬き・口制御レイヤーです。保持されるモーションのステートを選んでください。");
+            if (ruleErrors.Count > 0) throw new System.InvalidOperationException("既存モーション連携の設定を確認してください：\n" + string.Join("\n", ruleErrors));
             var expressions = buildPlan.Modes.SelectMany(m => m.Emotes)
                 .Concat(buildPlan.EmoteValues.Keys.Select(set.FindExpression))
                 .Where(e => e != null)

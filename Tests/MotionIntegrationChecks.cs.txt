@@ -1,0 +1,85 @@
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool value,string label){if(!value)throw new Exception(label);checks.Add(label);}
+var assembly=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+object Call(string type,string method,params object[] args)=>assembly.GetType("Samon.FacialExpressionEditor.Editor."+type).GetMethod(method,System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic).Invoke(null,args);
+bool Matches(UnityEditor.Animations.AnimatorCondition condition,float value){switch(condition.mode){case UnityEditor.Animations.AnimatorConditionMode.If:return value!=0;case UnityEditor.Animations.AnimatorConditionMode.IfNot:return value==0;case UnityEditor.Animations.AnimatorConditionMode.Equals:return value==condition.threshold;case UnityEditor.Animations.AnimatorConditionMode.NotEqual:return value!=condition.threshold;case UnityEditor.Animations.AnimatorConditionMode.Greater:return value>condition.threshold;default:return value<condition.threshold;}}
+var path="Assets/STUDIO_MOCA/NagiyaRuri/Prefab/Avatar_Simple/NagiyaRuri_Simple.prefab";
+var avatar=UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(path));
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.menuIcons=false;set.faceControlImported=true;
+var baseline=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.FaceVariant>();baseline.useCapturedValues=true;
+var cleanup=new System.Collections.Generic.List<UnityEngine.Object>{set,baseline};
+var logFilter=Debug.unityLogger.filterLogType;
+try{
+ Debug.unityLogger.filterLogType=LogType.Warning;
+ var descriptor=avatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var legacy=(System.Collections.IEnumerable)Call("MotionIntegration","Rules",set,descriptor);
+ Check(legacy.Cast<object>().Count()==1,"Old dance setting becomes one generic rule");
+ Call("MotionIntegration","Initialize",set,descriptor); Call("MotionIntegration","Initialize",set,descriptor);
+ Check(set.motionRules.Count==1&&set.motionRulesConfigured,"Migration is idempotent");
+ var candidates=(System.Collections.IEnumerable)Call("MotionIntegration","Candidates",descriptor);
+ Check(candidates.Cast<object>().Any(c=>((string)c.GetType().GetField("playable").GetValue(c))=="Action"),"Source candidates include Action as well as FX");
+ var holiday=AssetDatabase.LoadAssetAtPath<AnimationClip>(AssetDatabase.FindAssets("NGR_Holiday_FX t:AnimationClip").Select(AssetDatabase.GUIDToAssetPath).First(p=>p.EndsWith("NGR_Holiday_FX.anim")));
+ var binding=AnimationUtility.GetCurveBindings(holiday).First(b=>b.type==typeof(SkinnedMeshRenderer)&&b.propertyName.StartsWith("blendShape.")&&AnimationUtility.GetEditorCurve(holiday,b).Evaluate(0)<50);
+ var expected=Mathf.Clamp(AnimationUtility.GetEditorCurve(holiday,binding).Evaluate(0)+17,0,100);
+ baseline.baseFace.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path=binding.path,blendShape=binding.propertyName.Substring(11),referenceValue=0,variantValue=17});
+ var layers=descriptor.baseAnimationLayers;
+ var fxIndex=Array.FindIndex(layers,l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX);
+ var source=UnityEngine.Object.Instantiate((UnityEditor.Animations.AnimatorController)layers[fxIndex].animatorController);cleanup.Add(source);
+ source.parameters=source.parameters.Concat(new[]{new AnimatorControllerParameter{name="UserMotionBlend",type=AnimatorControllerParameterType.Float}}).ToArray();
+ layers[fxIndex].animatorController=source;descriptor.baseAnimationLayers=layers;
+ var actionIndex=Array.FindIndex(layers,l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.Action);
+ var actionSource=UnityEngine.Object.Instantiate((UnityEditor.Animations.AnimatorController)layers[actionIndex].animatorController);cleanup.Add(actionSource);
+ actionSource.parameters=actionSource.parameters.Concat(new[]{new AnimatorControllerParameter{name="ActionMotionState",type=AnimatorControllerParameterType.Int,defaultInt=3}}).ToArray();
+ layers[actionIndex].animatorController=actionSource;descriptor.baseAnimationLayers=layers;
+ var motion=new Samon.FacialExpressionEditor.MotionIntegrationRule{name="Dance and not AFK",sourceLayer="ActionConect",sourceClips=new System.Collections.Generic.List<AnimationClip>{holiday},applyBaseFace=true,pauseMouthCancel=false,pauseParts=false};
+ motion.conditions.Add(new Samon.FacialExpressionEditor.MotionCondition{parameter="VRCEmoteFXConect",mode=Samon.FacialExpressionEditor.MotionConditionMode.Equals,value=110});
+ motion.conditions.Add(new Samon.FacialExpressionEditor.MotionCondition{parameter="AFK",mode=Samon.FacialExpressionEditor.MotionConditionMode.IsFalse});
+ var afk=new Samon.FacialExpressionEditor.MotionIntegrationRule{name="AFK blink only",pauseExpressions=false,pauseMouthCancel=false,pauseParts=false};afk.conditions.Add(new Samon.FacialExpressionEditor.MotionCondition());
+ var parts=new Samon.FacialExpressionEditor.MotionIntegrationRule{name="Float parts only",pauseExpressions=false,pauseBlink=false,pauseMouthCancel=false};
+ parts.conditions.Add(new Samon.FacialExpressionEditor.MotionCondition{parameter="UserMotionBlend",mode=Samon.FacialExpressionEditor.MotionConditionMode.Greater,value=.5f});
+ parts.conditions.Add(new Samon.FacialExpressionEditor.MotionCondition{parameter="ActionMotionState",mode=Samon.FacialExpressionEditor.MotionConditionMode.Equals,value=3});
+ set.motionRules=new System.Collections.Generic.List<Samon.FacialExpressionEditor.MotionIntegrationRule>{motion,afk,parts};
+ Check(((System.Collections.IEnumerable)Call("MotionIntegration","Validate",set,descriptor,set.motionRules)).Cast<object>().Count()==0,"Bool, int, float rules validate");
+ set.applyBaseFaceToAfk=false;
+ var correctedPreview=(AnimationClip)Call("PreviewClips","ForAfk",holiday,baseline,avatar,set);cleanup.Add(correctedPreview);
+ Check(Mathf.Approximately(AnimationUtility.GetEditorCurve(correctedPreview,binding).Evaluate(0),expected),"Per-motion correction overrides AFK default in preview");
+ motion.applyBaseFace=false;set.applyBaseFaceToAfk=true;
+ var originalPreview=(AnimationClip)Call("PreviewClips","ForAfk",holiday,baseline,avatar,set);cleanup.Add(originalPreview);
+ Check(Mathf.Approximately(AnimationUtility.GetEditorCurve(originalPreview,binding).Evaluate(0),AnimationUtility.GetEditorCurve(holiday,binding).Evaluate(0)),"Keep-original rule bypasses AFK base correction in preview");
+ motion.applyBaseFace=true;
+ var invalid=new Samon.FacialExpressionEditor.MotionIntegrationRule{name="Invalid"};invalid.conditions.Add(new Samon.FacialExpressionEditor.MotionCondition{parameter="MissingParameter"});set.motionRules.Add(invalid);
+ Check(((System.Collections.IEnumerable)Call("MotionIntegration","Validate",set,descriptor,set.motionRules)).Cast<object>().Any(),"Missing parameter is reported");invalid.enabled=false;
+ foreach(var kind in new[]{Samon.FacialExpressionEditor.MotionConditionMode.Greater,Samon.FacialExpressionEditor.MotionConditionMode.Less}){
+  var c=new Samon.FacialExpressionEditor.MotionCondition{parameter="UserMotionBlend",mode=kind,value=.5f};
+  var inverse=(UnityEditor.Animations.AnimatorCondition)Call("GenerateFxPass","InverseMotionTest",c,AnimatorControllerParameterType.Float);
+  var forward=(UnityEditor.Animations.AnimatorCondition)Call("GenerateFxPass","MotionTest",c);
+  foreach(var value in new[]{-.1f,.49f,.5f,.50000006f,.8f})Check(Matches(forward,value)!=Matches(inverse,value),"Float boundary complements: "+kind+" "+value);
+ }
+ Samon.FacialExpressionEditor.Editor.FxImporter.ImportGestures(descriptor,set);
+ var partClip=new AnimationClip();cleanup.Add(partClip);AnimationUtility.SetEditorCurve(partClip,binding,AnimationCurve.Constant(0,0,25));
+ set.parts.Add(new Samon.FacialExpressionEditor.FacialPart{name="Test part",clip=partClip,properties=new System.Collections.Generic.List<string>{Samon.FacialExpressionEditor.FacialPart.PropertyKey(binding.path,binding.type,binding.propertyName)}});
+ var component=avatar.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();component.expressionSet=set;component.faceVariant=baseline;
+ nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(avatar);
+ var fx=(UnityEditor.Animations.AnimatorController)descriptor.baseAnimationLayers[fxIndex].animatorController;
+ Check(fx.parameters.First(p=>p.name=="ActionMotionState").defaultInt==3,"Action-only parameter keeps its original default in FX");
+ var evaluators=fx.layers.Where(l=>l.name.StartsWith("[FacialExpressionEditor] Motion rule ")).ToArray();
+ Check(evaluators.Length==3,"Only enabled rules generate evaluators");
+ var evaluator=evaluators.Single(l=>l.name.EndsWith(motion.name));
+ var off=evaluator.stateMachine.states.First(s=>s.state.name=="Inactive").state;var on=evaluator.stateMachine.states.First(s=>s.state.name=="Active").state;
+ foreach(var emote in new[]{0,110,113})foreach(var isAfk in new[]{0,1}){
+  Func<UnityEditor.Animations.AnimatorCondition,bool> match=c=>Matches(c,c.parameter=="AFK"?isAfk:emote);
+  Check(off.transitions.Single().conditions.All(match)!=on.transitions.Any(t=>t.conditions.All(match)),"AND activation / OR release: "+emote+" "+isAfk);
+ }
+ var blinkGate=fx.layers.Single(l=>l.name.StartsWith("[FacialExpressionEditor] Motion gate ")&&l.name.EndsWith(" Blink"));
+ var yielded=blinkGate.stateMachine.states.First(s=>s.state.name=="Yield").state;
+ Check(yielded.transitions.Single().conditions.Length==2&&yielded.transitions.Single().conditions.All(c=>c.mode==UnityEditor.Animations.AnimatorConditionMode.IfNot),"Overlapping rules resume blink only after both end");
+ var expressionGate=fx.layers.Single(l=>l.name.StartsWith("[FacialExpressionEditor] Motion gate ")&&l.name.EndsWith(" Expression"));
+ Check(expressionGate.stateMachine.states.First(s=>s.state.name=="Normal").state.transitions.Length==1,"AFK blink-only rule does not suspend expressions");
+ Check(!fx.layers.Any(l=>l.name.StartsWith("[FacialExpressionEditor] Motion gate ")&&l.name.EndsWith("Emote Release")),"Mode memory is not suspended or restarted");
+ var generatedDrivers=evaluators.SelectMany(l=>l.stateMachine.states).SelectMany(s=>s.state.behaviours).OfType<VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver>();
+ Check(generatedDrivers.SelectMany(d=>d.parameters).All(p=>p.name.StartsWith("FEE/MotionRule/")),"Rules never overwrite fixed-face or part selections");
+ var builtHoliday=fx.animationClips.First(c=>c.name==holiday.name);
+ Check(Mathf.Approximately(AnimationUtility.GetEditorCurve(builtHoliday,binding).Evaluate(0),expected),"Selected original motion receives base correction in build");
+ Check(!Mathf.Approximately(AnimationUtility.GetEditorCurve(holiday,binding).Evaluate(0),expected),"Author's original clip remains unchanged");
+ return new{passed=checks.Count,checks};
+}finally{Debug.unityLogger.filterLogType=logFilter;UnityEngine.Object.DestroyImmediate(avatar);foreach(var item in cleanup)if(item!=null)UnityEngine.Object.DestroyImmediate(item);}

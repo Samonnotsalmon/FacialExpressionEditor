@@ -549,6 +549,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 folder = EnsureProjectFolder(uniqueFolder);
                 set = CreateInstance<ExpressionSet>();
                 set.independentClips = true;
+                set.motionRulesConfigured = true;
                 set.previewHeight = _startPreviewHeight; set.previewZoom = _startPreviewZoom;
                 set.faceMeshPaths = _startMeshPaths.ToList();
                 set.linkedObjectPaths = _startObjectPaths.ToList();

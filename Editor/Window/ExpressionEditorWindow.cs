@@ -22,7 +22,7 @@ namespace Samon.FacialExpressionEditor.Editor
         // OriginalClip：元FXの、コンタクト・PhysBoneなどで顔を動かすレイヤーのクリップ（_selectedId はレイヤー名）。
         private enum SelectionKind { None, Expression, Clip, Part, Fist, OriginalClip }
 
-        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口", "既存ギミック", "アバター設定" };
+        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口", "モーション連携", "アバター設定" };
 
         // 編集している表情設定（プロジェクトのプレハブか、シーンのアバターの中にあるもの）。
         [SerializeField] private FacialExpressionAvatar _avatar;
@@ -111,6 +111,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void OnProjectChanged()
         {
+            _motionCandidates = null;
             _setups = null;
             _startInfo = null;
             MarkLibraryDirty();

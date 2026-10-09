@@ -31,11 +31,16 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// 元FXのAFKのクリップに、ビルドと同じくベース顔と、この顔だけのAFKの動きを適用したもの。
         /// </summary>
-        public static AnimationClip ForAfk(AnimationClip original, FaceVariant variant, GameObject avatarRoot)
+        public static AnimationClip ForAfk(AnimationClip original, FaceVariant variant, GameObject avatarRoot, ExpressionSet set = null)
         {
             var clip = Object.Instantiate(original);
             clip.hideFlags = HideFlags.HideAndDontSave;
             if (variant == null) return clip;
+            if (set != null)
+            {
+                var rules = set.motionRules.Where(r => r.enabled && r.sourceClips.Contains(original)).ToList();
+                if (!(rules.Count > 0 ? rules[0].applyBaseFace : set.applyBaseFaceToAfk)) return clip;
+            }
 
             BaseFaceProcessor.Apply(variant, FaceVariant.AfkId, false, avatarRoot,
                 b => AnimationUtility.GetEditorCurve(clip, b),

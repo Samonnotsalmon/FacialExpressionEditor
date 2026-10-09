@@ -44,7 +44,7 @@ try {
    void ReadMenu(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu menu) {if(menu==null || !visited.Add(menu))return;foreach(var c in menu.controls){names.Add(c.name);ReadMenu(c.subMenu);}}
    ReadMenu(descriptor.expressionsMenu);
    if(names.Contains("FEE selected menu removal") || !names.Contains("固定解除")) throw new Exception("Menu removal/reset check failed");
-   var dance=fx.layers.FirstOrDefault(l=>l.name=="[FacialExpressionEditor] Dance priority");
+   var dance=fx.layers.FirstOrDefault(l=>l.name.StartsWith("[FacialExpressionEditor] Motion rule"));
    if(paths[i].Contains("NagiyaRuri")) {
     if(dance==null || !fx.animationClips.Any(c=>c.name=="NGR_Holiday_FX")) throw new Exception("Dance face was lost");
     var release=fx.layers.First(l=>l.name=="[FacialExpressionEditor] Emote Release");

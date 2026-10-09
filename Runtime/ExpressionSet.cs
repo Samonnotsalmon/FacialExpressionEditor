@@ -30,6 +30,9 @@ namespace Samon.FacialExpressionEditor
         public bool mouthCancelUseClipValues;
         [HideInInspector] public bool protectDance = true;
         [HideInInspector] public string danceParameter = "VRCEmoteFXConect";
+        public List<MotionIntegrationRule> motionRules = new List<MotionIntegrationRule>();
+        [HideInInspector] public bool motionRulesConfigured;
+        public bool applyBaseFaceToAfk = true;
 
         public float defaultTransitionDuration = 0.1f;
 

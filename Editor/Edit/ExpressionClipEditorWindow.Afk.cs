@@ -171,14 +171,14 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var clip = AfkClip;
             var variant = Variant;
-            var key = (_avatar, clip, variant != null ? EditorUtility.GetDirtyCount(variant) : 0);
+            var key = (_avatar, clip, (variant != null ? EditorUtility.GetDirtyCount(variant) : 0) + (Set != null ? EditorUtility.GetDirtyCount(Set) : 0));
             if (_afkProcessed != null && _afkProcessedOf.Equals(key)) return _afkProcessed;
 
             ReleaseAfk();
             _afkProcessedOf = key;
             if (clip == null || variant == null) return null;
 
-            _afkProcessed = PreviewClips.ForAfk(clip, variant, AvatarRoot);
+            _afkProcessed = PreviewClips.ForAfk(clip, variant, AvatarRoot, Set);
             foreach (var binding in AnimationUtility.GetCurveBindings(_afkProcessed))
             {
                 var blendShape = ClipEditing.BlendShapeName(binding);
