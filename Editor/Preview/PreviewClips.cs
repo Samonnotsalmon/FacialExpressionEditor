@@ -24,6 +24,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     b => AnimationUtility.GetEditorCurve(clip, b),
                     (b, c) => AnimationUtility.SetEditorCurve(clip, b, c));
             }
+            if (expression.freezeAnimation) Freeze(clip, expression.freezePosition);
             return clip;
         }
 
@@ -48,13 +49,12 @@ namespace Samon.FacialExpressionEditor.Editor
         /// Fistの握り具合で動かすクリップ（ビルドと同じ FistBlend）。握り具合0でベース顔、握り切ると表情。
         /// クリップ自体が時間で動く表情は、表情のクリップそのもの。
         /// </summary>
-        public static AnimationClip ForFist(Expression expression, FaceVariant variant, GameObject avatarRoot)
+        public static AnimationClip ForFist(Expression expression, FaceVariant variant, GameObject avatarRoot, ExpressionSet set = null)
         {
             var expressionClip = ForExpression(expression, variant, avatarRoot);
-            if (IsTimeVarying(expressionClip)) return expressionClip;
 
             var clip = new AnimationClip { hideFlags = HideFlags.HideAndDontSave };
-            FistBlend.FromBaseFace(ClipCurves.Of(expressionClip), avatarRoot, ClipCurves.Of(clip));
+            FistBlend.FromBaseFace(ClipCurves.Of(expressionClip), avatarRoot, ClipCurves.Of(clip), set, expression.useOriginalGripCurve && !expression.freezeAnimation, variant);
             Release(expressionClip);
             return clip;
         }
@@ -66,6 +66,8 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var clip = new AnimationClip { hideFlags = HideFlags.HideAndDontSave };
             if (part.clip == null) return clip;
+            clip.frameRate = part.clip.frameRate;
+            AnimationUtility.SetAnimationClipSettings(clip, AnimationUtility.GetAnimationClipSettings(part.clip));
 
             var only = new HashSet<string>(part.properties);
             foreach (var binding in AnimationUtility.GetCurveBindings(part.clip).Where(b => only.Contains(ExpressionClipBuilder.Key(b))))
@@ -86,6 +88,26 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             if (clip == null || clip.length <= 0) return false;
             return FistBlend.IsTimeVarying(ClipCurves.Of(clip));
+        }
+
+        public static void Freeze(AnimationClip clip, float position)
+        {
+            var time = Mathf.Clamp01(position) * clip.length;
+            foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                AnimationUtility.SetEditorCurve(clip, b, AnimationCurve.Constant(0, 0, AnimationUtility.GetEditorCurve(clip, b).Evaluate(time)));
+            foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+            {
+                var keys = AnimationUtility.GetObjectReferenceCurve(clip, b);
+                if (keys.Length == 0) continue;
+                var value = keys[0].value;
+                foreach (var key in keys) { if (key.time > time) break; value = key.value; }
+                AnimationUtility.SetObjectReferenceCurve(clip, b, new[] { new ObjectReferenceKeyframe { time = 0, value = value } });
+            }
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            settings.loopTime = false;
+            settings.startTime = 0;
+            settings.stopTime = 0;
+            AnimationUtility.SetAnimationClipSettings(clip, settings);
         }
 
         public static void Release(AnimationClip clip)

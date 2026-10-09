@@ -53,6 +53,12 @@ namespace Samon.FacialExpressionEditor.Editor
             var builder = new ExpressionClipBuilder(set, variant, avatarRoot);
             var cloneContext = controllerContext.CloneContext;
             var face = FaceControlPlan.Get(context, set, plan);
+            var descriptor = avatarRoot.GetComponent<VRCAvatarDescriptor>();
+            if (!string.IsNullOrEmpty(set.lipSyncMeshPath))
+            {
+                var mesh = avatarRoot.transform.Find(set.lipSyncMeshPath)?.GetComponent<SkinnedMeshRenderer>();
+                if (mesh != null) descriptor.VisemeSkinnedMesh = mesh;
+            }
 
             var expressionLayer = BuildExpressionLayer(cloneContext, set, plan, face, builder, writeDefaults);
             var expressionLayers = new List<VirtualLayer> { expressionLayer };
@@ -102,6 +108,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 (face.BlinkLayersToReplace, new List<VirtualLayer>()),
                 (face.DisabledLayers, new List<VirtualLayer>()),
             });
+            if (face.DanceParameter != null)
+            {
+                // Restarting Emote Release would clear the saved fixed face on return.
+                var controlled = new[] { expressionLayer }.Concat(blinkLayer != null ? new[] { blinkLayer } : new VirtualLayer[0])
+                    .Concat(cancelerLayers).Concat(partLayers).ToList();
+                fx.Layers = fx.Layers.Concat(new[] { BuildDanceControl(cloneContext, face.DanceParameter, controlled) }).ToList();
+            }
         }
 
         /// <summary>
@@ -198,7 +211,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var root = layer.StateMachine;
             var clips = new List<VirtualClip>();
 
-            var neutralClip = VirtualClip.Create(NeutralName);
+            var neutralClip = builder.Build(new Expression { id = "__neutral__", name = NeutralName });
             clips.Add(neutralClip);
             var neutral = root.AddState(NeutralName, neutralClip, new Vector3(300, 120, 0));
             neutral.WriteDefaultValues = writeDefaults;
@@ -247,6 +260,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (fixedStates.TryGetValue(expression.id, out var state)) return state;
 
                 var effect = set.GetFixedSwitchEffect(expression);
+                // 静止ポーズを経由する旧切り替え演出は、時間で動く表情を潰さないよう静止表情だけに適用する。
+                if (!expression.freezeAnimation && PreviewClips.IsTimeVarying(expression.clip)) effect = null;
                 var clip = effect != null
                     ? builder.BuildSwitch(expression, set.FindExpression(effect.betweenExpressionId), effect)
                     : builder.Build(expression);
@@ -464,6 +479,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     blinkClip.SetFloatCurve(binding, AnimationUtility.GetEditorCurve(face.BlinkClip, binding));
                 }
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(face.BlinkClip))
+                    blinkClip.SetObjectCurve(binding, AnimationUtility.GetObjectReferenceCurve(face.BlinkClip, binding));
             }
             else
             {
@@ -538,6 +555,11 @@ namespace Samon.FacialExpressionEditor.Editor
             foreach (var binding in face.MouthMorphs)
             {
                 AnimationUtility.GetFloatValue(avatarRoot, binding, out var value);
+                if (face.MouthCancelClip != null)
+                {
+                    var curve = AnimationUtility.GetEditorCurve(face.MouthCancelClip, binding);
+                    if (curve != null) value = curve.Evaluate(0);
+                }
                 cancelClip.SetFloatCurve(binding, new AnimationCurve(new Keyframe(0, value)));
             }
 
@@ -670,6 +692,46 @@ namespace Samon.FacialExpressionEditor.Editor
             return layers;
         }
 
+        private static VirtualLayer BuildDanceControl(CloneContext context, string parameter, List<VirtualLayer> targets)
+        {
+            foreach (var target in targets)
+            {
+                // Stop state behaviours as well as curves while the avatar's own dance owns the face.
+                foreach (var transition in target.AllReachableNodes().OfType<VirtualStateTransition>())
+                    transition.Conditions = transition.Conditions.Add(Condition(parameter, AnimatorConditionMode.Equals, 0));
+                var machine = target.StateMachine;
+                var resume = machine.DefaultState;
+                var suspended = machine.AddState("Dance — suspend face", VirtualClip.Create("Dance suspend"), new Vector3(0, -100, 0));
+                suspended.WriteDefaultValues = false;
+                suspended.Transitions = ImmutableList.Create(Transition(resume, 0,
+                    Condition(parameter, AnimatorConditionMode.Equals, 0)));
+                machine.AnyStateTransitions = machine.AnyStateTransitions.Insert(0, Transition(suspended, 0,
+                    Condition(parameter, AnimatorConditionMode.NotEqual, 0)));
+            }
+
+            var layer = VirtualLayer.Create(context, LayerPrefix + "Dance priority");
+            var sm = layer.StateMachine;
+            var active = sm.AddState("Normal", VirtualClip.Create("Normal"), Vector3.zero);
+            var dance = sm.AddState("Dance", VirtualClip.Create("Dance"), new Vector3(300, 0, 0));
+            active.WriteDefaultValues = dance.WriteDefaultValues = false;
+            sm.DefaultState = active;
+            active.Transitions = ImmutableList.Create(Transition(dance, 0, Condition(parameter, AnimatorConditionMode.NotEqual, 0)));
+            dance.Transitions = ImmutableList.Create(Transition(active, 0, Condition(parameter, AnimatorConditionMode.Equals, 0)));
+            foreach (var pair in new[] { (state: active, weight: 1f), (state: dance, weight: 0f) })
+            {
+                pair.state.Behaviours = targets.Select(target =>
+                {
+                    var control = ScriptableObject.CreateInstance<VRCAnimatorLayerControl>();
+                    control.playable = VRC_AnimatorLayerControl.BlendableLayer.FX;
+                    control.layer = target.VirtualLayerIndex;
+                    control.goalWeight = pair.weight;
+                    control.blendDuration = 0;
+                    return (StateMachineBehaviour)control;
+                }).ToImmutableList();
+            }
+            return layer;
+        }
+
         private static VirtualStateTransition Transition(VirtualState target, float duration, params AnimatorCondition[] conditions)
         {
             var transition = VirtualStateTransition.Create();
@@ -719,7 +781,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             foreach (var layer in fx.Layers)
             {
-                var g = layer.IsOriginalLayer ? groups.FindIndex(x => x.originals.Contains(layer.Name)) : -1;
+                var g = groups.FindIndex(x => x.originals.Contains(layer.Name));
                 if (g < 0)
                 {
                     result.Add(layer);

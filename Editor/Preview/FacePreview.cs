@@ -224,9 +224,9 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// 現在の状態に、別のクリップ（パーツなど）を重ねて適用する。
         /// </summary>
-        public void Overlay(AnimationClip clip)
+        public void Overlay(AnimationClip clip, float normalizedTime = 1f)
         {
-            if (clip != null) ApplyClip(clip, clip.length);
+            if (clip != null) ApplyClip(clip, clip.length * Mathf.Clamp01(normalizedTime));
         }
 
         private void ApplyClip(AnimationClip clip, float time)

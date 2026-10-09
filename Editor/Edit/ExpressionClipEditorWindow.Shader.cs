@@ -125,6 +125,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             var renderers = Root.GetComponentsInChildren<Renderer>(true)
                 .Where(r => (r is SkinnedMeshRenderer || r is MeshRenderer) && r.sharedMaterials.Any(m => m != null))
+                .Where(r => IsSelectedTarget(r.transform))
                 .ToList();
             if (renderers.Count == 0) return;
 

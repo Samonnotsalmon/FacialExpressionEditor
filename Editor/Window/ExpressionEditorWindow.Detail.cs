@@ -14,6 +14,27 @@ namespace Samon.FacialExpressionEditor.Editor
         private Texture2D _detailTexture;
         private bool _detailTextureDirty = true;
         private Vector2 _detailScroll;
+        private float _playTime;
+        private bool _playing = true;
+        private double _lastPreviewTick;
+
+        private void UpdateAnimationPreview()
+        {
+            var now = EditorApplication.timeSinceStartup;
+            if (_lastPreviewTick == 0) _lastPreviewTick = now;
+            var delta = now - _lastPreviewTick;
+            if (!_playing) _lastPreviewTick = now;
+            if (!_playing || !_detailTimeVarying || _detailClip == null || UsesDetailSlider || delta < 1.0 / 30) return;
+            _lastPreviewTick = now;
+            _playTime += (float)delta;
+            if (_playTime > _detailClip.length)
+            {
+                if (_detailClip.isLooping) _playTime %= _detailClip.length;
+                else { _playTime = _detailClip.length; _playing = false; }
+            }
+            _detailTextureDirty = true;
+            Repaint();
+        }
 
         private void InvalidateDetailPreview()
         {
@@ -21,6 +42,9 @@ namespace Samon.FacialExpressionEditor.Editor
             _detailClip = null;
             _detailClipReady = false;
             _detailTextureDirty = true;
+            _playTime = 0;
+            _playing = true;
+            _lastPreviewTick = 0;
         }
 
         private void ReleaseDetailTexture()
@@ -48,13 +72,14 @@ namespace Samon.FacialExpressionEditor.Editor
                     if (part != null)
                     {
                         _preview.Apply(null);
-                        _preview.Overlay(_detailClip);
+                        _preview.Overlay(_detailClip, _detailTimeVarying && _detailClip.length > 0 ? _playTime / _detailClip.length : 1f);
                     }
                     else
                     {
                         // 握り具合はFistのマスを選んだときだけ（元FXのレイヤーで値で少しずつ動くものも、スライダーで確かめる）。
                         // 表情そのものは、最後まで再生した形（ゲーム内で固定したときと同じ）。
-                        _preview.Apply(_detailClip, UsesDetailSlider ? _triggerWeight : 1f);
+                        _preview.Apply(_detailClip, UsesDetailSlider ? _triggerWeight :
+                            _detailTimeVarying && _detailClip.length > 0 ? _playTime / _detailClip.length : 1f);
                     }
                     if (_detailTexture != null) DestroyImmediate(_detailTexture);
                     _detailTexture = _preview.RenderStatic(Mathf.RoundToInt(size * EditorGUIUtility.pixelsPerPoint));
@@ -69,6 +94,19 @@ namespace Samon.FacialExpressionEditor.Editor
                 EditorGUI.BeginChangeCheck();
                 _triggerWeight = EditorGUILayout.Slider(isFist ? "握り具合" : "パラメータの値", _triggerWeight, 0f, 1f);
                 if (EditorGUI.EndChangeCheck()) _detailTextureDirty = true;
+            }
+            else if (_detailTimeVarying)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button(_playing ? "一時停止" : "再生", GUILayout.Width(65)))
+                    { if (_playTime >= _detailClip.length) _playTime = 0; _playing = !_playing; }
+                    if (GUILayout.Button("先頭", GUILayout.Width(45))) { _playTime = 0; _detailTextureDirty = true; }
+                    GUILayout.Label(_detailClip.isLooping ? "ループ" : "一回再生", EditorStyles.miniLabel);
+                }
+                EditorGUI.BeginChangeCheck();
+                _playTime = EditorGUILayout.Slider("時間（秒）", _playTime, 0, _detailClip.length);
+                if (EditorGUI.EndChangeCheck()) { _playing = false; _detailTextureDirty = true; }
             }
 
             _detailScroll = EditorGUILayout.BeginScrollView(_detailScroll);
@@ -105,7 +143,7 @@ namespace Samon.FacialExpressionEditor.Editor
             if (expression != null)
             {
                 _detailClip = _selectionKind == SelectionKind.Fist
-                    ? PreviewClips.ForFist(expression, Variant, AvatarRoot)
+                    ? PreviewClips.ForFist(expression, Variant, AvatarRoot, _avatar.expressionSet)
                     : PreviewClips.ForExpression(expression, Variant, AvatarRoot);
             }
             else if (part != null) _detailClip = PreviewClips.ForPart(part);
@@ -115,7 +153,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 _detailClip.hideFlags = HideFlags.HideAndDontSave;
             }
 
-            _detailTimeVarying = _detailClip != null && part == null && PreviewClips.IsTimeVarying(_detailClip);
+            _detailTimeVarying = _detailClip != null && PreviewClips.IsTimeVarying(_detailClip);
             _detailTextureDirty = true;
         }
 
@@ -127,9 +165,9 @@ namespace Samon.FacialExpressionEditor.Editor
             var handName = hand == Hand.Left ? "左手" : "右手";
             EditorGUILayout.LabelField($"{handName}のFist（握り具合）", EditorStyles.boldLabel);
             EditorGUILayout.LabelField(
-                PreviewClips.IsTimeVarying(expression.clip)
-                    ? "この表情はクリップ自体が握り具合で動くように作られているので、そのまま握り具合で動かします。上のスライダーで確認できます。"
-                    : $"握り具合0でベース顔（無表情）、握り切ると「{expression.name}」になります。上のスライダーで確認できます。",
+                expression.useOriginalGripCurve
+                    ? "元クリップの時間軸を握り具合として使います。上のスライダーで確認できます。"
+                    : $"目元だけをベース顔から「{expression.name}」へ変化させます。口元は登録した表情のままです。対象はアバター設定で調整できます。",
                 EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space();
         }
@@ -142,8 +180,16 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             EditorGUI.BeginChangeCheck();
-            var name = EditorGUILayout.TextField("名前", expression.name);
-            if (EditorGUI.EndChangeCheck()) Modify(set, "表情の名前を変更", () => expression.name = name);
+            var name = EditorGUILayout.DelayedTextField("名前", expression.name);
+            if (EditorGUI.EndChangeCheck())
+            {
+                var error = ExpressionSetUtility.RenameExpression(set, expression, name);
+                if (!string.IsNullOrEmpty(error)) ShowNotification(new GUIContent(error), 4);
+                InvalidateDetailPreview();
+            }
+            DrawPlaybackSettings(set, expression);
+            DrawBaseFaceExclusions(expression);
+            if (GUILayout.Button("目・口などのクリップを合成…")) ExpressionComposerWindow.Open(set, expression.clip);
 
             using (new EditorGUI.DisabledScope(true))
             {
@@ -187,7 +233,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             var variant = Variant;
-            if (variant != null) DrawVariantDetail(variant, expression);
+            if (variant != null && variant.FindOverride(expression.id) != null) DrawVariantDetail(variant, expression);
 
             EditorGUILayout.Space();
             var uses = _usage.Of(expression.clip);
@@ -304,7 +350,8 @@ namespace Samon.FacialExpressionEditor.Editor
 
         // プレビューの下に、握り具合（Fist）やパラメータの値（元FXのレイヤー）のスライダーを出すか。
         private bool UsesDetailSlider =>
-            (_selectionKind == SelectionKind.Fist || _selectionKind == SelectionKind.OriginalClip) && _detailTimeVarying;
+            (_selectionKind == SelectionKind.Fist || (_selectionKind == SelectionKind.OriginalClip &&
+                FxAnalysis.FaceLayerTriggers.TryGetValue(_selectedId, out var triggers) && triggers.Any(t => t.Clip == _selectedClip && t.Gradual))) && _detailTimeVarying;
 
         /// <summary>
         /// 元FXの、コンタクト・PhysBoneなどで顔を動かすレイヤーのクリップ。何で出るかと、ビルドでの扱い。

@@ -23,7 +23,9 @@ namespace Samon.FacialExpressionEditor.Editor
         public List<(EditorCurveBinding binding, float closedValue)> BlinkShapes { get; private set; } = new List<(EditorCurveBinding, float)>();
         // 元FXのまばたきのアニメーションをそのまま使うとき、そのクリップ。
         public AnimationClip BlinkClip { get; private set; }
-        public bool ReplacesBlink => BlinkShapes.Count > 0;
+        public bool ReplacesBlink => BlinkShapes.Count > 0 || BlinkClip != null;
+        public AnimationClip MouthCancelClip { get; private set; }
+        public string DanceParameter { get; private set; }
 
         // どれかの表情が視線・リップシンクを止める（このときは全ステートで指定し直す）。
         public bool ControlsEyes { get; private set; }
@@ -67,7 +69,16 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var plan = new FaceControlPlan();
             var descriptor = avatarRoot.GetComponent<VRCAvatarDescriptor>();
+            if (descriptor != null && !string.IsNullOrEmpty(set.lipSyncMeshPath))
+            {
+                var mesh = avatarRoot.transform.Find(set.lipSyncMeshPath)?.GetComponent<SkinnedMeshRenderer>();
+                if (mesh != null) descriptor.VisemeSkinnedMesh = mesh;
+            }
             var defaults = AvatarFaceDefaults.Find(descriptor, set);
+            var sourceFx = FxImporter.GetFx(descriptor);
+            if (set.protectDance && !string.IsNullOrWhiteSpace(set.danceParameter) && sourceFx != null &&
+                sourceFx.parameters.Any(p => p.name == set.danceParameter && p.type == AnimatorControllerParameterType.Int))
+                plan.DanceParameter = set.danceParameter;
             var expressions = buildPlan.Modes.SelectMany(m => m.Emotes)
                 .Concat(buildPlan.EmoteValues.Keys.Select(set.FindExpression))
                 .Where(e => e != null)
@@ -76,13 +87,20 @@ namespace Samon.FacialExpressionEditor.Editor
 
             // まばたきは必ず置き換える（まばたきのシェイプキーが見つかれば）。
             var blinkShapes = set.customBlink ? set.blinkShapes : defaults.BlinkShapes;
+            if (set.blinkAnimation != null)
+            {
+                plan.BlinkClip = set.blinkAnimation;
+                blinkShapes = AnimationUtility.GetCurveBindings(set.blinkAnimation)
+                    .Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape."))
+                    .Select(b => new BlinkShape { path = b.path, blendShape = b.propertyName.Substring(11), closedValue = 100 }).ToList();
+            }
             plan.BlinkShapes = blinkShapes
                 .Select(s => (Binding(s), s.closedValue))
                 .Where(s => AnimationUtility.GetFloatValue(avatarRoot, s.Item1, out _))
                 .ToList();
             if (plan.ReplacesBlink)
             {
-                if (!set.customBlink) plan.BlinkClip = defaults.BlinkClip;
+                if (set.blinkAnimation == null && !set.customBlink) plan.BlinkClip = defaults.BlinkClip;
                 if (defaults.BlinkLayer != null) plan.BlinkLayersToReplace.Add(defaults.BlinkLayer);
             }
 
@@ -94,6 +112,12 @@ namespace Samon.FacialExpressionEditor.Editor
                 .Where(b => AnimationUtility.GetFloatValue(avatarRoot, b, out _))
                 .Distinct()
                 .ToList();
+            if (set.mouthCancelAnimation != null)
+            {
+                plan.MouthMorphs = AnimationUtility.GetCurveBindings(set.mouthCancelAnimation)
+                    .Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape.") && AnimationUtility.GetFloatValue(avatarRoot, b, out _)).ToList();
+                if (set.mouthCancelUseClipValues) plan.MouthCancelClip = set.mouthCancelAnimation;
+            }
             plan.UsesMouthCancelParameter = plan.HasMouthCanceler && expressions.Any(e => !plan.CancelsMouth(e));
 
             // 元FXの口モーフキャンセラーは、自分で編集して空にしたときも取り除く（生成したものだけで扱う）。

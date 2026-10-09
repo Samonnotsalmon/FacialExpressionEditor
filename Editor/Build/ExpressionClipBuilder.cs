@@ -30,8 +30,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             if (_cache.TryGetValue(expression.id, out var cached)) return cached;
 
-            var overridden = FaceVariantUtility.EffectiveOverride(_variant, expression);
-            var source = overridden != null ? overridden.clip : expression.clip;
+            var source = PreviewClips.ForExpression(expression, _variant, _avatarRoot);
             var clip = VirtualClip.Create(NameOf(expression));
             if (source != null)
             {
@@ -39,11 +38,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 CopyCurves(source, clip, null);
             }
 
-            if (_variant != null)
-            {
-                BaseFaceProcessor.Apply(_variant, expression.id, overridden != null, _avatarRoot,
-                    clip.GetFloatCurve, clip.SetFloatCurve);
-            }
+            PreviewClips.Release(source);
 
             _cache[expression.id] = clip;
             return clip;
@@ -56,7 +51,6 @@ namespace Samon.FacialExpressionEditor.Editor
         public VirtualClip BuildFist(Expression expression)
         {
             var clip = Build(expression);
-            if (FistBlend.IsTimeVarying(ClipCurves.Of(clip))) return clip;
 
             var key = $"{expression.id}|fist";
             if (_cache.TryGetValue(key, out var cached)) return cached;
@@ -65,7 +59,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var settings = fist.Settings;
             settings.loopTime = false;
             fist.Settings = settings;
-            FistBlend.FromBaseFace(ClipCurves.Of(clip), _avatarRoot, ClipCurves.Of(fist));
+            FistBlend.FromBaseFace(ClipCurves.Of(clip), _avatarRoot, ClipCurves.Of(fist), _set, expression.useOriginalGripCurve && !expression.freezeAnimation, _variant);
 
             _cache[key] = fist;
             return fist;
@@ -138,7 +132,11 @@ namespace Samon.FacialExpressionEditor.Editor
         public VirtualClip BuildPart(FacialPart part)
         {
             var clip = VirtualClip.Create(FxNames.Part(_set, part));
-            if (part.clip != null) CopyCurves(part.clip, clip, new HashSet<string>(part.properties));
+            if (part.clip != null)
+            {
+                clip.Settings = AnimationUtility.GetAnimationClipSettings(part.clip);
+                CopyCurves(part.clip, clip, new HashSet<string>(part.properties));
+            }
             return clip;
         }
 

@@ -19,7 +19,10 @@ namespace Samon.FacialExpressionEditor.Editor
         [SerializeField] private bool _showMouthMorphs;
 
         private List<BlinkShape> BlinkShapesInUse(ExpressionSet set) => set.customBlink ? set.blinkShapes : FaceDefaults.BlinkShapes;
-        private List<BlendShapeRef> MouthMorphsInUse(ExpressionSet set) => set.customMouthMorphs ? set.mouthMorphs : FaceDefaults.MouthMorphs;
+        private List<BlendShapeRef> MouthMorphsInUse(ExpressionSet set) => set.mouthCancelAnimation != null
+            ? AnimationUtility.GetCurveBindings(set.mouthCancelAnimation).Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape."))
+                .Select(b => new BlendShapeRef { path = b.path, blendShape = b.propertyName.Substring(11) }).ToList()
+            : set.customMouthMorphs ? set.mouthMorphs : FaceDefaults.MouthMorphs;
 
         private void DrawFaceTab(ExpressionSet set)
         {
@@ -33,6 +36,13 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawBlinkSettings(ExpressionSet set)
         {
             EditorGUILayout.LabelField("まばたき", EditorStyles.boldLabel);
+            var manual = (AnimationClip)EditorGUILayout.ObjectField("指定クリップ（D&D）", set.blinkAnimation, typeof(AnimationClip), false);
+            if (manual != set.blinkAnimation) Modify(set, "まばたきクリップを指定", () => set.blinkAnimation = manual);
+            if (manual != null)
+            {
+                EditorGUILayout.HelpBox("指定クリップを繰り返し再生します。下の自動検出・シェイプキー設定より優先します。", MessageType.Info);
+                if (GUILayout.Button("この瞬きをプレビュー")) Select(SelectionKind.Clip, null, manual);
+            }
             EditorGUILayout.LabelField("ビルド時にVRChatのまばたきを止め、下のまばたきのアニメーションに置き換えます（まばたきを止める表情でも、視線は動かせます）。",
                 EditorStyles.wordWrappedMiniLabel);
 
@@ -186,6 +196,10 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawMouthCanceler(ExpressionSet set)
         {
             EditorGUILayout.LabelField("口モーフキャンセラー", EditorStyles.boldLabel);
+            var manual = (AnimationClip)EditorGUILayout.ObjectField("対象クリップ（D&D）", set.mouthCancelAnimation, typeof(AnimationClip), false);
+            var useValues = EditorGUILayout.ToggleLeft("指定クリップの先頭の値に戻す（オフならベース顔）", set.mouthCancelUseClipValues);
+            if (manual != set.mouthCancelAnimation || useValues != set.mouthCancelUseClipValues)
+                Modify(set, "口キャンセルの指定", () => { set.mouthCancelAnimation = manual; set.mouthCancelUseClipValues = useValues; });
             EditorGUILayout.LabelField("話している間、口のシェイプキーをベース顔の値に戻し、表情の口とリップシンクの口が重ならないようにします。" +
                                        "表情ごとに止められます（上の一覧）。",
                 EditorStyles.wordWrappedMiniLabel);

@@ -36,15 +36,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         public static AnimatorController GetFx(VRCAvatarDescriptor descriptor)
         {
-            if (descriptor == null || !descriptor.customizeAnimationLayers) return null;
-            foreach (var layer in descriptor.baseAnimationLayers)
-            {
-                if (layer.type == VRCAvatarDescriptor.AnimLayerType.FX && !layer.isDefault)
-                {
-                    return layer.animatorController as AnimatorController;
-                }
-            }
-            return null;
+            return AvatarFxSources.Get(descriptor);
         }
 
         /// <summary>
@@ -88,6 +80,7 @@ namespace Samon.FacialExpressionEditor.Editor
             for (var i = 0; i < fx.layers.Length; i++)
             {
                 var layer = fx.layers[i];
+                if (set.explicitLayerSelection && !set.importLayerNames.Contains(layer.name)) continue;
                 var layerEntries = CollectGestureEntries(layer.stateMachine)
                     .Where(e => !IsDummyClip(e.Clip, avatarRoot))
                     .ToList();
@@ -108,17 +101,17 @@ namespace Samon.FacialExpressionEditor.Editor
             if (lastLayerOfHand.TryGetValue(Hand.Left, out var leftIndex) &&
                 lastLayerOfHand.TryGetValue(Hand.Right, out var rightIndex))
             {
-                dominantHand = leftIndex > rightIndex ? Hand.Left : Hand.Right;
+                dominantHand = Hand.Right;
             }
 
             // ジェスチャー以外の条件ごとに組を分ける。条件の無いものは全部の組に入れる。
             var groups = entries
-                .Where(e => e.ExtraConditions.Count > 0)
-                .GroupBy(e => SignatureOf(e.ExtraConditions))
+                .Where(e => e.ExtraConditions.Count > 0 || e.SourceGroup != "")
+                .GroupBy(e => e.SourceGroup + "|" + SignatureOf(e.ExtraConditions))
                 .OrderBy(g => g.Key)
-                .Select(g => g.First().ExtraConditions)
+                .Select(g => (conditions: g.First().ExtraConditions, source: g.First().SourceGroup))
                 .ToList();
-            if (groups.Count == 0) groups.Add(new List<AnimatorCondition>());
+            if (groups.Count == 0) groups.Add((new List<AnimatorCondition>(), ""));
 
             var menuNames = MenuToggleNames(descriptor.expressionsMenu);
             var previous = set.gestureSets;
@@ -127,9 +120,9 @@ namespace Samon.FacialExpressionEditor.Editor
 
             for (var g = 0; g < groups.Count; g++)
             {
-                var signature = SignatureOf(groups[g]);
+                var signature = SignatureOf(groups[g].conditions);
                 // 名前はメニューの項目名。無ければ、1組だけなら Core、複数ならセット1, 2, …
-                var name = NameFor(groups[g], menuNames) ?? (groups.Count == 1 ? GestureSet.DefaultName : $"セット{g + 1}");
+                var name = groups[g].source != "" ? groups[g].source : NameFor(groups[g].conditions, menuNames) ?? (groups.Count == 1 ? GestureSet.DefaultName : $"セット{g + 1}");
                 // 取り込み直しでは、同じ名前（どちらも1組だけならその組）の表情セットのIDを引き継ぐ（表情メニューの項目がつながったままになる）。
                 // 1組どうしで名前が違うときは、自分で付けた名前なら残し、自動の名前（セット1 など）なら新しい名前にする。
                 var old = previous.Find(s => s.name == name) ?? (groups.Count == 1 && previous.Count == 1 ? previous[0] : null);
@@ -148,11 +141,12 @@ namespace Samon.FacialExpressionEditor.Editor
                 foreach (var entry in entries)
                 {
                     var entrySignature = SignatureOf(entry.ExtraConditions);
+                    if (entry.SourceGroup != "" && entry.SourceGroup != groups[g].source) continue;
                     if (entrySignature != "" && entrySignature != signature) continue;
 
                     var table = entry.Hand == Hand.Left ? gestureSet.mapping.left : gestureSet.mapping.right;
                     var index = (int)entry.Gesture;
-                    if (!string.IsNullOrEmpty(table[index])) continue;
+                    if (index < 0 || index >= table.Length) continue;
 
                     var expression = ExpressionSetUtility.FindExpressionByClip(set, entry.Clip);
                     if (expression == null)
@@ -163,7 +157,7 @@ namespace Samon.FacialExpressionEditor.Editor
                         result.AddedExpressions++;
                     }
 
-                    table[index] = expression.id;
+                    if (string.IsNullOrEmpty(table[index])) table[index] = expression.id;
                 }
 
                 set.gestureSets.Add(gestureSet);
@@ -189,6 +183,13 @@ namespace Samon.FacialExpressionEditor.Editor
             // 新しく追加した表情のまばたき・リップシンクは、元FXの指定に合わせる（既存の表情の設定は変えない）。
             ImportFaceControl(descriptor, set, added);
             set.faceControlImported = true;
+            foreach (var expression in added)
+            {
+                expression.useOriginalGripCurve = fx.layers.SelectMany(l => AllStates(l.stateMachine)).Any(s =>
+                    s.motion == expression.clip && s.timeParameterActive &&
+                    (s.timeParameter == "GestureLeftWeight" || s.timeParameter == "GestureRightWeight"));
+                if (set.independentClips && !ExpressionSetUtility.OwnsClip(set, expression.clip)) ExpressionSetUtility.MakeClipEditable(set, expression);
+            }
 
             // 前の取り込みで入った、パッケージの中のダミー（ProxyAnim など）の表情と、Assets の外のフォルダを外す。
             foreach (var dummy in set.expressions.Where(e => e.clip != null && !AssetDatabase.GetAssetPath(e.clip).StartsWith("Assets/") &&
@@ -378,11 +379,15 @@ namespace Samon.FacialExpressionEditor.Editor
             public HandGesture Gesture;
             public AnimationClip Clip;
             public List<AnimatorCondition> ExtraConditions;
+            public string SourceGroup = "";
         }
 
-        private static IEnumerable<GestureEntry> CollectGestureEntries(AnimatorStateMachine root)
+        private static IEnumerable<GestureEntry> CollectGestureEntries(AnimatorStateMachine root, string group = "")
         {
-            foreach (var transition in AllTransitions(root))
+            var transitions = root.anyStateTransitions.Cast<AnimatorTransitionBase>()
+                .Concat(root.states.SelectMany(s => s.state.transitions))
+                .Concat(root.entryTransitions);
+            foreach (var transition in transitions)
             {
                 if (transition.destinationState == null) continue;
 
@@ -398,9 +403,14 @@ namespace Samon.FacialExpressionEditor.Editor
                     Hand = gestureCondition.parameter == GestureLeft ? Hand.Left : Hand.Right,
                     Gesture = (HandGesture)Mathf.RoundToInt(gestureCondition.threshold),
                     Clip = clip,
-                    ExtraConditions = transition.conditions.Where(c => c.parameter != gestureCondition.parameter).ToList(),
+                    ExtraConditions = transition.conditions.Where(c => c.parameter != GestureLeft && c.parameter != GestureRight && c.parameter != "AFK").ToList(),
+                    SourceGroup = group,
                 };
             }
+            foreach (var child in root.stateMachines)
+                foreach (var entry in CollectGestureEntries(child.stateMachine,
+                    child.stateMachine.entryTransitions.Length > 0 ? child.stateMachine.name : group))
+                    yield return entry;
         }
 
         private static string SignatureOf(IEnumerable<AnimatorCondition> conditions)

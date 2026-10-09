@@ -24,6 +24,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             var variant = ScriptableObject.CreateInstance<FaceVariant>();
             AssetDatabase.CreateAsset(variant, path);
+            variant.useCapturedValues = set.independentClips;
             DetectBaseFace(variant, set, avatarRoot);
             AssetDatabase.SaveAssets();
             return variant;
@@ -61,6 +62,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var facePath = face != null ? AnimationUtility.CalculateTransformPath(face.transform, avatarRoot.transform) : null;
             var paths = animated.Select(a => a.path).ToList();
             if (facePath != null) paths.Add(facePath);
+            if (set != null && set.faceMeshPaths.Count > 0) paths = set.faceMeshPaths.ToList();
 
             foreach (var path in paths.Distinct())
             {
@@ -92,7 +94,7 @@ namespace Samon.FacialExpressionEditor.Editor
                         variantValue = value,
                         enabled = previousKeys.TryGetValue((path, name), out var old)
                             ? old.enabled
-                            : animated.Contains((path, name)) || path == facePath,
+                            : animated.Contains((path, name)) || path == facePath || (set != null && set.faceMeshPaths.Contains(path)),
                     });
                 }
             }

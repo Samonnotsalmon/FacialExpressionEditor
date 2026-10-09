@@ -47,6 +47,12 @@ namespace Samon.FacialExpressionEditor.Editor
         // プレビューと元FXの読み取りに使うアバター（表情設定が入っているアバターか、編集に使うアバター）。
         private GameObject AvatarRoot => AvatarSetup.AvatarRootOf(_avatar);
         private Transform Root => AvatarRoot != null ? AvatarRoot.transform : null;
+        private bool IsSelectedTarget(Transform target)
+        {
+            if (Set == null || Set.faceMeshPaths.Count + Set.linkedObjectPaths.Count == 0) return true;
+            var path = PathOf(target, Root);
+            return Set.faceMeshPaths.Contains(path) || Set.linkedObjectPaths.Contains(path);
+        }
 
         // 今編集している（次に書き込む）クリップ。差し替えがあればそちら。AFKでは元のクリップを変えないので無し。
         private AnimationClip TargetClip => IsAfk ? null : Override != null ? Override.clip : Expression?.clip;
@@ -255,7 +261,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
             else
             {
-                EditorGUILayout.HelpBox("共有の表情を編集しています（すべての顔に反映）。", MessageType.Info);
+                EditorGUILayout.HelpBox(Set.independentClips ? "このベース顔専用の表情クリップを編集しています。" : "この表情データで使うクリップを編集しています。", MessageType.Info);
                 if (expression.clip != null && !ExpressionSetUtility.OwnsClip(Set, expression.clip))
                 {
                     EditorGUILayout.LabelField("作者のクリップは、最初に編集したときに複製して編集します（元のファイルは変わりません）。",

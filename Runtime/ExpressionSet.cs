@@ -12,6 +12,21 @@ namespace Samon.FacialExpressionEditor
     {
         // 登録フォルダはGUIDで持つ（フォルダを移動・改名しても外れないように）。
         public List<string> libraryFolderGuids = new List<string>();
+        public bool independentClips;
+        public List<string> faceMeshPaths = new List<string>();
+        public List<string> linkedObjectPaths = new List<string>();
+        public string lipSyncMeshPath = "";
+        public bool customFistEyeProperties;
+        public List<string> fistEyeProperties = new List<string>();
+        public bool explicitLayerSelection;
+        public List<string> importLayerNames = new List<string>();
+        public bool explicitMenuSelection;
+        public List<OriginalMenuSelection> replacedMenuItems = new List<OriginalMenuSelection>();
+        public AnimationClip blinkAnimation;
+        public AnimationClip mouthCancelAnimation;
+        public bool mouthCancelUseClipValues;
+        public bool protectDance = true;
+        public string danceParameter = "VRCEmoteFXConect";
 
         public float defaultTransitionDuration = 0.1f;
 

@@ -150,6 +150,10 @@ namespace Samon.FacialExpressionEditor.Editor
                     : set.menu.Count > 0
                         ? EmoteFolderControls("")
                         : emoteModes.Select(m => GestureSetFolder(m, m.GestureSet.name)).ToList();
+                // 値0のButtonは押している間も離した後も0。表情選択だけ解除し、パーツは保持する。
+                var release = Toggle("固定解除", BuildPlan.EmoteParameter, 0);
+                release.type = Control.ControlType.Button;
+                emoteControls.Insert(0, release);
                 rootControls.Add(SubMenu("表情選択", Menu(context, "表情選択", emoteControls)));
             }
 
@@ -283,6 +287,17 @@ namespace Samon.FacialExpressionEditor.Editor
         private static void RemoveReplacedParameters(BuildContext context, VRCAvatarDescriptor descriptor, ExpressionSet set,
             IEnumerable<string> otherReplacedLayers)
         {
+            if (set.explicitMenuSelection)
+            {
+                var clones = new Dictionary<VRCExpressionsMenu, VRCExpressionsMenu>();
+                var none = new HashSet<string>();
+                if (descriptor.expressionsMenu != null)
+                    descriptor.expressionsMenu = CloneMenuWithout(context, descriptor.expressionsMenu, none, clones, set.replacedMenuItems);
+                foreach (var installer in context.AvatarRootObject.GetComponentsInChildren<ModularAvatarMenuInstaller>(true))
+                    if (installer.menuToAppend != null) installer.menuToAppend = CloneMenuWithout(context, installer.menuToAppend, none, clones, set.replacedMenuItems);
+                // Keep parameters: an unselected menu or another gimmick can still use them.
+                return;
+            }
             var fx = FxImporter.GetFx(descriptor);
             if (fx == null || descriptor.expressionParameters == null) return;
 
@@ -310,7 +325,7 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         private static VRCExpressionsMenu CloneMenuWithout(BuildContext context, VRCExpressionsMenu menu,
-            HashSet<string> removed, Dictionary<VRCExpressionsMenu, VRCExpressionsMenu> clones)
+            HashSet<string> removed, Dictionary<VRCExpressionsMenu, VRCExpressionsMenu> clones, List<OriginalMenuSelection> selected = null)
         {
             if (clones.TryGetValue(menu, out var existing)) return existing;
 
@@ -319,13 +334,15 @@ namespace Samon.FacialExpressionEditor.Editor
             clones[menu] = clone;
 
             var controls = new List<Control>();
-            foreach (var control in menu.controls)
+            for (var index = 0; index < menu.controls.Count; index++)
             {
+                var control = menu.controls[index];
+                if (selected != null && selected.Any(s => s.menu == menu && s.index == index && s.controlName == control.name)) continue;
                 if (UsesRemoved(control, removed)) continue;
 
                 if (control.type == Control.ControlType.SubMenu && control.subMenu != null)
                 {
-                    var sub = CloneMenuWithout(context, control.subMenu, removed, clones);
+                    var sub = CloneMenuWithout(context, control.subMenu, removed, clones, selected);
                     // 取り除いた結果サブメニューが空になったら、サブメニューごと外す。
                     if (sub.controls.Count == 0 && control.subMenu.controls.Count > 0) continue;
 

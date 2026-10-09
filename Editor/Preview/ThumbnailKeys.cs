@@ -54,10 +54,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     hash.Append(binding.path);
                     hash.Append(binding.propertyName);
+                    hash.Append(binding.type.FullName);
                     foreach (var key in AnimationUtility.GetEditorCurve(clip, binding).keys)
                     {
                         hash.Append(key.time);
                         hash.Append(key.value);
+                        hash.Append(key.inTangent); hash.Append(key.outTangent);
+                        hash.Append(key.inWeight); hash.Append(key.outWeight); hash.Append((int)key.weightedMode);
                     }
                 }
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
@@ -86,7 +89,7 @@ namespace Samon.FacialExpressionEditor.Editor
         public static string Expression(Expression expression, FaceVariant variant, string faceHash)
         {
             var overridden = variant != null ? variant.FindOverride(expression.id) : null;
-            return $"expr|{expression.id}|{AssetKey(expression.clip)}|{AssetKey(overridden?.clip)}|{AssetKey(variant)}|{faceHash}";
+            return $"expr|{expression.id}|{expression.freezeAnimation}|{expression.freezePosition}|{AssetKey(expression.clip)}|{AssetKey(overridden?.clip)}|{AssetKey(variant)}|{faceHash}";
         }
 
         public static string Part(FacialPart part, string faceHash)

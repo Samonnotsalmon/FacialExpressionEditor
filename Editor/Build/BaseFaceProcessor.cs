@@ -34,9 +34,17 @@ namespace Samon.FacialExpressionEditor.Editor
 
                     var binding = Binding(key.path, key.blendShape);
                     var curve = getCurve(binding);
+                    var excluded = variant.baseFaceExclusions.Exists(e => e.expressionId == expressionId && e.keys.Contains(key.Key));
+                    if (excluded)
+                    {
+                        // 元の動きは保持する。元にカーブが無い場合のみ参照顔の値を明示する。
+                        if (curve == null) setCurve(binding, AnimationCurve.Constant(0, 0, key.referenceValue));
+                        continue;
+                    }
+                    var baseValue = variant.useCapturedValues ? key.variantValue : current.Value;
                     setCurve(binding, curve == null
-                        ? new AnimationCurve(new Keyframe(0, current.Value))
-                        : Offset(curve, current.Value - key.referenceValue));
+                        ? new AnimationCurve(new Keyframe(0, baseValue))
+                        : Offset(curve, baseValue - key.referenceValue));
                 }
             }
 

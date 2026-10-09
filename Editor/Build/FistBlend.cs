@@ -55,12 +55,21 @@ namespace Samon.FacialExpressionEditor.Editor
 
         public static bool IsTimeVarying(ClipCurves clip)
         {
-            return clip.FloatBindings()
+            return clip.ObjectBindings().Select(clip.GetObject).Any(k => k != null && k.Length > 1 && k.Any(v => v.value != k[0].value)) || clip.FloatBindings()
                 .Select(clip.GetFloat)
-                .Any(c => c != null && c.length > 1 && c.keys.Any(k => !Mathf.Approximately(k.value, c.keys[0].value)));
+                .Any(c => c != null && c.length > 1 && (c.keys.Any(k => !Mathf.Approximately(k.value, c.keys[0].value)) ||
+                    c.keys.Zip(c.keys.Skip(1), (a, b) => c.Evaluate(Mathf.Lerp(a.time, b.time, .25f)) != a.value || c.Evaluate(Mathf.Lerp(a.time, b.time, .75f)) != a.value).Any(v => v)));
         }
 
-        public static void FromBaseFace(ClipCurves expression, GameObject avatarRoot, ClipCurves output)
+        public static bool IsEyeProperty(EditorCurveBinding binding, ExpressionSet set = null)
+        {
+            if (set != null && set.customFistEyeProperties) return set.fistEyeProperties.Contains(ExpressionClipBuilder.Key(binding));
+            if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.")) return false;
+            var name = binding.propertyName.Substring(11).ToLowerInvariant();
+            return new[] { "eye", "blink", "wink", "brow", "目", "瞳", "瞬", "まばたき", "ウィンク", "眉" }.Any(name.Contains);
+        }
+
+        public static void FromBaseFace(ClipCurves expression, GameObject avatarRoot, ClipCurves output, ExpressionSet set = null, bool originalGrip = false, FaceVariant baseline = null)
         {
             foreach (var binding in expression.FloatBindings().ToList())
             {
@@ -68,7 +77,18 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (curve == null || curve.length == 0) continue;
 
                 var end = curve.Evaluate(curve.keys[curve.length - 1].time);
+                if (!IsEyeProperty(binding, set))
+                {
+                    output.SetFloat(binding, AnimationCurve.Constant(0, originalGrip ? curve.keys[curve.length - 1].time : Length, end));
+                    continue;
+                }
+                if (originalGrip) { output.SetFloat(binding, curve); continue; }
                 if (!AnimationUtility.GetFloatValue(avatarRoot, binding, out var start)) start = end;
+                if (baseline != null && baseline.useCapturedValues)
+                {
+                    var key = baseline.baseFace.Find(k => k.enabled && k.path == binding.path && "blendShape." + k.blendShape == binding.propertyName);
+                    if (key != null) start = key.variantValue;
+                }
 
                 var blend = new AnimationCurve(new Keyframe(0, start), new Keyframe(Length, end));
                 for (var i = 0; i < blend.length; i++)
@@ -85,13 +105,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (keys == null || keys.Length == 0) continue;
 
                 var end = keys[keys.Length - 1].value;
-                if (!AnimationUtility.GetObjectReferenceValue(avatarRoot, binding, out Object start)) start = end;
-
                 output.SetObject(binding, new[]
                 {
-                    new ObjectReferenceKeyframe { time = 0, value = start },
-                    new ObjectReferenceKeyframe { time = ObjectSwitchTime, value = end },
-                    new ObjectReferenceKeyframe { time = Length, value = end },
+                    new ObjectReferenceKeyframe { time = 0, value = end },
                 });
             }
         }

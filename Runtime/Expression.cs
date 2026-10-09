@@ -17,6 +17,11 @@ namespace Samon.FacialExpressionEditor
         // 作者のクリップを編集するために複製したとき、その元のクリップ（元FXの取り込みやライブラリで、同じ表情として扱う）。
         public AnimationClip originalClip;
 
+        // 時間再生と握り込みを区別する。時間変化の有無から用途を推測しない。
+        public bool useOriginalGripCurve;
+        public bool freezeAnimation;
+        [Range(0, 1)] public float freezePosition = 1;
+
         // ベース顔を残すかどうかは、顔ごとに変わるので FaceVariant 側で持つ。
         // まばたき：オフなら、この表情の間はまばたきを止める（目を閉じる表情など）。
         public bool enableBlink = true;

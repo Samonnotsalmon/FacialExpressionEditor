@@ -29,7 +29,7 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(FacialExpressionAvatar.expressionSet)),
                 new GUIContent("表情データ"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(FacialExpressionAvatar.faceVariant)),
-                new GUIContent("顔バリアント"));
+                new GUIContent("ベース顔"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(FacialExpressionAvatar.sourceAvatar)),
                 new GUIContent("編集に使うアバター", "表情エディタで、プレビューと元FXの読み取りに使うアバター（プレハブ）。アバターの中に入れたときは、入れた先のアバターを使います。"));
             serializedObject.ApplyModifiedProperties();
@@ -64,14 +64,18 @@ namespace Samon.FacialExpressionEditor.Editor
             DrawNewExpression(avatar, root, set);
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("顔バリアント", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("ベース顔", EditorStyles.boldLabel);
             if (avatar.faceVariant == null)
             {
                 DrawCreateVariant(avatar, root, set);
             }
-            else
+            else if (!set.independentClips)
             {
                 DrawVariant(root, set, avatar.faceVariant);
+            }
+            else
+            {
+                EditorGUILayout.LabelField($"{avatar.faceVariant.baseFace.Count(k => k.enabled)} 項目を保存しています。更新・補正の除外はエディタの「アバター設定」で行います。", EditorStyles.wordWrappedMiniLabel);
             }
         }
 
@@ -85,21 +89,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var replaced = set.originalGestureLayers.Concat(set.originalPartLayers).ToList();
             EditorGUILayout.LabelField("置き換える元FXレイヤー", replaced.Count > 0 ? string.Join(", ", replaced) : "（なし）");
 
-            if (fx != null)
-            {
-                if (GUILayout.Button("元FXからジェスチャーを取り込み直す"))
-                {
-                    if (EditorUtility.DisplayDialog("取り込み直し",
-                            "表情セット（ジェスチャーの割り当て）と、置き換える元FXレイヤーを元FXの内容で設定し直します。\n" +
-                            "表情ごとの設定は同じクリップなら残り、同じ名前の表情セットは使い方の設定が残ります。", "取り込む", "キャンセル"))
-                    {
-                        var result = FxImporter.ImportGestures(descriptor, set);
-                        EditorUtility.DisplayDialog("元FXから取り込み", result.Summary(), "OK");
-                    }
-                }
-
-                DrawPartsImport(descriptor, set, fx.layers.Select(l => l.name).ToArray());
-            }
+            EditorGUILayout.LabelField("表情の取り込みはエディタ左側のクリップ／フォルダ指定から行います。", EditorStyles.wordWrappedMiniLabel);
 
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -329,6 +319,19 @@ namespace Samon.FacialExpressionEditor.Editor
             var copy = ExpressionSetUtility.Duplicate(set, path);
             Undo.RecordObject(avatar, "表情データを複製");
             avatar.expressionSet = copy;
+            if (avatar.faceVariant != null)
+            {
+                var baseline = Instantiate(avatar.faceVariant);
+                AssetDatabase.CreateAsset(baseline, AssetDatabase.GenerateUniqueAssetPath(AssetPathUtility.FolderOf(copy) + "/" + AssetPathUtility.SafeFileName(copy.name) + "_ベース顔.asset"));
+                foreach (var replacement in baseline.overrides.Where(o => o.clip != null))
+                {
+                    var clip = Instantiate(replacement.clip);
+                    AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath(AssetPathUtility.FolderOf(copy) + "/" + AssetPathUtility.SafeFileName(clip.name) + ".anim"));
+                    replacement.clip = clip;
+                }
+                avatar.faceVariant = baseline;
+                EditorUtility.SetDirty(baseline); AssetDatabase.SaveAssets();
+            }
             EditorUtility.SetDirty(avatar);
         }
     }

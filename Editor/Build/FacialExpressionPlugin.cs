@@ -18,9 +18,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 .BeforePlugin("nadena.dev.modular-avatar")
                 .Run(GenerateMenuPass.Instance);
 
-            // MAより前に、元FXのジェスチャー・パーツレイヤーを生成レイヤーへ置き換えておく。
+            // MAで合成された付属FXも含めて、選択した表情レイヤーを置き換える。
             InPhase(BuildPhase.Transforming)
-                .BeforePlugin("nadena.dev.modular-avatar")
+                .AfterPlugin("nadena.dev.modular-avatar")
                 .WithRequiredExtension(typeof(AnimatorServicesContext), seq =>
                 {
                     seq.Run(GenerateFxPass.Instance);

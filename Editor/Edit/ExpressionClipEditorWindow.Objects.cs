@@ -72,7 +72,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             var clip = TargetClip;
             var shown = 0;
-            foreach (var renderer in Root.GetComponentsInChildren<Renderer>(true).Where(r => r is SkinnedMeshRenderer || r is MeshRenderer))
+            foreach (var renderer in Root.GetComponentsInChildren<Renderer>(true).Where(r => (r is SkinnedMeshRenderer || r is MeshRenderer) && IsSelectedTarget(r.transform)))
             {
                 var path = PathOf(renderer.transform, Root);
                 var materials = renderer.sharedMaterials;

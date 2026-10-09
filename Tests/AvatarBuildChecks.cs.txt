@@ -1,0 +1,58 @@
+// Run with isuzu-unity-cli execute_code in EditorTest, which has these avatar packages.
+var paths = new[]{
+ "Assets/Shinano/Prefab/Shinano.prefab", "Assets/MANUKA/Prefab/MANUKA_lilToon.prefab",
+ "Assets/onair/Alue/Prefab/Alue.prefab", "Assets/Kogomi/Kogomi.prefab",
+ "Assets/STUDIO_MOCA/NagiyaRuri/Prefab/Avatar_Simple/NagiyaRuri_Simple.prefab",
+ "Assets/STUDIO_MOCA/NagiyaRuri/_ModuleAssets/Prefab_MA_Avatar_Simple/NagiyaRuri_Modular_Simple.prefab"};
+var results = new System.Collections.Generic.List<object>();
+var folder="Assets/__FEE_BuildCheck_"+Guid.NewGuid().ToString("N");
+AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var previousFilter=Debug.unityLogger.filterLogType;
+try {
+ Debug.unityLogger.filterLogType=LogType.Warning;
+ for(var i=0;i<paths.Length;i++) {
+  var prefab=AssetDatabase.LoadAssetAtPath<GameObject>(paths[i]); if(prefab==null) throw new Exception("Missing fixture: "+paths[i]);
+  var avatar=UnityEngine.Object.Instantiate(prefab); avatar.name="FEE build verification";
+  UnityEngine.Object temporaryMenu=null;
+  try {
+   var descriptor=avatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+   var fxSource=Samon.FacialExpressionEditor.Editor.FxImporter.GetFx(descriptor);
+   var source=fxSource.animationClips.First(c=>AnimationUtility.GetCurveBindings(c).Any(b=>b.propertyName.StartsWith("blendShape.")));
+   AssetDatabase.CreateFolder(folder,i.ToString());
+   var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+   set.menuIcons=false; set.independentClips=true; set.faceControlImported=true; set.explicitMenuSelection=true;
+   AssetDatabase.CreateAsset(set,folder+"/"+i+"/Face.asset");
+   Samon.FacialExpressionEditor.Editor.ExpressionFileImporter.Import(set,new UnityEngine.Object[]{source});
+   set.originalGestureLayers=Samon.FacialExpressionEditor.Editor.FxImporter.PeekGestures(descriptor).layers;
+   var gesture=new Samon.FacialExpressionEditor.GestureSet{name="Core"}; gesture.mapping.right[2]=set.expressions[0].id;
+   set.gestureSets.Add(gesture);
+   set.gestureSets.Add(new Samon.FacialExpressionEditor.GestureSet{name="Core 2"});
+   Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.AddMenuFromSets(set);
+   if(descriptor.expressionsMenu!=null) {
+    var menu=UnityEngine.Object.Instantiate(descriptor.expressionsMenu); temporaryMenu=menu;
+    menu.controls.Add(new VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control{name="FEE selected menu removal",type=VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control.ControlType.Button});
+    set.replacedMenuItems.Add(new Samon.FacialExpressionEditor.OriginalMenuSelection{menu=menu,index=menu.controls.Count-1,controlName="FEE selected menu removal"});
+    descriptor.expressionsMenu=menu;
+   }
+   avatar.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet=set;
+   nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(avatar);
+   var fx=(UnityEditor.Animations.AnimatorController)descriptor.baseAnimationLayers.First(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
+   if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Expression")) throw new Exception("Missing generated expression layer");
+   if(fx.layers.Any(l=>set.originalGestureLayers.Contains(l.name))) throw new Exception("Original gesture layers were not replaced");
+   var visited=new System.Collections.Generic.HashSet<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu>();
+   var names=new System.Collections.Generic.List<string>();
+   void ReadMenu(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu menu) {if(menu==null || !visited.Add(menu))return;foreach(var c in menu.controls){names.Add(c.name);ReadMenu(c.subMenu);}}
+   ReadMenu(descriptor.expressionsMenu);
+   if(names.Contains("FEE selected menu removal") || !names.Contains("固定解除")) throw new Exception("Menu removal/reset check failed");
+   var dance=fx.layers.FirstOrDefault(l=>l.name=="[FacialExpressionEditor] Dance priority");
+   if(paths[i].Contains("NagiyaRuri")) {
+    if(dance==null || !fx.animationClips.Any(c=>c.name=="NGR_Holiday_FX")) throw new Exception("Dance face was lost");
+    var release=fx.layers.First(l=>l.name=="[FacialExpressionEditor] Emote Release");
+    if(release.stateMachine.states.Any(s=>s.state.name.Contains("suspend"))) throw new Exception("Dance would clear fixed expression on resume");
+    if(!fx.layers.First(l=>l.name=="[FacialExpressionEditor] Expression").stateMachine.states.Any(s=>s.state.name.Contains("suspend"))) throw new Exception("Missing dance suspension");
+   }
+   results.Add(new{avatar=paths[i],passed=true,fxLayers=fx.layers.Length,danceProtected=dance!=null});
+  } finally {UnityEngine.Object.DestroyImmediate(avatar); if(temporaryMenu!=null)UnityEngine.Object.DestroyImmediate(temporaryMenu);}
+ }
+ return results;
+} finally {Debug.unityLogger.filterLogType=previousFilter; AssetDatabase.DeleteAsset(folder);}

@@ -35,7 +35,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     mapping.dominantHand = dominant;
                 });
             }
-            EditorGUILayout.LabelField("Fistの「握り具合」をオンにした手は、握り具合0でベース顔（無表情）、握り切るとFistの表情になります。" +
+            EditorGUILayout.LabelField("Fistの「握り具合」をオンにした手は、目元をベース顔からFistの表情へ動かします。口元は登録した完成表情のままです。" +
                                        "オフの手は、握るとそのまま表情が出ます。",
                 EditorStyles.wordWrappedMiniLabel);
 

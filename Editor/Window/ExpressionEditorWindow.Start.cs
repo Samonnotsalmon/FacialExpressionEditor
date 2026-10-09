@@ -28,6 +28,7 @@ namespace Samon.FacialExpressionEditor.Editor
         [SerializeField] private ExpressionSet _startSharedSet;
         [SerializeField] private bool _startImportFx = true;
         [SerializeField] private List<DefaultAsset> _startFolders = new List<DefaultAsset>();
+        [SerializeField] private List<AnimationClip> _startClips = new List<AnimationClip>();
         [SerializeField] private string _startName = "";
         [SerializeField] private string _startDataFolder = "";
         [SerializeField] private bool _startPlaceInAvatar = true;
@@ -118,14 +119,10 @@ namespace Samon.FacialExpressionEditor.Editor
 
             // 同じ素体の表情データがあれば、共有するのを標準にする。
             var info = AnalyzeStart();
-            _startImportFx = info.GestureClips > 0 || info.PartClips > 0;
-            var best = info.Sets.FirstOrDefault();
-            if (best != null && MatchRatio(best, avatar) >= 0.8f)
-            {
-                _startShare = true;
-                _startSharedSet = best;
-                _startInfo = null;
-            }
+            _startImportFx = false;
+            _startShare = false;
+            _startSharedSet = null;
+            _startInfo = null;
         }
 
         private StartInfo AnalyzeStart()
@@ -373,77 +370,38 @@ namespace Samon.FacialExpressionEditor.Editor
                 var shown = string.Join("、", info.FaceDifferences.Take(4).Select(k => $"{k.blendShape} {k.referenceValue:0.#}→{k.variantValue:0.#}"));
                 var more = info.FaceDifferences.Count > 4 ? $" ほか {info.FaceDifferences.Count - 4} 件" : "";
                 text = $"元のプレハブ（{info.OriginalName}）との違い：{shown}{more}。\n" +
-                       "この顔を顔バリアント（ベース顔）にして、すべての表情に適用します。";
+                       "この顔をベース顔として保存し、複製した表情に適用します。";
             }
             EditorGUILayout.LabelField(text, EditorStyles.wordWrappedLabel);
         }
 
         private void DrawStartData(StartInfo info)
         {
-            EditorGUILayout.LabelField("表情データ", EditorStyles.boldLabel);
-            if (Radio(!_startShare, "新しく作る"))
-            {
-                _startShare = false;
-            }
-
-            using (new EditorGUI.DisabledScope(info.Sets.Count == 0))
-            {
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    if (Radio(_startShare, "ほかの顔のアバターと共有する", GUILayout.Width(220)))
-                    {
-                        _startShare = true;
-                        if (_startSharedSet == null) _startSharedSet = info.Sets.FirstOrDefault();
-                    }
-                    using (new EditorGUI.DisabledScope(!_startShare))
-                    {
-                        var index = info.Sets.IndexOf(_startSharedSet);
-                        var next = EditorGUILayout.Popup(index, info.Sets.Select(s => s.name).ToArray());
-                        if (next != index && next >= 0) _startSharedSet = info.Sets[next];
-                    }
-                }
-            }
-
-            EditorGUI.indentLevel++;
-            if (_startShare) DrawStartShared(info);
-            else DrawStartNew(info);
-            EditorGUI.indentLevel--;
+            _startShare = false;
+            EditorGUILayout.LabelField("このベース顔専用の表情データ", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("シーン上の顔から始め、取り込んだ表情は編集用に複製します。他の顔の表情は変更しません。", MessageType.Info);
+            DrawStartTargets();
+            DrawStartNew(info);
         }
 
         private void DrawStartNew(StartInfo info)
         {
             EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("元の表情アニメーション", EditorStyles.miniBoldLabel);
-            if (info.GestureClips == 0 && info.PartClips == 0)
+            _startImportFx = false;
+            EditorGUILayout.LabelField("取り込む表情ファイル", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("クリップ／フォルダを指定します。この顔専用に複製して一覧へ取り込み、目口の合成・左右への割り当て・Addへの登録を行います。FXからの自動割り当ては行いません。", MessageType.Info);
+            foreach (var clip in _startClips.ToList())
+                using (new EditorGUILayout.HorizontalScope())
+                { EditorGUILayout.ObjectField(clip, typeof(AnimationClip), false); if (GUILayout.Button("×", GUILayout.Width(22))) _startClips.Remove(clip); }
+            var addedClip = (AnimationClip)EditorGUILayout.ObjectField("クリップを追加", null, typeof(AnimationClip), false);
+            if (addedClip != null && !_startClips.Contains(addedClip)) _startClips.Add(addedClip);
+            var drop = GUILayoutUtility.GetRect(0, 34, GUILayout.ExpandWidth(true));
+            GUI.Box(drop, "複数のクリップ／フォルダをここにドロップ");
+            foreach (var source in AcceptExpressionSources(drop))
             {
-                EditorGUILayout.LabelField("元FXに、ジェスチャーで出している表情やパーツはありません。表情は自分で作ります。", EditorStyles.wordWrappedMiniLabel);
-                _startImportFx = false;
+                if (source is AnimationClip c && !_startClips.Contains(c)) _startClips.Add(c);
+                if (source is DefaultAsset folder && !_startFolders.Contains(folder)) _startFolders.Add(folder);
             }
-            else
-            {
-                var what = new List<string>();
-                if (info.GestureClips > 0) what.Add($"表情 {info.GestureClips} 個とジェスチャーの割り当て");
-                if (info.PartClips > 0) what.Add($"パーツ {info.PartClips} 個");
-                if (Radio(_startImportFx, $"使う（元FXから、{string.Join("、", what)}を取り込む）"))
-                {
-                    _startImportFx = true;
-                }
-                if (Radio(!_startImportFx, "使わない（表情は自分で作る）"))
-                {
-                    _startImportFx = false;
-                }
-
-                var layers = new List<string>();
-                if (info.GestureLayers.Count > 0) layers.Add($"ジェスチャー：{string.Join("、", info.GestureLayers)}");
-                if (info.PartLayers.Count > 0) layers.Add($"パーツ：{string.Join("、", info.PartLayers)}");
-                EditorGUILayout.LabelField($"元FXのレイヤー　{string.Join("　", layers)}", EditorStyles.wordWrappedMiniLabel);
-            }
-
-            EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("アニメーションのフォルダ", EditorStyles.miniBoldLabel);
-            EditorGUILayout.LabelField("入れたフォルダのアニメーションは、ウィンドウの左のライブラリに並び、ドラッグして表情にできます。" +
-                                       (_startImportFx ? "元FXから取り込む表情のフォルダは、自動で入ります。" : ""),
-                EditorStyles.wordWrappedMiniLabel);
             DrawStartFolders();
 
             EditorGUILayout.Space(4);
@@ -586,8 +544,18 @@ namespace Samon.FacialExpressionEditor.Editor
             }
             else
             {
-                folder = EnsureProjectFolder(_startDataFolder);
+                var parent = EnsureProjectFolder(_startDataFolder);
+                var uniqueFolder = AssetDatabase.GenerateUniqueAssetPath($"{parent}/{AssetPathUtility.SafeFileName(name)}");
+                folder = EnsureProjectFolder(uniqueFolder);
                 set = CreateInstance<ExpressionSet>();
+                set.independentClips = true;
+                set.faceMeshPaths = _startMeshPaths.ToList();
+                set.linkedObjectPaths = _startObjectPaths.ToList();
+                set.lipSyncMeshPath = _startLipMesh;
+                set.explicitLayerSelection = true;
+                set.importLayerNames = _startLayerNames.ToList();
+                set.explicitMenuSelection = true;
+                set.replacedMenuItems = _startRemovedMenus.ToList();
                 AssetDatabase.CreateAsset(set, AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(name)}{DataSuffix}.asset"));
                 if (_startImportFx && info.GestureClips > 0)
                 {
@@ -597,17 +565,25 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     set.gestureSets.Add(new GestureSet { name = GestureSet.DefaultName });
                     set.faceControlImported = true;
+                    set.originalGestureLayers = _startLayerNames.ToList();
+                    ExpressionSetUtility.AddMenuFromSets(set);
+                    set.menu.Add(new MenuNode { kind = MenuNodeKind.Folder, name = ExpressionSetUtility.AddFolderName });
                 }
                 if (_startImportFx)
                 {
-                    foreach (var layer in AnalyzeFx(descriptor, set).PartCandidates) FxImporter.ImportPartsFromLayer(descriptor, set, layer);
+                    foreach (var layer in AnalyzeFx(descriptor, set).PartCandidates.Where(set.importLayerNames.Contains)) FxImporter.ImportPartsFromLayer(descriptor, set, layer);
                 }
+                foreach (var part in set.parts.Where(p => !ExpressionSetUtility.OwnsPartClip(set, p.clip)))
+                    ExpressionSetUtility.MakePartClipEditable(set, part);
                 foreach (var library in _startFolders.Where(f => f != null)) FxImporter.AddFolder(set, library);
+                ExpressionFileImporter.Import(set, _startClips.Cast<Object>().Concat(_startFolders));
                 EditorUtility.SetDirty(set);
 
                 // 取り込んだ表情で動くシェイプキーも含めて、元のプレハブと違えば顔バリアントにする。
                 var differences = FaceVariantUtility.CompareWithOriginal(set, avatar, null, out _);
-                if (differences.Any(k => k.enabled)) variant = FaceVariantUtility.Create(set, avatar, name);
+                variant = FaceVariantUtility.Create(set, avatar, name + "_ベース顔");
+                variant.useCapturedValues = true;
+                EditorUtility.SetDirty(variant);
             }
             AssetDatabase.SaveAssets();
 
@@ -702,13 +678,8 @@ namespace Samon.FacialExpressionEditor.Editor
         /// </summary>
         private void AcceptFolderDrop(Rect rect, ExpressionSet set)
         {
-            var folders = AcceptFolders(rect).ToList();
-            if (folders.Count == 0) return;
-            Modify(set, "ライブラリにフォルダを追加", () =>
-            {
-                foreach (var folder in folders) FxImporter.AddFolder(set, folder);
-            });
-            MarkLibraryDirty();
+            var sources = AcceptExpressionSources(rect).ToList();
+            if (sources.Count > 0) ImportExpressionSources(set, sources);
         }
 
         /// <summary>

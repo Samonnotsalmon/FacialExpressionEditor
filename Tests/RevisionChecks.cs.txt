@@ -1,0 +1,60 @@
+// Run in the open Editor: isuzu-unity-cli call execute_code --file <this file>
+// Creates only a uniquely named temporary asset folder, removed in finally.
+var checks = new System.Collections.Generic.List<string>();
+void Check(bool pass, string name) { if (!pass) throw new Exception(name); checks.Add(name); }
+var assembly = typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+object Call(string type, string method, params object[] args) => assembly.GetType("Samon.FacialExpressionEditor.Editor." + type).GetMethod(method,
+    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic).Invoke(null, args);
+var folder = "Assets/__FEE_Verification_" + Guid.NewGuid().ToString("N");
+AssetDatabase.CreateFolder("Assets", folder.Substring(7));
+var root = new GameObject("Verification avatar");
+var face = new GameObject("Face"); face.transform.SetParent(root.transform);
+var mesh = new Mesh(); mesh.vertices = new[] {Vector3.zero};
+mesh.AddBlendShapeFrame("eye_close",100,new[]{Vector3.up},null,null);
+mesh.AddBlendShapeFrame("mouth_smile",100,new[]{Vector3.right},null,null);
+var renderer = face.AddComponent<SkinnedMeshRenderer>(); renderer.sharedMesh = mesh;
+var temporary = new System.Collections.Generic.List<UnityEngine.Object> {mesh};
+try {
+ var eye = EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.eye_close");
+ var mouth = EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.mouth_smile");
+ var clip = new AnimationClip {name="Original",frameRate=30};
+ AnimationUtility.SetEditorCurve(clip,eye,AnimationCurve.Linear(0,0,1,100));
+ AnimationUtility.SetEditorCurve(clip,mouth,AnimationCurve.Linear(0,10,1,40));
+ var settings=AnimationUtility.GetAnimationClipSettings(clip); settings.loopTime=true; AnimationUtility.SetAnimationClipSettings(clip,settings);
+ AssetDatabase.CreateAsset(clip,folder+"/Original.anim");
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>(); set.independentClips=true;
+ AssetDatabase.CreateFolder(folder,"First"); AssetDatabase.CreateAsset(set,folder+"/First/Face.asset");
+ Check(Samon.FacialExpressionEditor.Editor.ExpressionFileImporter.Import(set,new UnityEngine.Object[]{clip,clip})==1,"File import deduplicates sources");
+ var expression=set.expressions.Single();
+ Check(expression.clip!=clip && expression.originalClip==clip && expression.clip.isLooping,"Imported clip is independent and preserves looping");
+ Check(Samon.FacialExpressionEditor.Editor.ExpressionFileImporter.Import(set,new UnityEngine.Object[]{clip})==0,"Repeated import is idempotent");
+ AssetDatabase.CreateFolder(folder,"Second");
+ var copy=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.Duplicate(set,folder+"/Second/Face.asset");
+ AnimationUtility.SetEditorCurve(copy.expressions[0].clip,mouth,AnimationCurve.Constant(0,1,99));
+ Check(AnimationUtility.GetEditorCurve(expression.clip,mouth).Evaluate(1)==40 && AnimationUtility.GetEditorCurve(clip,mouth).Evaluate(1)==40,"Editing duplicated base-face set leaves both originals intact");
+ var baseline=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.FaceVariant>(); temporary.Add(baseline);
+ baseline.useCapturedValues=true;
+ baseline.baseFace.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path="Face",blendShape="mouth_smile",referenceValue=0,variantValue=20});
+ renderer.SetBlendShapeWeight(1,80);
+ var preview=(AnimationClip)Call("PreviewClips","ForExpression",expression,baseline,root); temporary.Add(preview);
+ Check(Mathf.Approximately(AnimationUtility.GetEditorCurve(preview,mouth).Evaluate(.5f),45),"Captured smile offsets animation without following unrelated scene changes");
+ baseline.baseFaceExclusions.Add(new Samon.FacialExpressionEditor.BaseFaceExclusion{expressionId=expression.id,keys=new System.Collections.Generic.List<string>{"Face|mouth_smile"}});
+ var excluded=(AnimationClip)Call("PreviewClips","ForExpression",expression,baseline,root); temporary.Add(excluded);
+ Check(Mathf.Approximately(AnimationUtility.GetEditorCurve(excluded,mouth).Evaluate(.5f),25),"Excluded smile preserves original motion");
+ expression.freezeAnimation=true; expression.freezePosition=.25f;
+ var frozen=(AnimationClip)Call("PreviewClips","ForExpression",expression,baseline,root); temporary.Add(frozen);
+ Check(Mathf.Approximately(AnimationUtility.GetEditorCurve(frozen,mouth).Evaluate(0),17.5f) && !(bool)Call("PreviewClips","IsTimeVarying",frozen) && !frozen.isLooping,"Freeze samples requested time and disables playback");
+ expression.freezeAnimation=false;
+ var fist=(AnimationClip)Call("PreviewClips","ForFist",expression,baseline,root,set); temporary.Add(fist);
+ Check(AnimationUtility.GetEditorCurve(fist,mouth).Evaluate(0)==40 && AnimationUtility.GetEditorCurve(fist,mouth).Evaluate(1)==40 && AnimationUtility.GetEditorCurve(fist,eye).Evaluate(0)==0 && AnimationUtility.GetEditorCurve(fist,eye).Evaluate(1)==100,"Fist moves eyes while preserving assigned mouth at all squeeze levels");
+ var mouthClip=new AnimationClip(); temporary.Add(mouthClip); AnimationUtility.SetEditorCurve(mouthClip,mouth,AnimationCurve.Constant(0,0,70));
+ var composed=(AnimationClip)Call("ExpressionComposerWindow","Compose",new AnimationClip[]{clip,mouthClip},new System.Collections.Generic.HashSet<string>[]{new System.Collections.Generic.HashSet<string>(),new System.Collections.Generic.HashSet<string>()}); temporary.Add(composed);
+ Check(composed.isLooping && Mathf.Approximately(AnimationUtility.GetEditorCurve(composed,eye).Evaluate(.5f),50) && AnimationUtility.GetEditorCurve(composed,mouth).Evaluate(.5f)==70,"Composition preserves animated eyes and prioritizes selected mouth source");
+ var rename=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.RenameExpression(set,expression,"Renamed");
+ Check(string.IsNullOrEmpty(rename) && expression.clip.name=="Renamed" && AssetDatabase.GetAssetPath(expression.clip).EndsWith("/Renamed.anim") && clip.name=="Original","Renaming changes owned asset and preserves source name");
+ return new {passed=checks.Count,checks};
+} finally {
+ UnityEngine.Object.DestroyImmediate(root);
+ foreach(var obj in temporary) if(obj!=null) UnityEngine.Object.DestroyImmediate(obj);
+ AssetDatabase.DeleteAsset(folder);
+}

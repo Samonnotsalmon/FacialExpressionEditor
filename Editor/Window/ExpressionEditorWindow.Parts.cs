@@ -71,6 +71,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     properties = FxImporter.DefaultPartProperties(dropped),
                 };
                 Modify(set, "パーツを追加", () => set.parts.Add(part));
+                ExpressionSetUtility.MakePartClipEditable(set, part);
                 Select(SelectionKind.Part, part.id, null);
                 MarkLibraryDirty();
                 GUIUtility.ExitGUI();

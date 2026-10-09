@@ -26,6 +26,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private List<AnimationClip> _libraryClips = new List<AnimationClip>();
         private List<string> _libraryFolders = new List<string>();
         private Dictionary<string, int> _libraryFolderCounts = new Dictionary<string, int>();
+        private readonly Dictionary<AnimationClip, string> _librarySourcePaths = new Dictionary<AnimationClip, string>();
         private List<AnimationClip> _filteredClips = new List<AnimationClip>();
 
         // 登録フォルダの一覧（Unity の標準のリスト。選ぶと絞り込み、下の＋で追加、－で選んでいるものを外す）。
@@ -64,15 +65,28 @@ namespace Samon.FacialExpressionEditor.Editor
 
             _libraryClips = clips
                 .Distinct()
+                .Where(c => { var e = ExpressionSetUtility.FindExpressionByClip(set, c); return e == null || e.clip == c; })
                 .OrderBy(AssetDatabase.GetAssetPath)
                 .ToList();
-            _libraryFolderCounts = _libraryFolders.ToDictionary(f => f, f => _libraryClips.Count(c => AssetDatabase.GetAssetPath(c).StartsWith(f + "/")));
+            _librarySourcePaths.Clear();
+            foreach (var clip in _libraryClips)
+            {
+                var expression = ExpressionSetUtility.FindExpressionByClip(set, clip);
+                _librarySourcePaths[clip] = AssetDatabase.GetAssetPath(expression?.originalClip != null ? expression.originalClip : clip);
+            }
+            _libraryFolderCounts = _libraryFolders.ToDictionary(f => f, f => _libraryClips.Count(c => _librarySourcePaths[c].StartsWith(f + "/")));
             _folderList = null;
         }
 
         private void DrawLibrary(ExpressionSet set)
         {
             EditorGUILayout.LabelField("クリップライブラリ", EditorStyles.boldLabel);
+            var source = EditorGUILayout.ObjectField("取り込み", null, typeof(Object), false);
+            if (source != null) ImportExpressionSources(set, new[] { source });
+            var drop = GUILayoutUtility.GetRect(0, 30, GUILayout.ExpandWidth(true));
+            GUI.Box(drop, "クリップ／フォルダをD&Dで取り込み");
+            var dropped = AcceptExpressionSources(drop).ToList();
+            if (dropped.Count > 0) ImportExpressionSources(set, dropped);
 
             _libraryFilter = (LibraryFilter)GUILayout.Toolbar((int)_libraryFilter, FilterLabels, EditorStyles.miniButton);
             _librarySearch = EditorGUILayout.TextField(_librarySearch, EditorStyles.toolbarSearchField);
@@ -92,11 +106,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (!IsVisible(rect, _libraryScroll)) continue;
 
                 var used = _usage.IsUsed(clip);
+                var expression = ExpressionSetUtility.FindExpressionByClip(set, clip);
+                var moving = expression != null ? !expression.freezeAnimation && PreviewClips.IsTimeVarying(expression.clip) : PreviewClips.IsTimeVarying(clip);
                 HandleDragSource(rect, clip);
-                if (DrawCell(rect, ClipThumbnail(clip), clip.name, IsSelected(SelectionKind.Clip, null, clip),
-                        used ? null : "未割り当て"))
+                if (DrawCell(rect, expression != null ? ExpressionThumbnail(expression) : ClipThumbnail(clip), expression?.name ?? clip.name,
+                        expression != null ? IsSelected(SelectionKind.Expression, expression.id, null) : IsSelected(SelectionKind.Clip, null, clip),
+                        moving ? "▶ 動く表情" : used ? null : "未割り当て"))
                 {
-                    var expression = ExpressionSetUtility.FindExpressionByClip(set, clip);
                     if (expression != null) Select(SelectionKind.Expression, expression.id, null);
                     else Select(SelectionKind.Clip, null, clip);
                 }
@@ -155,7 +171,7 @@ namespace Samon.FacialExpressionEditor.Editor
             if (_libraryFolderIndex > 0 && _libraryFolderIndex - 1 < _libraryFolders.Count)
             {
                 var folder = _libraryFolders[_libraryFolderIndex - 1] + "/";
-                clips = clips.Where(c => AssetDatabase.GetAssetPath(c).StartsWith(folder));
+                clips = clips.Where(c => _librarySourcePaths.TryGetValue(c, out var sourcePath) && sourcePath.StartsWith(folder));
             }
 
             switch (_libraryFilter)
@@ -195,6 +211,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             Modify(set, "ライブラリにフォルダを追加", () => FxImporter.AddFolder(set, folder));
+            ExpressionFileImporter.Import(set, new Object[] { folder });
             MarkLibraryDirty();
         }
 
@@ -275,6 +292,29 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             // スクロール範囲外のセルはサムネイルを要求しない（描画の予約を増やさないため）。
             return rect.yMax >= scroll.y - 200 && rect.y <= scroll.y + position.height + 200;
+        }
+
+        private void ImportExpressionSources(ExpressionSet set, IEnumerable<Object> sources)
+        {
+            var assets = sources.ToList();
+            Undo.RecordObject(set, "取り込み元を追加");
+            foreach (var folder in assets.OfType<DefaultAsset>().Where(f => AssetDatabase.IsValidFolder(AssetDatabase.GetAssetPath(f)))) FxImporter.AddFolder(set, folder);
+            var count = ExpressionFileImporter.Import(set, assets);
+            MarkLibraryDirty(); InvalidateDetailPreview();
+            ShowNotification(new GUIContent($"{count} 件をこのベース顔専用に取り込みました"));
+        }
+
+        private static IEnumerable<Object> AcceptExpressionSources(Rect rect)
+        {
+            var evt = Event.current;
+            if (!rect.Contains(evt.mousePosition) || (evt.type != EventType.DragUpdated && evt.type != EventType.DragPerform)) return new Object[0];
+            var assets = DragAndDrop.objectReferences.Where(o => o is AnimationClip || o is DefaultAsset && AssetDatabase.IsValidFolder(AssetDatabase.GetAssetPath(o))).ToArray();
+            if (assets.Length == 0) return assets;
+            DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+            var perform = evt.type == EventType.DragPerform;
+            if (perform) DragAndDrop.AcceptDrag();
+            evt.Use();
+            return perform ? assets : new Object[0];
         }
     }
 }

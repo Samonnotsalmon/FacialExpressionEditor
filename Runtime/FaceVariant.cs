@@ -13,6 +13,8 @@ namespace Samon.FacialExpressionEditor
     /// </summary>
     public class FaceVariant : ScriptableObject
     {
+        // 新規データは読み込んだベース顔を保持する。シーンからの更新は明示的に行う。
+        public bool useCapturedValues;
         // 表情の編集ウィンドウで、元FXのAFKのアニメーションを開いているときの、表情の代わりのID。
         public const string AfkId = "__afk__";
 
@@ -20,6 +22,8 @@ namespace Samon.FacialExpressionEditor
 
         // 表情ごとの、この顔だけの値（ベース顔のシェイプキーと、その左右別のシェイプキー）。
         public List<ExpressionFaceValues> faceValues = new List<ExpressionFaceValues>();
+
+        public List<BaseFaceExclusion> baseFaceExclusions = new List<BaseFaceExclusion>();
 
         public List<ExpressionOverride> overrides = new List<ExpressionOverride>();
 
@@ -46,6 +50,13 @@ namespace Samon.FacialExpressionEditor
     /// <summary>
     /// ベース顔として扱うシェイプキー。バリアントでの値はビルド時にアバターから読む。
     /// </summary>
+    [Serializable]
+    public class BaseFaceExclusion
+    {
+        public string expressionId;
+        public List<string> keys = new List<string>();
+    }
+
     [Serializable]
     public class BaseFaceKey
     {

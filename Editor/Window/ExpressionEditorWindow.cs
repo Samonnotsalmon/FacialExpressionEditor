@@ -16,13 +16,13 @@ namespace Samon.FacialExpressionEditor.Editor
         private const float LibraryWidth = 300f;
         private const float DetailWidth = 280f;
 
-        private enum Tab { Menu, Parts, Face, AfkContacts }
+        private enum Tab { Menu, Parts, Face, AfkContacts, Setup }
 
         // Fist：表情セットの表で、握り具合を使う手のFistのマスを選んだとき（握り込みの設定とプレビュー）。
         // OriginalClip：元FXの、コンタクト・PhysBoneなどで顔を動かすレイヤーのクリップ（_selectedId はレイヤー名）。
         private enum SelectionKind { None, Expression, Clip, Part, Fist, OriginalClip }
 
-        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口", "AFK・コンタクト" };
+        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口", "既存ギミック", "アバター設定" };
 
         // 編集している表情設定（プロジェクトのプレハブか、シーンのアバターの中にあるもの）。
         [SerializeField] private FacialExpressionAvatar _avatar;
@@ -140,6 +140,7 @@ namespace Samon.FacialExpressionEditor.Editor
         /// </summary>
         private void OnEditorUpdate()
         {
+            UpdateAnimationPreview();
             if (_thumbnails == null || !_thumbnails.HasPending || _preview == null) return;
             _thumbnails.ProcessPending(4);
             Repaint();
@@ -226,6 +227,7 @@ namespace Samon.FacialExpressionEditor.Editor
                         case Tab.Parts: DrawPartsTab(set); break;
                         case Tab.Face: DrawFaceTab(set); break;
                         case Tab.AfkContacts: DrawAfkContactsTab(set); break;
+                        case Tab.Setup: DrawSetupTab(set); break;
                     }
                     EditorGUILayout.EndScrollView();
                 }
@@ -254,7 +256,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     GUILayout.Space(8);
                     GUILayout.Label($"表情データ：{(Set != null ? Set.name : "なし")}", EditorStyles.miniLabel);
                     GUILayout.Space(8);
-                    GUILayout.Label($"顔バリアント：{(Variant != null ? Variant.name : "なし")}", EditorStyles.miniLabel);
+                    GUILayout.Label($"ベース顔：{(Variant != null ? Variant.name : "シーンの顔")}", EditorStyles.miniLabel);
                 }
 
                 GUILayout.FlexibleSpace();
@@ -262,12 +264,12 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (_avatar != null && !_starting)
                 {
                     DrawSetupHandle();
-                    using (new EditorGUI.DisabledScope(Set == null || FxImporter.GetFx(Descriptor) == null))
+                    using (new EditorGUI.DisabledScope(Set == null))
                     {
-                        if (GUILayout.Button(new GUIContent("元FXから取り込む", "元FXのジェスチャーで出している表情を、表情セットに取り込みます（取り込み直し）。"),
+                        if (GUILayout.Button(new GUIContent("クリップを合成", "目元・口元のクリップから完成表情を作ります。"),
                                 EditorStyles.toolbarButton))
                         {
-                            ImportFromFx();
+                            ExpressionComposerWindow.Open(Set, null);
                         }
                     }
                 }

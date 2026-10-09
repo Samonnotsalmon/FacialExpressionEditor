@@ -57,6 +57,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var meshes = Root.GetComponentsInChildren<SkinnedMeshRenderer>(true)
                 .Where(r => r.sharedMesh != null && r.sharedMesh.blendShapeCount > 0)
+                .Where(r => Set == null || Set.faceMeshPaths.Count == 0 || Set.faceMeshPaths.Contains(PathOf(r.transform, Root)))
                 .ToList();
             if (meshes.Count == 0)
             {
