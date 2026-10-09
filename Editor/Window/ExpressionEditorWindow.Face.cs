@@ -15,7 +15,9 @@ namespace Samon.FacialExpressionEditor.Editor
     {
         private const float FlagColumnWidth = 64f;
 
-        [SerializeField] private bool _showBlinkShapes = true;
+        [SerializeField] private bool _showBlinkShapes;
+        [SerializeField] private bool _showBlinkSettings;
+        [SerializeField] private bool _showMouthSettings;
         [SerializeField] private bool _showMouthMorphs;
 
         private List<BlinkShape> BlinkShapesInUse(ExpressionSet set) => set.customBlink ? set.blinkShapes : FaceDefaults.BlinkShapes;
@@ -26,11 +28,15 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawFaceTab(ExpressionSet set)
         {
-            DrawBlinkSettings(set);
-            EditorGUILayout.Space(12);
             DrawExpressionFlags(set);
             EditorGUILayout.Space(12);
-            DrawMouthCanceler(set);
+            EditorGUILayout.LabelField("共通の動作設定", EditorStyles.boldLabel);
+            var missingBlink = set.blinkAnimation == null && BlinkShapesInUse(set).Count == 0 && (set.customBlink || FaceDefaults.BlinkClip == null);
+            _showBlinkSettings = EditorGUILayout.Foldout(_showBlinkSettings || missingBlink,
+                missingBlink ? "まばたきの設定（対象を指定してください）" : "まばたきの設定", true);
+            if (_showBlinkSettings) DrawBlinkSettings(set);
+            _showMouthSettings = EditorGUILayout.Foldout(_showMouthSettings, "口キャンセルの設定", true);
+            if (_showMouthSettings) DrawMouthCanceler(set);
         }
 
         private void DrawBlinkSettings(ExpressionSet set)
@@ -42,6 +48,7 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 EditorGUILayout.HelpBox("指定クリップを繰り返し再生します。下の自動検出・シェイプキー設定より優先します。", MessageType.Info);
                 if (GUILayout.Button("この瞬きをプレビュー")) Select(SelectionKind.Clip, null, manual);
+                return;
             }
             EditorGUILayout.LabelField("ビルド時にVRChatのまばたきを止め、下のまばたきのアニメーションに置き換えます（まばたきを止める表情でも、視線は動かせます）。",
                 EditorStyles.wordWrappedMiniLabel);
@@ -147,7 +154,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
             }
 
-            foreach (var expression in ExpressionSetUtility.AssignedExpressions(set))
+            var assigned = ExpressionSetUtility.AssignedExpressions(set);
+            if (assigned.Count == 0) EditorGUILayout.HelpBox("ジェスチャーまたは固定メニューに表情を割り当てると、ここに表示されます。", MessageType.Info);
+            foreach (var expression in assigned)
             {
                 var rect = EditorGUILayout.BeginHorizontal(GUILayout.Height(30));
                 if (IsSelected(SelectionKind.Expression, expression.id) && Event.current.type == EventType.Repaint)
@@ -203,12 +212,18 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             EditorGUILayout.LabelField("口モーフキャンセラー", EditorStyles.boldLabel);
             var manual = (AnimationClip)EditorGUILayout.ObjectField("対象クリップ（D&D）", set.mouthCancelAnimation, typeof(AnimationClip), false);
-            var useValues = EditorGUILayout.ToggleLeft("指定クリップの先頭の値に戻す（オフならベース顔）", set.mouthCancelUseClipValues);
+            var useValues = manual != null ? EditorGUILayout.ToggleLeft("クリップの先頭の値に戻す（オフならベース顔）", set.mouthCancelUseClipValues) : set.mouthCancelUseClipValues;
             if (manual != set.mouthCancelAnimation || useValues != set.mouthCancelUseClipValues)
                 Modify(set, "口キャンセルの指定", () => { set.mouthCancelAnimation = manual; set.mouthCancelUseClipValues = useValues; });
             EditorGUILayout.LabelField("話している間、口のシェイプキーをベース顔の値に戻し、表情の口とリップシンクの口が重ならないようにします。" +
                                        "表情ごとに止められます（上の一覧）。",
                 EditorStyles.wordWrappedMiniLabel);
+
+            if (manual != null)
+            {
+                EditorGUILayout.LabelField($"指定クリップから {MouthMorphsInUse(set).Count} 個のシェイプキーを使用", EditorStyles.miniLabel);
+                return;
+            }
 
             var defaults = FaceDefaults;
             EditorGUILayout.LabelField("使うシェイプキー", set.customMouthMorphs ? "自分で編集したもの" : defaults.MouthMorphSource);

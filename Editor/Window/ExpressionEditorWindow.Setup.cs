@@ -15,6 +15,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private readonly List<OriginalMenuSelection> _startRemovedMenus = new List<OriginalMenuSelection>();
         private bool _showOriginalMenus;
         private bool _showStartReplacement;
+        [SerializeField] private bool _showSetupCamera;
 
         private void DrawStartTargets()
         {
@@ -76,14 +77,26 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawSetupTab(ExpressionSet set)
         {
-            EditorGUILayout.HelpBox("この顔専用の設定です。表情クリップは取り込み時に複製し、作者の元データを保持します。", MessageType.Info);
-            if (GUILayout.Button("この設定を別のベース顔用に複製…")) DuplicateFaceSetup(set);
-            var height = set.previewHeight; var zoom = set.previewZoom;
-            DrawSetupCamera(AvatarRoot, ref height, ref zoom);
-            if (height != set.previewHeight || zoom != set.previewZoom)
+            EditorGUILayout.LabelField("別のベース顔で作成", EditorStyles.boldLabel);
+            using (new EditorGUILayout.HorizontalScope())
             {
-                Modify(set, "プレビューカメラの位置", () => { set.previewHeight = height; set.previewZoom = zoom; });
-                DisposePreview(); _thumbnails.Clear();
+                if (GUILayout.Button(new GUIContent("新規作成…", "現在のアバターの顔から、空の表情設定を作成します。")))
+                {
+                    BeginStart(AvatarRoot);
+                    GUIUtility.ExitGUI();
+                }
+                if (GUILayout.Button(new GUIContent("今の設定を複製…", "割り当てと編集済みクリップを引き継ぎ、現在のアバターの顔で別設定を作成します。"))) DuplicateFaceSetup(set);
+            }
+            _showSetupCamera = EditorGUILayout.Foldout(_showSetupCamera, "プレビューカメラ", true);
+            if (_showSetupCamera)
+            {
+                var height = set.previewHeight; var zoom = set.previewZoom;
+                DrawSetupCamera(AvatarRoot, ref height, ref zoom);
+                if (height != set.previewHeight || zoom != set.previewZoom)
+                {
+                    Modify(set, "プレビューカメラの位置", () => { set.previewHeight = height; set.previewZoom = zoom; });
+                    DisposePreview(); _thumbnails.Clear();
+                }
             }
             // リストを直接変更するUIはコピーに対して描き、変更があったときだけUndoを記録する。
             var meshes = set.faceMeshPaths.ToList(); var objects = set.linkedObjectPaths.ToList(); var lip = set.lipSyncMeshPath;
@@ -99,11 +112,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 var selections = set.replacedMenuItems.ToList();
                 DrawOriginalMenuSelection(AvatarRoot, selections);
                 if (!selections.SequenceEqual(set.replacedMenuItems)) Modify(set, "置き換えるメニューを選択", () => set.replacedMenuItems = selections);
-            }
-            if (GUILayout.Button("現在のベース顔で新しい表情設定を作成…"))
-            {
-                BeginStart(AvatarRoot);
-                GUIUtility.ExitGUI();
             }
             EditorGUILayout.Space();
             DrawFistEyeProperties(set);

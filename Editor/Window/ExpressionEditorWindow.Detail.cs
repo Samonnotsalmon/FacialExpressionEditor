@@ -14,6 +14,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private Texture2D _detailTexture;
         private bool _detailTextureDirty = true;
         private Vector2 _detailScroll;
+        [SerializeField] private bool _showExpressionAdvanced;
         private float _playTime;
         private bool _playing = true;
         private double _lastPreviewTick;
@@ -188,48 +189,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 InvalidateDetailPreview();
             }
             DrawPlaybackSettings(set, expression);
-            if (GUILayout.Button("目・口などのクリップを合成…")) ExpressionComposerWindow.Open(set, expression.clip);
-
-            using (new EditorGUI.DisabledScope(true))
-            {
-                EditorGUILayout.ObjectField("クリップ", expression.clip, typeof(AnimationClip), false);
-            }
-
-            EditorGUI.BeginChangeCheck();
-            var overrideDuration = EditorGUILayout.ToggleLeft("遷移時間を個別に設定", expression.overrideTransitionDuration);
-            float duration;
-            using (new EditorGUI.DisabledScope(!overrideDuration))
-            {
-                duration = EditorGUILayout.FloatField("遷移時間（秒）",
-                    overrideDuration ? expression.transitionDuration : set.defaultTransitionDuration);
-            }
-            if (EditorGUI.EndChangeCheck())
-            {
-                Modify(set, "遷移時間を変更", () =>
-                {
-                    expression.overrideTransitionDuration = overrideDuration;
-                    if (overrideDuration) expression.transitionDuration = duration;
-                });
-            }
-
-            DrawFaceControlForExpression(set, expression);
-
-            if (set.menu.Any(n => n.kind == MenuNodeKind.Expression && n.expressionId == expression.id))
-            {
-                EditorGUILayout.Space();
-                EditorGUILayout.LabelField("固定したときの切り替え演出", EditorStyles.boldLabel);
-                var standard = set.fixedSwitchEffect.enabled && set.FindExpression(set.fixedSwitchEffect.betweenExpressionId) != null
-                    ? $"標準（{set.FindExpression(set.fixedSwitchEffect.betweenExpressionId).name}を挟む）"
-                    : "標準（なし）";
-                EditorGUI.BeginChangeCheck();
-                var mode = (SwitchEffectMode)EditorGUILayout.Popup("演出", (int)expression.fixedSwitchMode,
-                    new[] { standard, "なし", "この表情だけ設定" });
-                if (EditorGUI.EndChangeCheck()) Modify(set, "切り替え演出を変更", () => expression.fixedSwitchMode = mode);
-                if (expression.fixedSwitchMode == SwitchEffectMode.Custom)
-                {
-                    DrawSwitchEffect(set, expression.fixedSwitchEffect, "切り替え演出を変更");
-                }
-            }
+            if (_tab != Tab.Face) DrawFaceControlForExpression(set, expression);
+            _showExpressionAdvanced = EditorGUILayout.Foldout(_showExpressionAdvanced, "クリップ・遷移・切り替え演出", true);
+            if (_showExpressionAdvanced) DrawExpressionAdvanced(set, expression);
 
             var variant = Variant;
             if (variant != null && variant.FindOverride(expression.id) != null) DrawVariantDetail(variant, expression);
@@ -268,6 +230,52 @@ namespace Samon.FacialExpressionEditor.Editor
                 MarkLibraryDirty();
                 GUIUtility.ExitGUI();
             }
+        }
+
+        private void DrawExpressionAdvanced(ExpressionSet set, Expression expression)
+        {
+            if (GUILayout.Button("目・口などのクリップを合成…")) ExpressionComposerWindow.Open(set, expression.clip);
+
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.ObjectField("クリップ", expression.clip, typeof(AnimationClip), false);
+            }
+
+            EditorGUI.BeginChangeCheck();
+            var overrideDuration = EditorGUILayout.ToggleLeft("遷移時間を個別に設定", expression.overrideTransitionDuration);
+            float duration;
+            using (new EditorGUI.DisabledScope(!overrideDuration))
+            {
+                duration = EditorGUILayout.FloatField("遷移時間（秒）",
+                    overrideDuration ? expression.transitionDuration : set.defaultTransitionDuration);
+            }
+            if (EditorGUI.EndChangeCheck())
+            {
+                Modify(set, "遷移時間を変更", () =>
+                {
+                    expression.overrideTransitionDuration = overrideDuration;
+                    if (overrideDuration) expression.transitionDuration = duration;
+                });
+            }
+
+
+            if (set.menu.Any(n => n.kind == MenuNodeKind.Expression && n.expressionId == expression.id))
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("固定したときの切り替え演出", EditorStyles.boldLabel);
+                var standard = set.fixedSwitchEffect.enabled && set.FindExpression(set.fixedSwitchEffect.betweenExpressionId) != null
+                    ? $"標準（{set.FindExpression(set.fixedSwitchEffect.betweenExpressionId).name}を挟む）"
+                    : "標準（なし）";
+                EditorGUI.BeginChangeCheck();
+                var mode = (SwitchEffectMode)EditorGUILayout.Popup("演出", (int)expression.fixedSwitchMode,
+                    new[] { standard, "なし", "この表情だけ設定" });
+                if (EditorGUI.EndChangeCheck()) Modify(set, "切り替え演出を変更", () => expression.fixedSwitchMode = mode);
+                if (expression.fixedSwitchMode == SwitchEffectMode.Custom)
+                {
+                    DrawSwitchEffect(set, expression.fixedSwitchEffect, "切り替え演出を変更");
+                }
+            }
+
         }
 
         /// <summary>

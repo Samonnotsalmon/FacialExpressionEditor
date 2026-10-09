@@ -383,7 +383,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             _startShare = false;
             EditorGUILayout.LabelField("このベース顔専用の表情データ", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("シーン上の顔から始め、取り込んだ表情は編集用に複製します。他の顔の表情は変更しません。", MessageType.Info);
+            EditorGUILayout.HelpBox("現在の顔を保存し、表情クリップをこの顔専用に複製します。", MessageType.Info);
             DrawStartTargets();
             DrawStartNew(info);
         }
@@ -393,7 +393,7 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorGUILayout.Space(4);
             _startImportFx = false;
             EditorGUILayout.LabelField("取り込む表情ファイル", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("クリップ／フォルダを指定します。この顔専用に複製して一覧へ取り込み、目口の合成・左右への割り当て・Addへの登録を行います。FXからの自動割り当ては行いません。", MessageType.Info);
+            EditorGUILayout.HelpBox("クリップ／フォルダを指定してください。取り込みは後から追加できます。", MessageType.Info);
             foreach (var clip in _startClips.ToList())
                 using (new EditorGUILayout.HorizontalScope())
                 { EditorGUILayout.ObjectField(clip, typeof(AnimationClip), false); if (GUILayout.Button("×", GUILayout.Width(22))) _startClips.Remove(clip); }
@@ -485,8 +485,10 @@ namespace Samon.FacialExpressionEditor.Editor
             var current = inScene ? _startAvatar.GetComponentInChildren<FacialExpressionAvatar>(true) : null;
             if (current != null)
             {
-                EditorGUILayout.LabelField($"このアバターには表情設定「{current.gameObject.name}」が既に入っています。入れ替えるときは、" +
-                                           "古い表情設定を外してから、できたプレハブを入れてください。", EditorStyles.wordWrappedMiniLabel);
+                var count = _startAvatar.GetComponentsInChildren<FacialExpressionAvatar>(true).Length;
+                if (count == 1)
+                    _startPlaceInAvatar = EditorGUILayout.ToggleLeft("作成後、このアバターを新しい設定に切り替える", _startPlaceInAvatar);
+                else EditorGUILayout.HelpBox("表情設定が複数あります。作成後、使用する設定を手動で切り替えてください。", MessageType.Warning);
             }
             else if (inScene)
             {
