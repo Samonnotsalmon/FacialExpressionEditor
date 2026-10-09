@@ -62,7 +62,12 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     using (new EditorGUILayout.HorizontalScope())
                     {
-                        part.name = EditorGUILayout.TextField(part.name);
+                        var name = EditorGUILayout.DelayedTextField(part.name);
+                        if (name != part.name)
+                        {
+                            var error = ExpressionSetUtility.RenamePart(set, part, name);
+                            if (!string.IsNullOrEmpty(error)) EditorUtility.DisplayDialog("名前を変更できません", error, "OK");
+                        }
                         if (GUILayout.Button("削除", GUILayout.Width(44)))
                         {
                             set.parts.Remove(part);
@@ -159,7 +164,12 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     using (new EditorGUILayout.HorizontalScope())
                     {
-                        expression.name = EditorGUILayout.TextField(expression.name);
+                        var name = EditorGUILayout.DelayedTextField(expression.name);
+                        if (name != expression.name)
+                        {
+                            var error = ExpressionSetUtility.RenameExpression(set, expression, name);
+                            if (!string.IsNullOrEmpty(error)) EditorUtility.DisplayDialog("名前を変更できません", error, "OK");
+                        }
                         if (GUILayout.Button("削除", GUILayout.Width(44)))
                         {
                             RemoveExpression(set, expression);

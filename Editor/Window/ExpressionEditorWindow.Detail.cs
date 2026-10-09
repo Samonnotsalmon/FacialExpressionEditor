@@ -419,13 +419,12 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             EditorGUI.BeginChangeCheck();
-            var name = EditorGUILayout.TextField("名前", part.name);
+            var name = EditorGUILayout.DelayedTextField("名前", part.name);
             if (EditorGUI.EndChangeCheck())
             {
-                Modify(set, "パーツを変更", () =>
-                {
-                    part.name = name;
-                });
+                var error = ExpressionSetUtility.RenamePart(set, part, name);
+                if (!string.IsNullOrEmpty(error)) ShowNotification(new GUIContent(error), 4);
+                InvalidateDetailPreview();
             }
             DrawExclusiveGroup(set, part);
 

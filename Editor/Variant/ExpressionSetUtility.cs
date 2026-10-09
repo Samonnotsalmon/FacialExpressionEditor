@@ -140,6 +140,37 @@ namespace Samon.FacialExpressionEditor.Editor
 
         // ---- パーツ ----
 
+        public static void MatchPartNameToFile(ExpressionSet set, FacialPart part)
+        {
+            if (!OwnsPartClip(set, part.clip)) return;
+            var name = System.IO.Path.GetFileNameWithoutExtension(AssetDatabase.GetAssetPath(part.clip));
+            if (part.name == name && part.clip.name == name) return;
+            part.name = name;
+            part.clip.name = name;
+            EditorUtility.SetDirty(set);
+            EditorUtility.SetDirty(part.clip);
+        }
+
+        public static string RenamePart(ExpressionSet set, FacialPart part, string name)
+        {
+            name = name.Trim();
+            if (string.IsNullOrEmpty(name)) return "名前を入力してください";
+            if (AssetPathUtility.SafeFileName(name) != name) return "ファイル名に使用できない文字が含まれています";
+            if (!OwnsPartClip(set, part.clip)) MakePartClipEditable(set, part);
+            var path = AssetDatabase.GetAssetPath(part.clip);
+            if (System.IO.Path.GetFileNameWithoutExtension(path) != name)
+            {
+                var error = AssetDatabase.RenameAsset(path, name);
+                if (!string.IsNullOrEmpty(error)) return error;
+            }
+            Undo.RecordObject(set, "パーツの名前を変更");
+            part.name = name;
+            part.clip.name = name;
+            EditorUtility.SetDirty(part.clip);
+            EditorUtility.SetDirty(set);
+            return null;
+        }
+
         /// <summary>
         /// 表情データで作ったパーツのクリップ（Parts フォルダの中）かどうか。それ以外（作者のクリップなど）は、編集する前に複製する。
         /// </summary>
@@ -162,6 +193,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var part = new FacialPart { name = name, clip = clip };
             Undo.RecordObject(set, "新しいパーツを作成");
             set.parts.Add(part);
+            MatchPartNameToFile(set, part);
             EditorUtility.SetDirty(set);
             return part;
         }
@@ -173,7 +205,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Parts");
             var source = part.clip;
-            var path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(source != null ? source.name : part.name)}.anim");
+            var path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(part.name)}.anim");
 
             AnimationClip clip;
             if (source != null)
@@ -191,6 +223,7 @@ namespace Samon.FacialExpressionEditor.Editor
             Undo.RecordObject(set, "パーツを編集用に複製");
             if (part.originalClip == null) part.originalClip = FindExpressionByClip(set, source)?.originalClip ?? source;
             part.clip = clip;
+            MatchPartNameToFile(set, part);
             EditorUtility.SetDirty(set);
             return clip;
         }

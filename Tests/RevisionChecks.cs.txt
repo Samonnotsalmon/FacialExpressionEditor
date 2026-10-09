@@ -87,6 +87,18 @@ try {
  Check(assigned.Count==2 && assigned.Contains(created) && assigned.Contains(duplicateName) && !assigned.Contains(unused),"Control list includes assigned gesture and fixed expressions once and excludes unused expressions");
  gestureSet.mapping.left[1]=null; gestureSet.mapping.right[2]=null;
  Check(!Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.AssignedExpressions(fresh).Contains(created),"Removing assignments removes expression from control list");
+ var newPart=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreatePart(fresh,"新しいパーツ");
+ var newPartId=newPart.id; var newPartGuid=AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(newPart.clip));
+ Check(newPart.name==newPart.clip.name && AssetDatabase.GetAssetPath(newPart.clip).EndsWith("/"+newPart.name+".anim"),"New part display, clip and file names match");
+ var partRename=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.RenamePart(fresh,newPart,"頬染め");
+ Check(string.IsNullOrEmpty(partRename) && newPart.name=="頬染め" && newPart.clip.name==newPart.name && AssetDatabase.GetAssetPath(newPart.clip).EndsWith("/頬染め.anim") && newPart.id==newPartId && AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(newPart.clip))==newPartGuid,"Part rename synchronizes names and preserves references");
+ var sameNamePart=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreatePart(fresh,"頬染め");
+ Check(sameNamePart.name!=newPart.name && sameNamePart.name==sameNamePart.clip.name && AssetDatabase.GetAssetPath(sameNamePart.clip).EndsWith("/"+sameNamePart.name+".anim"),"Duplicate part names stay aligned with unique files");
+ Check(!string.IsNullOrEmpty(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.RenamePart(fresh,newPart,"bad/name")) && newPart.name=="頬染め" && newPart.clip.name==newPart.name,"Invalid part name leaves names unchanged");
+ var importedPart=new Samon.FacialExpressionEditor.FacialPart{name="Imported",clip=clip}; fresh.parts.Add(importedPart);
+ var originalPath=AssetDatabase.GetAssetPath(clip); var originalName=clip.name;
+ var importedRename=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.RenamePart(fresh,importedPart,"汗");
+ Check(string.IsNullOrEmpty(importedRename) && importedPart.clip!=clip && importedPart.originalClip==clip && importedPart.name=="汗" && importedPart.clip.name=="汗" && AssetDatabase.GetAssetPath(importedPart.clip).EndsWith("/汗.anim") && AssetDatabase.GetAssetPath(clip)==originalPath && clip.name==originalName,"Imported part renames an editable copy and preserves source");
  return new {passed=checks.Count,checks};
 } finally {
  UnityEngine.Object.DestroyImmediate(root);
