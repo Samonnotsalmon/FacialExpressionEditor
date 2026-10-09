@@ -2,11 +2,11 @@
 
 VRChatアバターの表情・ジェスチャー設定を行うUnityエディタ拡張です（自分専用）。
 
-- 1つの表情データを、顔バリアント（ジト目・ツリ目・タレ目など）のアバター間で共有できる
-- 顔バリアントごとに、ベース顔と表情の差し替えを設定できる
+- ベース顔ごとに独立した表情設定と編集用クリップを作成できる
+- ジェスチャー・固定メニュー・顔パーツ・既存モーションとの連携を設定できる
 - Modular Avatar / NDMFで、ビルド時に非破壊で適用する
 
-仕様は [docs/spec.md](docs/spec.md) を参照。
+現在のバージョンは **0.3.0**。変更内容は [CHANGELOG.md](CHANGELOG.md)、仕様は [docs/spec.md](docs/spec.md) を参照。
 
 ## VCC で入れる
 1. VCC の Settings → Packages → Add Repository に次の URL を入れる（各PCで1回だけ）。
@@ -23,10 +23,10 @@ VRChatアバターの表情・ジェスチャー設定を行うUnityエディタ
 
 ## リリースの手順
 1. `package.json` の `version` を上げてコミットする。
-2. 同じバージョンのタグ（`v0.2.0` など）を付けて送る。
+2. 同じバージョンのタグ（`v0.3.0` など）を付けて送る。
    ```
-   git tag v0.2.0
-   git push origin main v0.2.0
+   git tag v0.3.0
+   git push origin main v0.3.0
    ```
 3. GitHub Actions が、リリース（zip）と VCC 用の一覧（GitHub Pages）を作り直す。
 
