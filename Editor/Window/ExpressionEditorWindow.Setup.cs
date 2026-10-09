@@ -100,15 +100,10 @@ namespace Samon.FacialExpressionEditor.Editor
                 DrawOriginalMenuSelection(AvatarRoot, selections);
                 if (!selections.SequenceEqual(set.replacedMenuItems)) Modify(set, "置き換えるメニューを選択", () => set.replacedMenuItems = selections);
             }
-            using (new EditorGUI.DisabledScope(!AvatarSetup.IsInScene(AvatarRoot)))
-            if (GUILayout.Button("シーンの顔をベース顔として再読み込み"))
+            if (GUILayout.Button("現在のベース顔で新しい表情設定を作成…"))
             {
-                Undo.RecordObject(_avatar, "ベース顔を更新");
-                if (Variant == null) _avatar.faceVariant = FaceVariantUtility.Create(set, AvatarRoot, set.name + "_ベース顔");
-                else FaceVariantUtility.DetectBaseFace(Variant, set, AvatarRoot);
-                Variant.useCapturedValues = true;
-                EditorUtility.SetDirty(Variant);
-                EditorUtility.SetDirty(_avatar); DisposePreview(); InvalidateDetailPreview();
+                BeginStart(AvatarRoot);
+                GUIUtility.ExitGUI();
             }
             EditorGUILayout.Space();
             DrawFistEyeProperties(set);

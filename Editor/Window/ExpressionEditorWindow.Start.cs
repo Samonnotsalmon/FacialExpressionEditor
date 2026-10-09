@@ -99,7 +99,7 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 var inside = avatar.GetComponentsInChildren<FacialExpressionAvatar>(true);
                 var setups = inside.Length > 0 ? inside.ToList() : SetupsFor(avatar);
-                if (setups.Count == 1)
+                if (setups.Count == 1 && !FaceVariantUtility.SourceFaceChanged(setups[0].faceVariant, setups[0].expressionSet, avatar))
                 {
                     SetAvatar(setups[0]);
                     return;
@@ -113,6 +113,8 @@ namespace Samon.FacialExpressionEditor.Editor
             _startName = avatar.name;
             _startDataFolder = AvatarSetup.DefaultDataFolder(avatar.name);
             _startFolders.Clear();
+            _startClips.Clear();
+            _targetsAvatar = null;
             _startPlaceInAvatar = true;
             _startShare = false;
             _startSharedSet = null;
@@ -312,6 +314,8 @@ namespace Samon.FacialExpressionEditor.Editor
             if (setups.Count == 0) return;
 
             EditorGUILayout.Space(8);
+            if (setups.Any(s => FaceVariantUtility.SourceFaceChanged(s.faceVariant, s.expressionSet, _startAvatar)))
+                EditorGUILayout.HelpBox("読み込み時からベース顔が変わっています。下の設定から、この顔用の表情設定を新しく作成してください。以前の設定は残ります。", MessageType.Info);
             EditorGUILayout.LabelField("このアバターの表情設定", EditorStyles.boldLabel);
             foreach (var setup in setups)
             {
@@ -618,9 +622,20 @@ namespace Samon.FacialExpressionEditor.Editor
         private void OpenCreatedSetup(FacialExpressionAvatar prefab, GameObject avatar)
         {
             var target = prefab;
-            if (AvatarSetup.IsInScene(avatar) && _startPlaceInAvatar && avatar.GetComponentInChildren<FacialExpressionAvatar>(true) == null)
+            if (AvatarSetup.IsInScene(avatar) && _startPlaceInAvatar)
             {
-                target = AvatarSetup.PlaceInAvatar(prefab, avatar);
+                var existing = avatar.GetComponentsInChildren<FacialExpressionAvatar>(true);
+                if (existing.Length == 0) target = AvatarSetup.PlaceInAvatar(prefab, avatar);
+                else if (existing.Length == 1)
+                {
+                    // 同時に二つ生成せず、シーンの参照だけ新設定へ切り替える。旧アセットは保持する。
+                    target = existing[0];
+                    Undo.RecordObject(target, "新しいベース顔の表情設定に切り替え");
+                    target.expressionSet = prefab.expressionSet;
+                    target.faceVariant = prefab.faceVariant;
+                    EditorUtility.SetDirty(target);
+                    PrefabUtility.RecordPrefabInstancePropertyModifications(target);
+                }
             }
 
             _startAvatar = null;

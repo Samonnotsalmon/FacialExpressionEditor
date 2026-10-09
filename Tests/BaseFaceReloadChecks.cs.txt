@@ -1,0 +1,32 @@
+var checks = new System.Collections.Generic.List<string>();
+void Check(bool pass, string name) { if (!pass) throw new Exception(name); checks.Add(name); }
+var root = new GameObject("BaseFace reload test");
+var face = new GameObject("Face"); face.transform.SetParent(root.transform);
+var mesh = new Mesh(); mesh.vertices = new[] { Vector3.zero };
+mesh.AddBlendShapeFrame("Smile", 100, new[] {Vector3.up}, null, null);
+mesh.AddBlendShapeFrame("Eye", 100, new[] {Vector3.right}, null, null);
+var r = face.AddComponent<SkinnedMeshRenderer>(); r.sharedMesh = mesh;
+var set = ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>(); set.faceMeshPaths.Add("Face");
+var variant = ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.FaceVariant>();
+var setup = root.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>(); setup.expressionSet = set; setup.faceVariant = variant;
+var type = typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow");
+var window = ScriptableObject.CreateInstance(type);
+var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+try {
+ r.SetBlendShapeWeight(0, 25);
+ Samon.FacialExpressionEditor.Editor.FaceVariantUtility.DetectBaseFace(variant,set,root);
+ Check(variant.hasSourceFaceSnapshot && variant.sourceFaceSnapshot.Count == 2,"Captures unchanged keys as well as modified keys");
+ Check(!Samon.FacialExpressionEditor.Editor.FaceVariantUtility.SourceFaceChanged(variant,set,root),"Same face reopens existing settings");
+ r.SetBlendShapeWeight(1, 40);
+ Check(Samon.FacialExpressionEditor.Editor.FaceVariantUtility.SourceFaceChanged(variant,set,root),"Detects changing a previously unchanged key");
+ Check(variant.sourceFaceSnapshot.Single(k=>k.blendShape=="Eye").variantValue==0,"Detection preserves previous snapshot");
+ type.GetField("_selectingAvatar",flags).SetValue(window,true);
+ type.GetMethod("SetStartAvatar",flags).Invoke(window,new object[]{root});
+ Check(type.GetField("_startAvatar",flags).GetValue(window)==root,"Changed face proceeds to new setup instead of opening old setup");
+ Check(setup.expressionSet==set && setup.faceVariant==variant,"Starting new setup leaves existing settings intact");
+ r.SetBlendShapeWeight(1,0); r.SetBlendShapeWeight(0,0);
+ Check(Samon.FacialExpressionEditor.Editor.FaceVariantUtility.SourceFaceChanged(variant,set,root),"Detects restoring modified face to zero");
+ r.SetBlendShapeWeight(0,25);
+ Check(!Samon.FacialExpressionEditor.Editor.FaceVariantUtility.SourceFaceChanged(variant,set,root),"Restoring captured values clears changed state");
+ return new {passed=checks.Count,checks};
+} finally { UnityEngine.Object.DestroyImmediate(window); UnityEngine.Object.DestroyImmediate(root); UnityEngine.Object.DestroyImmediate(mesh); UnityEngine.Object.DestroyImmediate(set); UnityEngine.Object.DestroyImmediate(variant); }

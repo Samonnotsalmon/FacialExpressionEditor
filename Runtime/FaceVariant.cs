@@ -15,6 +15,9 @@ namespace Samon.FacialExpressionEditor
     {
         // 新規データは読み込んだベース顔を保持する。シーンからの更新は明示的に行う。
         public bool useCapturedValues;
+        // 補正値とは別に、読み込み時の顔を保存して再登録時の変更を検出する。
+        public bool hasSourceFaceSnapshot;
+        public List<BaseFaceKey> sourceFaceSnapshot = new List<BaseFaceKey>();
         // 表情の編集ウィンドウで、元FXのAFKのアニメーションを開いているときの、表情の代わりのID。
         public const string AfkId = "__afk__";
 

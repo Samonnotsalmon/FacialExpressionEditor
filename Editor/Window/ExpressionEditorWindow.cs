@@ -177,6 +177,16 @@ namespace Samon.FacialExpressionEditor.Editor
                 return;
             }
 
+            if (FaceVariantUtility.SourceFaceChanged(Variant, Set, AvatarRoot))
+            {
+                EditorGUILayout.HelpBox("読み込み時からベース顔が変更されています。この顔用の表情設定を新しく作成できます。", MessageType.Info);
+                if (GUILayout.Button("変更したベース顔で新しく作成…"))
+                {
+                    BeginStart(AvatarRoot);
+                    GUIUtility.ExitGUI();
+                }
+            }
+
             var set = Set;
             if (set == null)
             {

@@ -40,8 +40,45 @@ namespace Samon.FacialExpressionEditor.Editor
             var detected = CompareWithOriginal(set, avatarRoot, variant.baseFace, out var missingReference);
             Undo.RecordObject(variant, "ベース顔を検出");
             variant.baseFace = detected;
+            variant.sourceFaceSnapshot = CaptureSourceFace(set, avatarRoot);
+            variant.hasSourceFaceSnapshot = true;
             EditorUtility.SetDirty(variant);
             return missingReference;
+        }
+
+        public static List<BaseFaceKey> CaptureSourceFace(ExpressionSet set, GameObject root)
+        {
+            var result = new List<BaseFaceKey>();
+            if (root == null) return result;
+            var paths = set != null && set.faceMeshPaths.Count > 0 ? set.faceMeshPaths.ToList()
+                : (set != null ? AnimatedBlendShapes(set).Select(k => k.path).ToList() : new List<string>());
+            var face = AvatarSetup.FaceRenderer(root);
+            if ((set == null || set.faceMeshPaths.Count == 0) && face != null)
+                paths.Add(AnimationUtility.CalculateTransformPath(face.transform, root.transform));
+            foreach (var path in paths.Distinct())
+            {
+                var t = string.IsNullOrEmpty(path) ? root.transform : root.transform.Find(path);
+                var r = t != null ? t.GetComponent<SkinnedMeshRenderer>() : null;
+                if (r == null || r.sharedMesh == null) continue;
+                for (var i = 0; i < r.sharedMesh.blendShapeCount; i++)
+                    result.Add(new BaseFaceKey { path = path, blendShape = r.sharedMesh.GetBlendShapeName(i), variantValue = r.GetBlendShapeWeight(i) });
+            }
+            return result;
+        }
+
+        public static bool SourceFaceChanged(FaceVariant variant, ExpressionSet set, GameObject root)
+        {
+            if (root == null || variant == null) return false;
+            if (!variant.hasSourceFaceSnapshot)
+            {
+                // 旧データは保存済みの差分から判定する。判定のために元データを書き換えない。
+                var current = CompareWithOriginal(set, root, variant.baseFace, out _);
+                return current.Count != variant.baseFace.Count || current.Any(c => !variant.baseFace.Any(k =>
+                    k.Key == c.Key && Mathf.Abs(k.variantValue - c.variantValue) < Epsilon));
+            }
+            var values = CaptureSourceFace(set, root);
+            var saved = variant.sourceFaceSnapshot.GroupBy(k => k.Key).ToDictionary(g => g.Key, g => g.First().variantValue);
+            return values.Count != saved.Count || values.Any(c => !saved.TryGetValue(c.Key, out var value) || Mathf.Abs(value - c.variantValue) >= Epsilon);
         }
 
         /// <summary>
