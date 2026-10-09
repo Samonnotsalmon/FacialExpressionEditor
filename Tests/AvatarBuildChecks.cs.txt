@@ -4,22 +4,31 @@ var paths = new[]{
  "Assets/onair/Alue/Prefab/Alue.prefab", "Assets/Kogomi/Kogomi.prefab",
  "Assets/STUDIO_MOCA/NagiyaRuri/Prefab/Avatar_Simple/NagiyaRuri_Simple.prefab",
  "Assets/STUDIO_MOCA/NagiyaRuri/_ModuleAssets/Prefab_MA_Avatar_Simple/NagiyaRuri_Modular_Simple.prefab"};
+System.Collections.Generic.IEnumerable<UnityEditor.Animations.AnimatorState> States(UnityEditor.Animations.AnimatorStateMachine sm) {
+ foreach(var child in sm.states) yield return child.state;
+ foreach(var child in sm.stateMachines) foreach(var state in States(child.stateMachine)) yield return state;
+}
 var results = new System.Collections.Generic.List<object>();
 var folder="Assets/__FEE_BuildCheck_"+Guid.NewGuid().ToString("N");
 AssetDatabase.CreateFolder("Assets",folder.Substring(7));
 var previousFilter=Debug.unityLogger.filterLogType;
 try {
  Debug.unityLogger.filterLogType=LogType.Warning;
- for(var i=0;i<paths.Length;i++) {
-  var prefab=AssetDatabase.LoadAssetAtPath<GameObject>(paths[i]); if(prefab==null) throw new Exception("Missing fixture: "+paths[i]);
+ for(var i=0;i<paths.Length+1;i++) {
+  var fallback=i==paths.Length; var avatarPath=paths[i%paths.Length];
+  var prefab=AssetDatabase.LoadAssetAtPath<GameObject>(avatarPath); if(prefab==null) throw new Exception("Missing fixture: "+avatarPath);
   var avatar=UnityEngine.Object.Instantiate(prefab); avatar.name="FEE build verification";
   UnityEngine.Object temporaryMenu=null;
   try {
    var descriptor=avatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
    var fxSource=Samon.FacialExpressionEditor.Editor.FxImporter.GetFx(descriptor);
+   var originalStates=descriptor.baseAnimationLayers.Select(l=>l.animatorController).Concat(avatar.GetComponentsInChildren<nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator>(true).Select(m=>m.animator))
+    .OfType<UnityEditor.Animations.AnimatorController>().SelectMany(c=>c.layers).SelectMany(l=>States(l.stateMachine)).ToArray();
+   var originalWd=originalStates.Select(s=>s.writeDefaultValues).ToArray();
    var source=fxSource.animationClips.First(c=>AnimationUtility.GetCurveBindings(c).Any(b=>b.propertyName.StartsWith("blendShape.")));
    AssetDatabase.CreateFolder(folder,i.ToString());
    var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+   set.mmdStopEntireFx=fallback;
    set.menuIcons=false; set.independentClips=true; set.faceControlImported=true; set.explicitMenuSelection=true;
    AssetDatabase.CreateAsset(set,folder+"/"+i+"/Face.asset");
    Samon.FacialExpressionEditor.Editor.ExpressionFileImporter.Import(set,new UnityEngine.Object[]{source});
@@ -34,12 +43,40 @@ try {
     set.replacedMenuItems.Add(new Samon.FacialExpressionEditor.OriginalMenuSelection{menu=menu,index=menu.controls.Count-1,controlName="FEE selected menu removal"});
     descriptor.expressionsMenu=menu;
    }
+   var wardrobeObject=new GameObject("NSL test outfit"); wardrobeObject.transform.SetParent(avatar.transform,false);
+   var wardrobe=UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(folder+"/"+i+"/Wardrobe.controller");
+   wardrobe.AddParameter("NSL_TestOutfit",AnimatorControllerParameterType.Bool);
+   var wl=wardrobe.layers; wl[0].name="NSL Test Wardrobe"; wl[0].defaultWeight=.75f; wardrobe.layers=wl;
+   var offClip=new AnimationClip{name="NSL outfit off"};
+   var onClip=new AnimationClip{name="NSL outfit on"};
+   var outfitBinding=EditorCurveBinding.FloatCurve("NSL test outfit",typeof(GameObject),"m_IsActive");
+   AnimationUtility.SetEditorCurve(offClip,outfitBinding,AnimationCurve.Constant(0,1,0));
+   AnimationUtility.SetEditorCurve(onClip,outfitBinding,AnimationCurve.Constant(0,1,1));
+   AssetDatabase.CreateAsset(offClip,folder+"/"+i+"/OutfitOff.anim"); AssetDatabase.CreateAsset(onClip,folder+"/"+i+"/OutfitOn.anim");
+   var outfitOff=wardrobe.layers[0].stateMachine.AddState("Outfit off"); outfitOff.motion=offClip; outfitOff.writeDefaultValues=false;
+   var outfitOn=wardrobe.layers[0].stateMachine.AddState("Outfit on"); outfitOn.motion=onClip; outfitOn.writeDefaultValues=false;
+   var onTransition=outfitOff.AddTransition(outfitOn);onTransition.hasExitTime=false;onTransition.AddCondition(UnityEditor.Animations.AnimatorConditionMode.If,0,"NSL_TestOutfit");
+   var offTransition=outfitOn.AddTransition(outfitOff);offTransition.hasExitTime=false;offTransition.AddCondition(UnityEditor.Animations.AnimatorConditionMode.IfNot,0,"NSL_TestOutfit");
+   var installer=new GameObject("NSL outfit controller");installer.transform.SetParent(avatar.transform,false);
+   var merge=installer.AddComponent<nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator>();merge.animator=wardrobe;
+   merge.layerType=VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX;
+   merge.pathMode=nadena.dev.modular_avatar.core.MergeAnimatorPathMode.Absolute;
+   merge.matchAvatarWriteDefaults=false;
    avatar.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet=set;
    nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(avatar);
    var fx=(UnityEditor.Animations.AnimatorController)descriptor.baseAnimationLayers.First(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
-   if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Expression")) throw new Exception("Missing generated expression layer: " + paths[i]);
-   if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Blink")) throw new Exception("Missing mandatory blink replacement: " + paths[i]);
+   if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Expression")) throw new Exception("Missing generated expression layer: " + avatarPath);
+   if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Blink")) throw new Exception("Missing mandatory blink replacement: " + avatarPath);
    if(fx.layers.Any(l=>set.originalGestureLayers.Contains(l.name))) throw new Exception("Original gesture layers were not replaced");
+   var builtWardrobe=fx.layers.Single(l=>l.name=="NSL Test Wardrobe");
+   if(builtWardrobe.stateMachine.states.Length!=2 || builtWardrobe.stateMachine.anyStateTransitions.Length!=0) throw new Exception("Wardrobe was suspended or restructured");
+   foreach(var outfitState in builtWardrobe.stateMachine.states.Select(c=>c.state)) {
+    if(outfitState.transitions.Length!=1 || outfitState.transitions[0].conditions.Length!=1 || outfitState.transitions[0].conditions[0].parameter!="NSL_TestOutfit") throw new Exception("Wardrobe transitions changed");
+    var c=(AnimationClip)outfitState.motion;var binding=AnimationUtility.GetCurveBindings(c).Single(b=>b.propertyName=="m_IsActive");
+    if(AnimationUtility.GetEditorCurve(c,binding).Evaluate(0)!=(outfitState.name=="Outfit on"?1:0)) throw new Exception("Wardrobe toggle values changed");
+   }
+   if(outfitOn.writeDefaultValues || outfitOff.writeDefaultValues) throw new Exception("Author wardrobe WD values changed");
+   if(fx.layers.Any(l=>l.name.Contains("Motion gate")&&l.name.Contains("NSL Test Wardrobe"))) throw new Exception("Wardrobe must not be a facial suspension target");
    var visited=new System.Collections.Generic.HashSet<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu>();
    var names=new System.Collections.Generic.List<string>();
    void ReadMenu(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu menu) {if(menu==null || !visited.Add(menu))return;foreach(var c in menu.controls){names.Add(c.name);ReadMenu(c.subMenu);}}
@@ -56,21 +93,26 @@ try {
    if(normal.transitions.Single().conditions.Length!=2 || !normal.transitions.Single().conditions.Any(c=>c.parameter=="InStation" && c.mode==UnityEditor.Animations.AnimatorConditionMode.If)) throw new Exception("Dance entry must require toggle AND station");
    if(active.transitions.Length!=2 || active.transitions.Any(t=>t.conditions.Length!=1 || t.conditions[0].mode!=UnityEditor.Animations.AnimatorConditionMode.IfNot)) throw new Exception("Dance must exit on toggle off OR station exit");
    foreach(var item in new[]{(state:normal,weight:1f),(state:active,weight:0f)}) {
-    var control=item.state.behaviours.OfType<VRC.SDK3.Avatars.Components.VRCPlayableLayerControl>().Single();
-    if(control.layer!=VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.FX || control.goalWeight!=item.weight) throw new Exception("Wrong FX playable weight");
+    var controls=item.state.behaviours.OfType<VRC.SDK3.Avatars.Components.VRCPlayableLayerControl>().ToList();
+    if(fallback) {
+     if(controls.Count!=1 || controls[0].layer!=VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.FX || controls[0].goalWeight!=item.weight) throw new Exception("Wrong fallback FX playable weight");
+    } else if(controls.Count!=0) throw new Exception("Preserve mode must not control the FX playable weight");
     if(item.state.behaviours.OfType<VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver>().SelectMany(d=>d.parameters).Any(p=>p.name!="FEE/DanceActive")) throw new Exception("Dance must preserve user selections");
    }
+   if(!fallback && fx.layers.SelectMany(l=>States(l.stateMachine)).Any(s=>!s.writeDefaultValues)) throw new Exception("Final FX must be WD ON throughout");
+   if(!originalWd.SequenceEqual(originalStates.Select(s=>s.writeDefaultValues))) throw new Exception("Source controller was changed");
+   if(active.behaviours.OfType<VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl>().Single().trackingMouth!=VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.Animation) throw new Exception("MMD must yield mouth tracking");
    var blinkGate=fx.layers.Single(l=>l.name=="[FacialExpressionEditor] Motion gate [FacialExpressionEditor] Blink");
    var resume=blinkGate.stateMachine.states.Single(s=>s.state.name=="Yield").state.transitions.Single();
    if(!resume.conditions.Any(c=>c.parameter=="FEE/BlinkOff" && c.mode==UnityEditor.Animations.AnimatorConditionMode.IfNot) || !resume.conditions.Any(c=>c.parameter=="FEE/DanceActive" && c.mode==UnityEditor.Animations.AnimatorConditionMode.IfNot)) throw new Exception("Blink must wait for both menu overrides to clear");
    var dance=fx.layers.FirstOrDefault(l=>l.name.StartsWith("[FacialExpressionEditor] Motion rule"));
-   if(paths[i].Contains("NagiyaRuri")) {
+   if(avatarPath.Contains("NagiyaRuri")) {
     if(dance==null || !fx.animationClips.Any(c=>c.name=="NGR_Holiday_FX")) throw new Exception("Dance face was lost");
     var release=fx.layers.First(l=>l.name=="[FacialExpressionEditor] Emote Release");
     if(release.stateMachine.states.Any(s=>s.state.name.Contains("suspend"))) throw new Exception("Dance would clear fixed expression on resume");
     if(!fx.layers.First(l=>l.name=="[FacialExpressionEditor] Expression").stateMachine.states.Any(s=>s.state.name.Contains("suspend"))) throw new Exception("Missing dance suspension");
    }
-   results.Add(new{avatar=paths[i],passed=true,fxLayers=fx.layers.Length,danceProtected=dance!=null});
+   results.Add(new{avatar=avatarPath,passed=true,fallback,fxLayers=fx.layers.Length,danceProtected=dance!=null});
   } finally {UnityEngine.Object.DestroyImmediate(avatar); if(temporaryMenu!=null && !AssetDatabase.Contains(temporaryMenu))UnityEngine.Object.DestroyImmediate(temporaryMenu);}
  }
  return results;

@@ -114,8 +114,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (defaults.BlinkLayer != null) plan.BlinkLayersToReplace.Add(defaults.BlinkLayer);
             }
 
-            plan.ControlsEyes = expressions.Any(e => !plan.EyesTracked(e));
-            plan.ControlsMouth = expressions.Any(e => !e.enableLipSync);
+            // MMDから戻ったときも現在の表情の視線・リップシンク設定を復元する。
+            plan.ControlsEyes = true;
+            plan.ControlsMouth = true;
 
             plan.MouthMorphs = (set.customMouthMorphs ? set.mouthMorphs : defaults.MouthMorphs)
                 .Select(Binding)

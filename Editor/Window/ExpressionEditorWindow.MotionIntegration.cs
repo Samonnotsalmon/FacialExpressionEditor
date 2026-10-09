@@ -15,7 +15,18 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawMotionIntegration(ExpressionSet set)
         {
-            EditorGUILayout.HelpBox("ゲーム内の「表情 → 設定」に、まばたきOFFとダンスギミック有効（MMD対応）を追加します。MMD対応はONかつステーション利用中にFX全体を停止するため、衣装なども初期状態へ戻る場合があります。アバター付属ダンスは下の連携ルールで設定します。", MessageType.Info);
+            EditorGUILayout.LabelField("MMDワールド対応", EditorStyles.boldLabel);
+            var entire = EditorGUILayout.Popup("動作方式", set.mmdStopEntireFx ? 1 : 0,
+                new[] { "衣装・ギミックを維持（標準）", "FX全体を停止（予備）" }) == 1;
+            if (entire != set.mmdStopEntireFx) Modify(set, "MMD対応方式を変更", () => set.mmdStopEntireFx = entire);
+            if (!entire)
+            {
+                var unify = EditorGUILayout.ToggleLeft("ビルド時にFX全体のWrite DefaultsをONに揃える", set.mmdUnifyFxWriteDefaults);
+                if (unify != set.mmdUnifyFxWriteDefaults) Modify(set, "MMDのWrite Defaults設定", () => set.mmdUnifyFxWriteDefaults = unify);
+                EditorGUILayout.HelpBox("MMD中はこのエディタの表情・瞬き・口キャンセル・顔パーツだけを停止し、衣装などのFXレイヤーを維持します。WD統一はビルド用データだけに適用します。WD OFFの値保持を前提とするギミックは動作が変わる場合があります。統一を外した場合、FXにWD OFFが残ればビルド時に対象を表示して停止します。", MessageType.Info);
+            }
+            else EditorGUILayout.HelpBox("MMD中はFX全体を停止します。衣装なども初期状態へ戻る場合があります。WDの強制統一は行いません。", MessageType.Info);
+            EditorGUILayout.LabelField("ゲーム内の「表情 → 設定 → ダンスギミック有効（MMD対応）」がONかつステーション利用中に動作します。付属ダンスは下の連携ルールで設定します。", EditorStyles.wordWrappedMiniLabel);
             MotionIntegration.Initialize(set, Descriptor);
             EditorGUILayout.LabelField("既存モーションとの連携", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox("条件を満たす間、元アバターへ表情制御を譲ります。ルール内の条件はすべて一致（AND）。複数ルールが有効なら、停止対象を合わせて扱います。固定表情・パーツの選択は保持し、解除後は現在の選択へ戻ります。", MessageType.Info);

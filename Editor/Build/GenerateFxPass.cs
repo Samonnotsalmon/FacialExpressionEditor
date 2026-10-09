@@ -110,8 +110,14 @@ namespace Samon.FacialExpressionEditor.Editor
                 (face.BlinkLayersToReplace, new List<VirtualLayer>()),
                 (face.DisabledLayers, new List<VirtualLayer>()),
             });
-            BuildDanceMenuControl(fx, cloneContext);
+            var mmdState = context.GetState<MmdBuildState>();
+            mmdState.PreserveGimmicks = !set.mmdStopEntireFx;
+            mmdState.UnifyWriteDefaults = set.mmdUnifyFxWriteDefaults;
+            BuildDanceMenuControl(fx, cloneContext, set.mmdStopEntireFx);
             BuildMotionIntegration(fx, cloneContext, face, expressionLayer, blinkLayer, cancelerLayers, partLayers);
+            if (!set.mmdStopEntireFx)
+                foreach (var state in fx.Layers.Where(l => l.Name.StartsWith(LayerPrefix))
+                    .SelectMany(l => l.AllReachableNodes().OfType<VirtualState>())) state.WriteDefaultValues = true;
         }
 
         /// <summary>

@@ -11,9 +11,9 @@ namespace Samon.FacialExpressionEditor.Editor
 {
     internal partial class GenerateFxPass
     {
-        // FaceEmo同様、メニューONかつInStationの間だけFX playable全体を譲る。
+        // メニューONかつInStationの間、表情を譲る。FX全体の停止は予備方式だけ。
         // FXはweight 0でも状態を評価するため、ステーション退出・メニューOFFで復帰できる。
-        private static void BuildDanceMenuControl(VirtualAnimatorController fx, CloneContext context)
+        private static void BuildDanceMenuControl(VirtualAnimatorController fx, CloneContext context, bool stopEntireFx)
         {
             EnsureParameter(fx, BuildPlan.DanceEnabledParameter, AnimatorControllerParameterType.Bool);
             EnsureParameter(fx, BuildPlan.DanceActiveParameter, AnimatorControllerParameterType.Bool);
@@ -33,10 +33,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 Transition(normal, 0, Condition("InStation", AnimatorConditionMode.IfNot, 0)));
             foreach (var item in new[] { (state: normal, active: false), (state: dance, active: true) })
             {
-                var control = ScriptableObject.CreateInstance<VRCPlayableLayerControl>();
-                control.layer = VRC_PlayableLayerControl.BlendableLayer.FX;
-                control.goalWeight = item.active ? 0 : 1;
-                control.blendDuration = 0;
                 var driver = ScriptableObject.CreateInstance<VRCAvatarParameterDriver>();
                 driver.localOnly = false;
                 driver.parameters.Add(new VRC_AvatarParameterDriver.Parameter
@@ -44,7 +40,22 @@ namespace Samon.FacialExpressionEditor.Editor
                     name = BuildPlan.DanceActiveParameter, type = VRC_AvatarParameterDriver.ChangeType.Set,
                     value = item.active ? 1 : 0,
                 });
-                item.state.Behaviours = ImmutableList.Create<StateMachineBehaviour>(control, driver);
+                var behaviours = ImmutableList.Create<StateMachineBehaviour>(driver);
+                if (stopEntireFx)
+                {
+                    var control = ScriptableObject.CreateInstance<VRCPlayableLayerControl>();
+                    control.layer = VRC_PlayableLayerControl.BlendableLayer.FX;
+                    control.goalWeight = item.active ? 0 : 1;
+                    control.blendDuration = 0;
+                    behaviours = behaviours.Add(control);
+                }
+                if (item.active)
+                {
+                    var tracking = ScriptableObject.CreateInstance<VRCAnimatorTrackingControl>();
+                    tracking.trackingEyes = tracking.trackingMouth = VRC_AnimatorTrackingControl.TrackingType.Animation;
+                    behaviours = behaviours.Add(tracking);
+                }
+                item.state.Behaviours = behaviours;
             }
             fx.Layers = fx.Layers.Append(layer).ToList();
         }

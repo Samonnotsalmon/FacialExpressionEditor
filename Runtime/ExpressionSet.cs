@@ -33,6 +33,9 @@ namespace Samon.FacialExpressionEditor
         public List<MotionIntegrationRule> motionRules = new List<MotionIntegrationRule>();
         [HideInInspector] public bool motionRulesConfigured;
         public bool applyBaseFaceToAfk = true;
+        // 標準は表情レイヤーだけを停止。予備方式ではFX playable全体を停止する。
+        public bool mmdStopEntireFx;
+        public bool mmdUnifyFxWriteDefaults = true;
 
         public float defaultTransitionDuration = 0.1f;
 
