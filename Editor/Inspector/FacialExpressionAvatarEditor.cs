@@ -94,7 +94,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     Selection.activeObject = set;
                 }
-                if (GUILayout.Button("複製してこのアバター専用にする"))
+                if (GUILayout.Button(new GUIContent("複製してこのアバター専用にする", "設定とアニメーションを別のPrefabに複製し、シーンでは現在の設定を置き換えます。")))
                 {
                     DuplicateSet(avatar, set);
                     GUIUtility.ExitGUI();
@@ -293,27 +293,19 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private static void DuplicateSet(FacialExpressionAvatar avatar, ExpressionSet set)
         {
-            var path = EditorUtility.SaveFilePanelInProject("複製した表情データの保存先", avatar.gameObject.name + "_表情データ",
-                "asset", "このアバター専用の表情データを保存する場所を選んでください。", AssetPathUtility.FolderOf(set));
+            var defaultName = avatar.gameObject.name;
+            if (defaultName.EndsWith("_FEE")) defaultName = defaultName.Substring(0, defaultName.Length - 4);
+            var path = EditorUtility.SaveFilePanelInProject("専用Prefabの名前と保存先", defaultName + "_専用_FEE",
+                "prefab", "指定した名前の専用フォルダを作り、Prefab・表情データ・アニメーションをまとめて保存します。", AssetPathUtility.FolderOf(set));
             if (string.IsNullOrEmpty(path)) return;
-
-            var copy = ExpressionSetUtility.Duplicate(set, path);
-            Undo.RecordObject(avatar, "表情データを複製");
-            avatar.expressionSet = copy;
-            if (avatar.faceVariant != null)
-            {
-                var baseline = Instantiate(avatar.faceVariant);
-                AssetDatabase.CreateAsset(baseline, AssetDatabase.GenerateUniqueAssetPath(AssetPathUtility.FolderOf(copy) + "/" + AssetPathUtility.SafeFileName(copy.name) + "_ベース顔.asset"));
-                foreach (var replacement in baseline.overrides.Where(o => o.clip != null))
-                {
-                    var clip = Instantiate(replacement.clip);
-                    AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath(AssetPathUtility.FolderOf(copy) + "/" + AssetPathUtility.SafeFileName(clip.name) + ".anim"));
-                    replacement.clip = clip;
-                }
-                avatar.faceVariant = baseline;
-                EditorUtility.SetDirty(baseline); AssetDatabase.SaveAssets();
-            }
-            EditorUtility.SetDirty(avatar);
+            var parent = System.IO.Path.GetDirectoryName(path).Replace('\\', '/');
+            var name = AssetPathUtility.SafeFileName(System.IO.Path.GetFileNameWithoutExtension(path));
+            if (!name.EndsWith("_FEE")) name += "_FEE";
+            var folder = AssetDatabase.GenerateUniqueAssetPath(parent + "/" + name);
+            AssetDatabase.CreateFolder(parent, System.IO.Path.GetFileName(folder));
+            var applied = AvatarSetup.DuplicateForAvatar(avatar, folder, name);
+            Selection.activeGameObject = applied.gameObject;
+            ExpressionEditorWindow.Open(applied);
         }
     }
 }

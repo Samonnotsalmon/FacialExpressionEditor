@@ -1,0 +1,61 @@
+// Run with isuzu-unity-cli call execute_code --file <this file>.
+var checks = new System.Collections.Generic.List<string>();
+void Check(bool ok,string name) { if(!ok) throw new Exception(name); checks.Add(name); }
+var type=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly.GetType("Samon.FacialExpressionEditor.Editor.AvatarSetup");
+object Call(string method,params object[] args)=>type.GetMethod(method).Invoke(null,args);
+var folder="Assets/__FEE_Duplicate_"+Guid.NewGuid().ToString("N");
+AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+AssetDatabase.CreateFolder(folder,"Source"); AssetDatabase.CreateFolder(folder,"Copy");
+var previous=UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+var scene=UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene,UnityEditor.SceneManagement.NewSceneMode.Additive);
+try {
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+ AssetDatabase.CreateAsset(set,folder+"/Source/Face.asset");
+ var expression=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(set,"Smile",Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.Empty,null,null,null);
+ var binding=EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.Smile");
+ AnimationUtility.SetEditorCurve(expression.clip,binding,AnimationCurve.Constant(0,1,50));
+ var part=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreatePart(set,"Blush");
+ var gesture=new Samon.FacialExpressionEditor.GestureSet(); gesture.mapping.right[1]=expression.id; set.gestureSets.Add(gesture);
+ set.menu.Add(new Samon.FacialExpressionEditor.MenuNode{kind=Samon.FacialExpressionEditor.MenuNodeKind.Expression,expressionId=expression.id});
+ set.blinkAnimation=expression.clip; set.mouthCancelAnimation=part.clip;
+ var baseline=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.FaceVariant>(); baseline.useCapturedValues=true;
+ baseline.baseFace.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path="Face",blendShape="Smile",variantValue=20});
+ baseline.overrides.Add(new Samon.FacialExpressionEditor.ExpressionOverride{expressionId=expression.id,clip=expression.clip});
+ AssetDatabase.CreateAsset(baseline,folder+"/Source/Base.asset");
+ var prefab=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("CreateSetupPrefab",folder+"/Source","Original_FEE",set,baseline,null);
+ var avatar=new GameObject("Avatar"); avatar.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var otherAvatar=new GameObject("Other avatar"); otherAvatar.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var original=(GameObject)PrefabUtility.InstantiatePrefab(prefab.gameObject,avatar.transform);
+ original.transform.localPosition=new Vector3(1,2,3);
+ var other=(GameObject)PrefabUtility.InstantiatePrefab(prefab.gameObject,otherAvatar.transform);
+ var applied=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateForAvatar",original.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>(),folder+"/Copy","Mascot_FEE");
+ var copied=applied.expressionSet;
+ Check(avatar.GetComponentsInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true).Length==1,"Exactly one setup remains on target avatar");
+ Check(PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(applied.gameObject)==folder+"/Copy/Mascot_FEE.prefab","Scene instance is connected to new prefab");
+ Check(applied.transform.parent==avatar.transform && applied.transform.localPosition==new Vector3(1,2,3),"Placement is preserved");
+ Check(other.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet==set && prefab.expressionSet==set,"Other avatar and original prefab retain original settings");
+ Check(copied!=set && copied.expressions[0].clip!=expression.clip && copied.parts[0].clip!=part.clip,"Expression and part clips are independent");
+ Check(copied.gestureSets[0].mapping.right[1]==expression.id && copied.menu[0].expressionId==expression.id,"Gesture and menu assignments are retained");
+ Check(copied.expressions[0].enableLipSync && copied.expressions[0].mouthMorphCancel,"Control flags start unchanged");
+ Check(applied.faceVariant!=baseline && applied.faceVariant.baseFace[0].variantValue==20 && applied.faceVariant.overrides[0].clip!=expression.clip,"Captured face and override clips are copied");
+ Check(copied.blinkAnimation!=set.blinkAnimation && copied.mouthCancelAnimation!=set.mouthCancelAnimation,"Auxiliary animations are copied");
+ Undo.FlushUndoRecordObjects(); Undo.IncrementCurrentGroup(); Undo.PerformUndo();
+ var restored=avatar.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true);
+ Check(restored.expressionSet==set && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(restored.gameObject)==folder+"/Source/Original_FEE.prefab","One Undo restores original prefab and settings");
+ Undo.PerformRedo();
+ applied=avatar.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true);
+ Check(applied.expressionSet==copied && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(applied.gameObject)==folder+"/Copy/Mascot_FEE.prefab","Redo reapplies new prefab");
+ copied.expressions[0].enableLipSync=false; copied.expressions[0].mouthMorphCancel=false;
+ AnimationUtility.SetEditorCurve(copied.expressions[0].clip,binding,AnimationCurve.Constant(0,1,75));
+ Check(expression.enableLipSync && expression.mouthMorphCancel && AnimationUtility.GetEditorCurve(expression.clip,binding).Evaluate(0)==50,"Editing copied flags and animation leaves source unchanged");
+ var direct=new GameObject("Direct setup avatar"); direct.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var component=direct.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>(); component.expressionSet=set;
+ AssetDatabase.CreateFolder(folder,"Direct");
+ var directCopy=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateForAvatar",component,folder+"/Direct","Direct_FEE");
+ Check(direct!=null && direct.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>()!=null && direct.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>()==null && directCopy.transform.parent==direct.transform,"Root-mounted setup becomes a child prefab without removing avatar");
+ return new {passed=checks.Count,checks};
+} finally {
+ UnityEditor.SceneManagement.EditorSceneManager.CloseScene(scene,true);
+ UnityEngine.SceneManagement.SceneManager.SetActiveScene(previous);
+ AssetDatabase.DeleteAsset(folder);
+}

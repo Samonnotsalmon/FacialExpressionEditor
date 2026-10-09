@@ -124,6 +124,74 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
+        /// 割り当てと保存済みの顔を引き継いだ独立Prefabを作り、選択中のシーン設定だけを切り替える。
+        /// folder は新しい設定専用の空フォルダ。元アセット・他のインスタンスは変更しない。
+        /// </summary>
+        public static FacialExpressionAvatar DuplicateForAvatar(FacialExpressionAvatar source, string folder, string name)
+        {
+            if (source == null || source.expressionSet == null) throw new System.ArgumentException("複製元の表情設定がありません。");
+            var copy = ExpressionSetUtility.Duplicate(source.expressionSet, $"{folder}/{name}_表情データ.asset");
+            FaceVariant baseline = null;
+            if (source.faceVariant != null)
+            {
+                baseline = Object.Instantiate(source.faceVariant);
+                AssetDatabase.CreateAsset(baseline, $"{folder}/{name}_ベース顔.asset");
+                foreach (var replacement in baseline.overrides.Where(o => o.clip != null))
+                {
+                    var clip = Object.Instantiate(replacement.clip);
+                    var clipsFolder = AssetPathUtility.EnsureFolder(folder, "Overrides");
+                    AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath($"{clipsFolder}/{AssetPathUtility.SafeFileName(clip.name)}.anim"));
+                    replacement.clip = clip;
+                }
+                EditorUtility.SetDirty(baseline);
+            }
+            var sourceAvatar = PrefabOf(AvatarRootOf(source)) ?? source.sourceAvatar;
+            var prefab = CreateSetupPrefab(folder, name, copy, baseline, sourceAvatar);
+            if (prefab == null) throw new System.InvalidOperationException("専用Prefabを作成できませんでした。");
+            AssetDatabase.SaveAssets();
+
+            // Project / Prefab Modeでは元Prefabを書き換えず、新しいPrefabを開く。
+            if (!IsInScene(source) || PrefabStageUtility.GetPrefabStage(source.gameObject) != null) return prefab;
+
+            const string undoName = "専用の表情設定Prefabに切り替え";
+            Undo.IncrementCurrentGroup();
+            var group = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName(undoName);
+            FacialExpressionAvatar applied;
+            var go = source.gameObject;
+            var standalone = go.GetComponent<VRCAvatarDescriptor>() == null && go.transform.childCount == 0 &&
+                go.GetComponents<Component>().All(c => c is Transform || c is FacialExpressionAvatar);
+            if (standalone && PrefabUtility.IsAnyPrefabInstanceRoot(go))
+            {
+                PrefabUtility.ReplacePrefabAssetOfPrefabInstance(go, prefab.gameObject, new PrefabReplacingSettings
+                {
+                    objectMatchMode = ObjectMatchMode.ByHierarchy,
+                    prefabOverridesOptions = PrefabOverridesOptions.KeepAllPossibleOverrides,
+                    changeRootNameToAssetName = true,
+                }, InteractionMode.UserAction);
+                applied = go.GetComponent<FacialExpressionAvatar>();
+                // 旧インスタンスで上書きしていた参照も、新しいPrefabの参照へ切り替える。
+                Undo.RecordObject(applied, undoName);
+                applied.expressionSet = copy;
+                applied.faceVariant = baseline;
+                applied.sourceAvatar = sourceAvatar;
+                PrefabUtility.RecordPrefabInstancePropertyModifications(applied);
+            }
+            else
+            {
+                // アバター直付けや他のコンポーネントを含む場合は、元オブジェクトを残して設定だけ移す。
+                applied = PlaceInAvatar(prefab, go);
+                Undo.RecordObject(applied, undoName);
+                applied.enabled = source.enabled;
+                PrefabUtility.RecordPrefabInstancePropertyModifications(applied);
+                Undo.DestroyObjectImmediate(source);
+            }
+            EditorSceneManager.MarkSceneDirty(applied.gameObject.scene);
+            Undo.CollapseUndoOperations(group);
+            return applied;
+        }
+
+        /// <summary>
         /// 表情設定のプレハブを、シーンのアバターの中に入れる（Ctrl+Z で戻せる）。
         /// </summary>
         public static FacialExpressionAvatar PlaceInAvatar(FacialExpressionAvatar prefab, GameObject avatarRoot)
