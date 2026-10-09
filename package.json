@@ -1,7 +1,7 @@
 {
   "name": "jp.samon.facial-expression-editor",
   "displayName": "NSL_Facial Expression Editor",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "unity": "2022.3",
   "description": "VRChatアバターの表情・ジェスチャー設定エディタ。ベース顔ごとの独立した表情設定を作成し、Modular Avatarで非破壊に適用する。",
   "author": {
