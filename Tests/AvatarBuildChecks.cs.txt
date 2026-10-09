@@ -45,6 +45,24 @@ try {
    void ReadMenu(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu menu) {if(menu==null || !visited.Add(menu))return;foreach(var c in menu.controls){names.Add(c.name);ReadMenu(c.subMenu);}}
    ReadMenu(descriptor.expressionsMenu);
    if(names.Contains("FEE selected menu removal") || !names.Contains("固定解除")) throw new Exception("Menu removal/reset check failed");
+   if(!names.Contains("まばたきOFF") || !names.Contains("ダンスギミック有効（MMD対応）")) throw new Exception("Missing settings menu toggles");
+   foreach(var key in new[]{"FEE/BlinkOff","FEE/DanceEnabled"}) {
+    var param=descriptor.expressionParameters.parameters.Single(p=>p.name==key);
+    if(param.valueType!=VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.ValueType.Bool || param.defaultValue!=0 || param.saved || !param.networkSynced) throw new Exception("Incorrect toggle parameter: "+key);
+   }
+   var danceMenu=fx.layers.Single(l=>l.name=="[FacialExpressionEditor] Dance menu control");
+   var normal=danceMenu.stateMachine.states.Single(s=>s.state.name=="Normal").state;
+   var active=danceMenu.stateMachine.states.Single(s=>s.state.name=="MMD station").state;
+   if(normal.transitions.Single().conditions.Length!=2 || !normal.transitions.Single().conditions.Any(c=>c.parameter=="InStation" && c.mode==UnityEditor.Animations.AnimatorConditionMode.If)) throw new Exception("Dance entry must require toggle AND station");
+   if(active.transitions.Length!=2 || active.transitions.Any(t=>t.conditions.Length!=1 || t.conditions[0].mode!=UnityEditor.Animations.AnimatorConditionMode.IfNot)) throw new Exception("Dance must exit on toggle off OR station exit");
+   foreach(var item in new[]{(state:normal,weight:1f),(state:active,weight:0f)}) {
+    var control=item.state.behaviours.OfType<VRC.SDK3.Avatars.Components.VRCPlayableLayerControl>().Single();
+    if(control.layer!=VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.FX || control.goalWeight!=item.weight) throw new Exception("Wrong FX playable weight");
+    if(item.state.behaviours.OfType<VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver>().SelectMany(d=>d.parameters).Any(p=>p.name!="FEE/DanceActive")) throw new Exception("Dance must preserve user selections");
+   }
+   var blinkGate=fx.layers.Single(l=>l.name=="[FacialExpressionEditor] Motion gate [FacialExpressionEditor] Blink");
+   var resume=blinkGate.stateMachine.states.Single(s=>s.state.name=="Yield").state.transitions.Single();
+   if(!resume.conditions.Any(c=>c.parameter=="FEE/BlinkOff" && c.mode==UnityEditor.Animations.AnimatorConditionMode.IfNot) || !resume.conditions.Any(c=>c.parameter=="FEE/DanceActive" && c.mode==UnityEditor.Animations.AnimatorConditionMode.IfNot)) throw new Exception("Blink must wait for both menu overrides to clear");
    var dance=fx.layers.FirstOrDefault(l=>l.name.StartsWith("[FacialExpressionEditor] Motion rule"));
    if(paths[i].Contains("NagiyaRuri")) {
     if(dance==null || !fx.animationClips.Any(c=>c.name=="NGR_Holiday_FX")) throw new Exception("Dance face was lost");

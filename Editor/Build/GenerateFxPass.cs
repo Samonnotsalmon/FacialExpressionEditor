@@ -77,6 +77,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             var partLayers = BuildPartLayers(cloneContext, set, plan, builder, writeDefaults);
 
+            EnsureParameter(fx, BuildPlan.BlinkOffParameter, AnimatorControllerParameterType.Bool);
             EnsureParameter(fx, GestureLeft, AnimatorControllerParameterType.Int);
             EnsureParameter(fx, GestureRight, AnimatorControllerParameterType.Int);
             EnsureParameter(fx, GestureLeftWeight, AnimatorControllerParameterType.Float);
@@ -109,6 +110,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 (face.BlinkLayersToReplace, new List<VirtualLayer>()),
                 (face.DisabledLayers, new List<VirtualLayer>()),
             });
+            BuildDanceMenuControl(fx, cloneContext);
             BuildMotionIntegration(fx, cloneContext, face, expressionLayer, blinkLayer, cancelerLayers, partLayers);
         }
 
@@ -492,10 +494,12 @@ namespace Samon.FacialExpressionEditor.Editor
             stop.WriteDefaultValues = writeDefaults;
             root.DefaultState = blink;
 
-            blink.Transitions = ImmutableList.Create(Transition(stop, 0,
-                Condition(FaceControlPlan.BlinkParameter, AnimatorConditionMode.IfNot, 0)));
+            blink.Transitions = ImmutableList.Create(
+                Transition(stop, 0, Condition(FaceControlPlan.BlinkParameter, AnimatorConditionMode.IfNot, 0)),
+                Transition(stop, 0, Condition(BuildPlan.BlinkOffParameter, AnimatorConditionMode.If, 0)));
             stop.Transitions = ImmutableList.Create(Transition(blink, 0,
-                Condition(FaceControlPlan.BlinkParameter, AnimatorConditionMode.If, 0)));
+                Condition(FaceControlPlan.BlinkParameter, AnimatorConditionMode.If, 0),
+                Condition(BuildPlan.BlinkOffParameter, AnimatorConditionMode.IfNot, 0)));
             return layer;
         }
 

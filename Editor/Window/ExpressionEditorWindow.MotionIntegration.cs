@@ -15,6 +15,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawMotionIntegration(ExpressionSet set)
         {
+            EditorGUILayout.HelpBox("ゲーム内の「表情 → 設定」に、まばたきOFFとダンスギミック有効（MMD対応）を追加します。MMD対応はONかつステーション利用中にFX全体を停止するため、衣装なども初期状態へ戻る場合があります。アバター付属ダンスは下の連携ルールで設定します。", MessageType.Info);
             MotionIntegration.Initialize(set, Descriptor);
             EditorGUILayout.LabelField("既存モーションとの連携", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox("条件を満たす間、元アバターへ表情制御を譲ります。ルール内の条件はすべて一致（AND）。複数ルールが有効なら、停止対象を合わせて扱います。固定表情・パーツの選択は保持し、解除後は現在の選択へ戻ります。", MessageType.Info);

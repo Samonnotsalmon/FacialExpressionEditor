@@ -49,6 +49,8 @@ namespace Samon.FacialExpressionEditor.Editor
 
             // メニューの選択はワールドを移動したら戻す（保存しない）。
             var parameters = holder.AddComponent<ModularAvatarParameters>();
+            parameters.parameters.Add(Parameter(BuildPlan.BlinkOffParameter, ParameterSyncType.Bool, false));
+            parameters.parameters.Add(Parameter(BuildPlan.DanceEnabledParameter, ParameterSyncType.Bool, false));
             if (plan.UsesModeParameter) parameters.parameters.Add(Parameter(BuildPlan.ModeParameter, ParameterSyncType.Int, false));
             if (plan.UsesEmoteParameter) parameters.parameters.Add(Parameter(BuildPlan.EmoteParameter, ParameterSyncType.Int, false));
             foreach (var parameter in plan.Parts.Select(p => (p.Parameter, p.IsGrouped)).Distinct())
@@ -165,7 +167,11 @@ namespace Samon.FacialExpressionEditor.Editor
                 rootControls.Add(SubMenu("パーツ", Menu(context, "パーツ", partControls)));
             }
 
-            if (rootControls.Count == 0) return null;
+            rootControls.Add(SubMenu("設定", Menu(context, "設定", new List<Control>
+            {
+                Toggle("まばたきOFF", BuildPlan.BlinkOffParameter, 1),
+                Toggle("ダンスギミック有効（MMD対応）", BuildPlan.DanceEnabledParameter, 1),
+            })));
 
             var expressionMenu = Menu(context, "表情", rootControls);
             return Menu(context, "FacialExpressionEditor", new List<Control> { SubMenu("表情", expressionMenu) });

@@ -48,9 +48,11 @@ namespace Samon.FacialExpressionEditor.Editor
         private static void BuildMotionIntegration(VirtualAnimatorController fx, CloneContext context, FaceControlPlan face,
             VirtualLayer expression, VirtualLayer blink, List<VirtualLayer> mouth, List<VirtualLayer> parts)
         {
-            if (face.MotionRules.Count == 0) return;
             var evaluation = new List<VirtualLayer>();
             var requests = new Dictionary<VirtualLayer, List<string>>();
+            foreach (var target in new[] { expression, blink }.Concat(mouth).Concat(parts).Where(l => l != null))
+                requests[target] = new List<string> { BuildPlan.DanceActiveParameter };
+            if (blink != null) requests[blink].Add(BuildPlan.BlinkOffParameter);
             for (var i = 0; i < face.MotionRules.Count; i++)
             {
                 var rule = face.MotionRules[i];

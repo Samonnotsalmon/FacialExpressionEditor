@@ -72,9 +72,9 @@ try{
  }
  var blinkGate=fx.layers.Single(l=>l.name.StartsWith("[FacialExpressionEditor] Motion gate ")&&l.name.EndsWith(" Blink"));
  var yielded=blinkGate.stateMachine.states.First(s=>s.state.name=="Yield").state;
- Check(yielded.transitions.Single().conditions.Length==2&&yielded.transitions.Single().conditions.All(c=>c.mode==UnityEditor.Animations.AnimatorConditionMode.IfNot),"Overlapping rules resume blink only after both end");
+ Check(yielded.transitions.Single().conditions.Length==4&&yielded.transitions.Single().conditions.All(c=>c.mode==UnityEditor.Animations.AnimatorConditionMode.IfNot),"Blink resumes only after both rules and both menu overrides end");
  var expressionGate=fx.layers.Single(l=>l.name.StartsWith("[FacialExpressionEditor] Motion gate ")&&l.name.EndsWith(" Expression"));
- Check(expressionGate.stateMachine.states.First(s=>s.state.name=="Normal").state.transitions.Length==1,"AFK blink-only rule does not suspend expressions");
+ Check(expressionGate.stateMachine.states.First(s=>s.state.name=="Normal").state.transitions.Count(t=>t.conditions.Any(c=>c.parameter.StartsWith("FEE/MotionRule/")))==1,"AFK blink-only rule does not suspend expressions");
  Check(!fx.layers.Any(l=>l.name.StartsWith("[FacialExpressionEditor] Motion gate ")&&l.name.EndsWith("Emote Release")),"Mode memory is not suspended or restarted");
  var generatedDrivers=evaluators.SelectMany(l=>l.stateMachine.states).SelectMany(s=>s.state.behaviours).OfType<VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver>();
  Check(generatedDrivers.SelectMany(d=>d.parameters).All(p=>p.name.StartsWith("FEE/MotionRule/")),"Rules never overwrite fixed-face or part selections");

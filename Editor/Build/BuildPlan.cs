@@ -10,6 +10,9 @@ namespace Samon.FacialExpressionEditor.Editor
     internal class BuildPlan
     {
         public const string Prefix = "FEE/";
+        public const string BlinkOffParameter = Prefix + "BlinkOff";
+        public const string DanceEnabledParameter = Prefix + "DanceEnabled";
+        public const string DanceActiveParameter = Prefix + "DanceActive";
         public const string ModeParameter = Prefix + "Mode";
         public const string EmoteParameter = Prefix + "Emote";
 
