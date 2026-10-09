@@ -9,7 +9,7 @@ namespace Samon.FacialExpressionEditor
     /// IEditorOnly なのでアップロード時には取り除かれる。
     /// </summary>
     [DisallowMultipleComponent]
-    [AddComponentMenu("Samon/表情エディタ/表情設定")]
+    [AddComponentMenu("NotSalmon/NSL_Facial Expression Editor/表情設定")]
     public class FacialExpressionAvatar : MonoBehaviour, IEditorOnly
     {
         public ExpressionSet expressionSet;

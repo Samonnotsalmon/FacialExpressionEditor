@@ -9,7 +9,7 @@ namespace Samon.FacialExpressionEditor.Editor
     public class FacialExpressionPlugin : Plugin<FacialExpressionPlugin>
     {
         public override string QualifiedName => "jp.samon.facial-expression-editor";
-        public override string DisplayName => "Facial Expression Editor";
+        public override string DisplayName => "NSL_Facial Expression Editor";
 
         protected override void Configure()
         {

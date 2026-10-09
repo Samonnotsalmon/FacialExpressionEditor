@@ -53,7 +53,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private AvatarFaceDefaults _faceDefaults;
         private AvatarFaceDefaults FaceDefaults => _faceDefaults ??= AvatarFaceDefaults.Find(Descriptor, Set);
 
-        [MenuItem("Tools/Samon/表情エディタ")]
+        [MenuItem("Tools/NotSalmon/NSL_Facial Expression Editor")]
         private static void OpenFromMenu()
         {
             // メニューから開いたときは、アバターを選ぶところから始める。
@@ -73,7 +73,7 @@ namespace Samon.FacialExpressionEditor.Editor
         public static void Open(FacialExpressionAvatar avatar)
         {
             var window = GetWindow<ExpressionEditorWindow>();
-            window.titleContent = new GUIContent("表情エディタ");
+            window.titleContent = new GUIContent("NSL_Facial Expression Editor");
             window.minSize = new Vector2(980, 560);
             if (avatar != null) window.SetAvatar(avatar);
             window.Show();

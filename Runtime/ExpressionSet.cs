@@ -7,7 +7,7 @@ namespace Samon.FacialExpressionEditor
     /// 素体ごとに1つ作る共有の表情データ（UI上の名前）。全バリアントから参照される。
     /// ジェスチャーの組（UI上の「表情セット」）は GestureSet、表情メニューの項目は MenuNode。
     /// </summary>
-    [CreateAssetMenu(menuName = "Samon/表情エディタ/表情データ", fileName = "表情データ")]
+    [CreateAssetMenu(menuName = "NotSalmon/NSL_Facial Expression Editor/表情データ", fileName = "表情データ")]
     public class ExpressionSet : ScriptableObject
     {
         // 登録フォルダはGUIDで持つ（フォルダを移動・改名しても外れないように）。

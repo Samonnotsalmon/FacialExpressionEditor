@@ -1,4 +1,4 @@
-# Facial Expression Editor
+# NSL_Facial Expression Editor
 
 VRChatアバターの表情・ジェスチャー設定を行うUnityエディタ拡張です（自分専用）。
 
@@ -14,10 +14,10 @@ VRChatアバターの表情・ジェスチャー設定を行うUnityエディタ
    https://samonnotsalmon.github.io/FacialExpressionEditor/index.json
    ```
    上の URL のページを開いて「VCC に追加する」を押してもよい。
-2. プロジェクトの Manage Project で「Facial Expression Editor」を追加・削除する。バージョンもここで選べる。
+2. プロジェクトの Manage Project で「NSL_Facial Expression Editor」を追加・削除する。バージョンもここで選べる。
 
 ## 使い方
-1. メニューの Tools → Samon → 表情エディタ を開く。
+1. メニューの Tools → NotSalmon → NSL_Facial Expression Editor を開く。
 2. 「新しく始める」に、アバターのプレハブ（Hierarchy のアバターでも）をドロップして始める。
 3. できた表情設定のプレハブ（`アバター名_表情設定.prefab`）を、使うアバターの中に入れる。
 
