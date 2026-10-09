@@ -17,7 +17,7 @@ namespace Samon.FacialExpressionEditor.Editor
     /// </summary>
     internal partial class ExpressionEditorWindow
     {
-        private const string SetupSuffix = "_表情設定";
+        private const string SetupSuffix = "_FEE";
         private const string DataSuffix = "_表情データ";
 
         [SerializeField] private bool _starting;

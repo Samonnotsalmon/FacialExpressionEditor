@@ -19,7 +19,7 @@ VRChatアバターの表情・ジェスチャー設定を行うUnityエディタ
 ## 使い方
 1. メニューの Tools → NotSalmon → NSL_Facial Expression Editor を開く。
 2. 「新しく始める」に、アバターのプレハブ（Hierarchy のアバターでも）をドロップして始める。
-3. できた表情設定のプレハブ（`アバター名_表情設定.prefab`）を、使うアバターの中に入れる。
+3. できた表情設定のプレハブ（`アバター名_FEE.prefab`）を、使うアバターの中に入れる。
 
 ## リリースの手順
 1. `package.json` の `version` を上げてコミットする。
