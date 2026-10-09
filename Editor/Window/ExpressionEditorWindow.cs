@@ -93,6 +93,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void OnDisable()
         {
+            EndFlagDrag();
             EditorApplication.projectChanged -= OnProjectChanged;
             EditorApplication.hierarchyChanged -= OnHierarchyChanged;
             EditorApplication.update -= OnEditorUpdate;
@@ -164,6 +165,11 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void OnGUI()
         {
+            if (_flagDragColumn >= 0 && Event.current.rawType == EventType.MouseUp)
+            {
+                EndFlagDrag();
+                Event.current.Use();
+            }
             DrawToolbar();
 
             if (_starting || _avatar == null)

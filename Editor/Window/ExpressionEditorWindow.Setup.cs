@@ -114,8 +114,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (!selections.SequenceEqual(set.replacedMenuItems)) Modify(set, "置き換えるメニューを選択", () => set.replacedMenuItems = selections);
             }
             EditorGUILayout.Space();
-            DrawFistEyeProperties(set);
-            DrawBatchBaseCorrections(set);
         }
 
         private bool _showReplacementLayers;
@@ -160,23 +158,6 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorGUILayout.HelpBox("選択したレイヤーだけを新しい表情制御に置換します。衣装などの既存ギミックのレイヤーは残します。", MessageType.Info);
         }
 
-        private void DrawFistEyeProperties(ExpressionSet set)
-        {
-            EditorGUILayout.Space(); EditorGUILayout.LabelField("Fistで握り具合を反映する目元", EditorStyles.boldLabel);
-            var custom = EditorGUILayout.ToggleLeft("対象を個別に指定する（口元は完成表情を維持）", set.customFistEyeProperties);
-            var bindings = set.expressions.Where(e => e.clip != null).SelectMany(e => AnimationUtility.GetCurveBindings(e.clip)).Distinct()
-                .Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape.")).ToList();
-            if (custom != set.customFistEyeProperties)
-                Modify(set, "Fistの目元を設定", () => { if (custom) set.fistEyeProperties = bindings.Where(b => FistBlend.IsEyeProperty(b)).Select(ExpressionClipBuilder.Key).ToList(); set.customFistEyeProperties = custom; });
-            if (!custom) { EditorGUILayout.LabelField("初期値は目・眉・blink等の名前から判定します。プレビューで確認してください。", EditorStyles.wordWrappedMiniLabel); return; }
-            foreach (var binding in bindings)
-            {
-                var key = ExpressionClipBuilder.Key(binding); var was = set.fistEyeProperties.Contains(key);
-                var next = EditorGUILayout.ToggleLeft(binding.path + " / " + binding.propertyName.Substring(11), was);
-                if (next != was) Modify(set, "Fistの対象を変更", () => { if (next) set.fistEyeProperties.Add(key); else set.fistEyeProperties.Remove(key); });
-            }
-        }
-
         private void DuplicateFaceSetup(ExpressionSet set)
         {
             var path = EditorUtility.SaveFilePanelInProject("ベース顔ごとの表情設定", set.name + "_別の顔", "asset", "複製した設定の名前を指定してください。");
@@ -202,41 +183,5 @@ namespace Samon.FacialExpressionEditor.Editor
             MarkLibraryDirty(); DisposePreview(); InvalidateDetailPreview();
         }
 
-        private readonly HashSet<string> _batchExpressions = new HashSet<string>();
-        private void DrawBatchBaseCorrections(ExpressionSet set)
-        {
-            if (Variant == null || Variant.baseFace.Count == 0) return;
-            EditorGUILayout.Space(); EditorGUILayout.LabelField("ベース顔の一括補正", EditorStyles.boldLabel);
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                if (GUILayout.Button("全表情を選択")) foreach (var e in set.expressions) _batchExpressions.Add(e.id);
-                if (GUILayout.Button("選択解除")) _batchExpressions.Clear();
-            }
-            foreach (var e in set.expressions)
-            { var on = EditorGUILayout.ToggleLeft(e.name, _batchExpressions.Contains(e.id)); if (on) _batchExpressions.Add(e.id); else _batchExpressions.Remove(e.id); }
-            foreach (var key in Variant.baseFace.Where(k => k.enabled))
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    GUILayout.Label(key.blendShape);
-                    using (new EditorGUI.DisabledScope(_batchExpressions.Count == 0))
-                    {
-                        if (GUILayout.Button("反映", GUILayout.Width(45))) BatchCorrection(set, key, true);
-                        if (GUILayout.Button("除外", GUILayout.Width(45))) BatchCorrection(set, key, false);
-                    }
-                }
-        }
-        private void BatchCorrection(ExpressionSet set, BaseFaceKey key, bool apply)
-        {
-            Undo.RecordObject(Variant, "ベース顔を一括補正");
-            foreach (var expression in set.expressions.Where(e => _batchExpressions.Contains(e.id)))
-            {
-                if (FaceVariantUtility.EffectiveOverride(Variant, expression) != null) continue;
-                var exclusion = Variant.baseFaceExclusions.Find(e => e.expressionId == expression.id);
-                if (exclusion == null) { exclusion = new BaseFaceExclusion { expressionId = expression.id }; Variant.baseFaceExclusions.Add(exclusion); }
-                exclusion.keys.Remove(key.Key); if (!apply) exclusion.keys.Add(key.Key);
-                Variant.FindFaceValues(expression.id)?.values.RemoveAll(v => v.path == key.path && v.blendShape == key.blendShape);
-            }
-            EditorUtility.SetDirty(Variant); InvalidateDetailPreview();
-        }
     }
 }

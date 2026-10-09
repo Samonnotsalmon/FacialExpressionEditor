@@ -36,7 +36,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 });
             }
             EditorGUILayout.LabelField("Fistの「握り具合」をオンにした手は、目元をベース顔からFistの表情へ動かします。口元は登録した完成表情のままです。" +
-                                       "オフの手は、握るとそのまま表情が出ます。",
+                                       "閉じ方はFistに割り当てた表情を編集して調整します。オフの手は、握るとそのまま表情が出ます。",
                 EditorStyles.wordWrappedMiniLabel);
 
             EditorGUILayout.Space();
@@ -217,7 +217,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var on = mapping.UsesFistWeight(hand);
             var next = GUI.Toggle(rect, on, new GUIContent("握り具合（0でベース顔）",
-                "オンにすると、握り具合0でベース顔（無表情）、握り切るとこのマスの表情になります。オフなら、握るとそのまま表情が出ます。"));
+                "オンにすると、目元がベース顔からこのマスの表情へ変わります。口元はこの表情のままです。閉じ方は表情を編集して調整します。"));
             if (next == on) return;
 
             Modify(set, "Fistの握り具合を変更", () =>

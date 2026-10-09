@@ -63,7 +63,6 @@ namespace Samon.FacialExpressionEditor.Editor
 
         public static bool IsEyeProperty(EditorCurveBinding binding, ExpressionSet set = null)
         {
-            if (set != null && set.customFistEyeProperties) return set.fistEyeProperties.Contains(ExpressionClipBuilder.Key(binding));
             if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.")) return false;
             var name = binding.propertyName.Substring(11).ToLowerInvariant();
             return new[] { "eye", "blink", "wink", "brow", "目", "瞳", "瞬", "まばたき", "ウィンク", "眉" }.Any(name.Contains);

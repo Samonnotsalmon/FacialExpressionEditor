@@ -134,14 +134,10 @@ namespace Samon.FacialExpressionEditor.Editor
                 EditorStyles.wordWrappedMiniLabel);
 
             EditorGUILayout.LabelField("ジェスチャーまたは固定メニューに割り当てた表情のみ表示します。", EditorStyles.wordWrappedMiniLabel);
-            var descriptor = Descriptor;
-            if (set.originalGestureLayers.Count > 0 && FxImporter.GetFx(descriptor) != null &&
-                GUILayout.Button("まばたき・リップシンクを元FXの設定に戻す"))
-            {
-                var changed = 0;
-                Modify(set, "まばたき・リップシンクを元FXの設定に戻す", () => changed = FxImporter.ImportFaceControl(descriptor, set));
-                ShowNotification(new GUIContent($"{changed} 件の表情の設定を変えました"), 2);
-            }
+            EditorGUILayout.LabelField("チェックを押したまま上下にドラッグすると、同じ列をまとめてON／OFFにできます。", EditorStyles.wordWrappedMiniLabel);
+            var dragControl = GUIUtility.GetControlID("ExpressionFlags".GetHashCode(), FocusType.Passive);
+            var flagEvent = Event.current;
+            if (_flagDragColumn >= 0 && (GUIUtility.hotControl != dragControl || _flagDragSet != set)) EndFlagDrag();
 
             var hasCanceler = MouthMorphsInUse(set).Count > 0;
             using (new EditorGUILayout.HorizontalScope())
@@ -173,36 +169,98 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
                 GUILayout.FlexibleSpace();
 
-                EditorGUI.BeginChangeCheck();
-                var blink = FlagToggle(expression.enableBlink);
-                var eyes = FlagToggle(expression.enableEyeTracking);
-                var lipSync = FlagToggle(expression.enableLipSync);
-                bool cancel;
-                using (new EditorGUI.DisabledScope(!lipSync || !hasCanceler))
-                {
-                    cancel = FlagToggle(expression.mouthMorphCancel);
-                }
-                if (EditorGUI.EndChangeCheck())
-                {
-                    Modify(set, "表情の間の動きを変更", () =>
-                    {
-                        expression.enableBlink = blink;
-                        expression.enableEyeTracking = eyes;
-                        expression.enableLipSync = lipSync;
-                        expression.mouthMorphCancel = cancel;
-                    });
-                }
+                DrawFlagToggle(set, expression, 0, dragControl);
+                DrawFlagToggle(set, expression, 1, dragControl);
+                DrawFlagToggle(set, expression, 2, dragControl);
+                using (new EditorGUI.DisabledScope(!expression.enableLipSync || !hasCanceler))
+                    DrawFlagToggle(set, expression, 3, dragControl);
                 EditorGUILayout.EndHorizontal();
+            }
+            if (_flagDragColumn >= 0 && flagEvent.type == EventType.MouseDrag)
+            {
+                _flagDragPosition = flagEvent.mousePosition;
+                flagEvent.Use();
+                Repaint();
             }
         }
 
-        private static bool FlagToggle(bool value)
+        private int _flagDragColumn = -1;
+        private int _flagDragControl;
+        private int _flagDragUndoGroup;
+        private bool _flagDragValue;
+        private Vector2 _flagDragPosition;
+        private ExpressionSet _flagDragSet;
+
+        private void EndFlagDrag()
         {
-            using (new EditorGUILayout.HorizontalScope(GUILayout.Width(FlagColumnWidth)))
+            if (_flagDragColumn < 0) return;
+            Undo.FlushUndoRecordObjects();
+            Undo.CollapseUndoOperations(_flagDragUndoGroup);
+            if (GUIUtility.hotControl == _flagDragControl) GUIUtility.hotControl = 0;
+            _flagDragColumn = -1;
+            _flagDragSet = null;
+        }
+
+        private void OnLostFocus() => EndFlagDrag();
+
+        private static bool GetExpressionFlag(Expression expression, int column)
+        {
+            switch (column)
             {
-                GUILayout.Space(20);
-                return EditorGUILayout.Toggle(value, GUILayout.Width(20), GUILayout.Height(28));
+                case 0: return expression.enableBlink;
+                case 1: return expression.enableEyeTracking;
+                case 2: return expression.enableLipSync;
+                default: return expression.mouthMorphCancel;
             }
+        }
+
+        private void SetExpressionFlag(ExpressionSet set, Expression expression, int column, bool value)
+        {
+            if (GetExpressionFlag(expression, column) == value) return;
+            Modify(set, "表情の間の動きを変更", () =>
+            {
+                switch (column)
+                {
+                    case 0: expression.enableBlink = value; break;
+                    case 1: expression.enableEyeTracking = value; break;
+                    case 2: expression.enableLipSync = value; break;
+                    case 3: expression.mouthMorphCancel = value; break;
+                }
+            });
+        }
+
+        private static bool FlagDragCrossesCell(Rect cell, Vector2 from, Vector2 to) =>
+            from.x >= cell.xMin && from.x < cell.xMax && to.x >= cell.xMin && to.x < cell.xMax &&
+            Mathf.Max(from.y, to.y) >= cell.yMin && Mathf.Min(from.y, to.y) < cell.yMax;
+
+        private void DrawFlagToggle(ExpressionSet set, Expression expression, int column, int dragControl)
+        {
+            var cell = GUILayoutUtility.GetRect(FlagColumnWidth, 28, GUILayout.Width(FlagColumnWidth), GUILayout.Height(28));
+            var toggle = new Rect(cell.x + 20, cell.y, 20, cell.height);
+            var evt = Event.current;
+            var value = GetExpressionFlag(expression, column);
+            if (GUI.enabled && evt.type == EventType.MouseDown && evt.button == 0 && toggle.Contains(evt.mousePosition))
+            {
+                Undo.IncrementCurrentGroup();
+                _flagDragUndoGroup = Undo.GetCurrentGroup();
+                _flagDragColumn = column;
+                _flagDragControl = dragControl;
+                _flagDragSet = set;
+                _flagDragValue = !value;
+                _flagDragPosition = evt.mousePosition;
+                GUIUtility.hotControl = dragControl;
+                SetExpressionFlag(set, expression, column, _flagDragValue);
+                evt.Use();
+                Repaint();
+            }
+            // Fill skipped rows on fast vertical drags. Other columns and disabled cells stay unchanged.
+            if (GUI.enabled && evt.type == EventType.MouseDrag && _flagDragColumn == column &&
+                FlagDragCrossesCell(cell, _flagDragPosition, evt.mousePosition))
+                SetExpressionFlag(set, expression, column, _flagDragValue);
+
+            value = GetExpressionFlag(expression, column);
+            var next = EditorGUI.Toggle(toggle, value);
+            if (next != value) SetExpressionFlag(set, expression, column, next);
         }
 
         /// <summary>
