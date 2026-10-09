@@ -100,6 +100,7 @@ namespace Samon.FacialExpressionEditor.Editor
             ExpressionClipEditorWindow.Edited -= OnClipEdited;
             DisposePreview();
             _thumbnails?.Dispose();
+            DisposeCameraPreview();
         }
 
         private void OnHierarchyChanged()
@@ -120,7 +121,9 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void OnUndoRedo()
         {
-            InvalidateDetailPreview();
+            DisposePreview(); DisposeCameraPreview();
+            _thumbnails?.Clear();
+            MarkLibraryDirty();
             _faceDefaults = null;
             Repaint();
         }
@@ -264,14 +267,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (_avatar != null && !_starting)
                 {
                     DrawSetupHandle();
-                    using (new EditorGUI.DisabledScope(Set == null))
-                    {
-                        if (GUILayout.Button(new GUIContent("クリップを合成", "目元・口元のクリップから完成表情を作ります。"),
-                                EditorStyles.toolbarButton))
-                        {
-                            ExpressionComposerWindow.Open(Set, null);
-                        }
-                    }
                 }
                 if (GUILayout.Button("表示を更新", EditorStyles.toolbarButton))
                 {
@@ -329,8 +324,8 @@ namespace Samon.FacialExpressionEditor.Editor
             var root = AvatarRoot;
             if (_preview != null && _preview.Source == root) return;
             DisposePreview();
-            _preview = new FacePreview(root);
-            _faceHash = ThumbnailKeys.FaceHash(root);
+            _preview = new FacePreview(root, Set);
+            _faceHash = ThumbnailKeys.FaceHash(root, Set);
 
             // 表情セットのメニューのアイコン（無表情）に使うので、無表情のサムネイルも描いておく。
             _thumbnails.Get(ThumbnailKeys.Neutral(_faceHash), () =>
@@ -498,7 +493,7 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// サムネイルと名前のセルを描く。戻り値はクリックされたかどうか。
         /// </summary>
-        private bool DrawCell(Rect rect, Texture thumbnail, string label, bool selected, string badge = null, Color? badgeColor = null)
+        private bool DrawCell(Rect rect, Texture thumbnail, string label, bool selected, string badge = null, Color? badgeColor = null, string motionBadge = null)
         {
             if (Event.current.type == EventType.Repaint)
             {
@@ -525,6 +520,12 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             GUI.Label(new Rect(rect.x + 2, thumbRect.yMax + 1, rect.width - 4, 15), label, CellLabel);
+            if (motionBadge != null)
+            {
+                var motionRect = new Rect(thumbRect.x, thumbRect.yMax - 14, thumbRect.width, 14);
+                if (Event.current.type == EventType.Repaint) EditorGUI.DrawRect(motionRect, new Color(0.08f, 0.48f, 0.55f, 0.95f));
+                GUI.Label(motionRect, motionBadge, CellLabel);
+            }
 
             var e = Event.current;
             if (e.type == EventType.MouseDown && e.button == 0 && rect.Contains(e.mousePosition))

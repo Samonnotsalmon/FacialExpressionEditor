@@ -151,6 +151,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
                 GUI.Label(fistMapping != null ? new Rect(rect.x, rect.y, rect.width, rect.height - 20) : rect, "ここにドロップ", DropHint);
                 DrawNewExpressionButton(new Rect(rect.xMax - 24, rect.y + 4, 22, 18), set, null, assign, undoName);
+                if (GUI.Button(new Rect(rect.x + 5, rect.yMax - (fistMapping != null ? 41 : 21), 64, 18), "合成…", EditorStyles.miniButton))
+                    OpenComposer(set, null, assign, undoName);
                 if (fistMapping != null) DrawGripToggle(new Rect(rect.x + 6, rect.yMax - 20, rect.width - 12, 18), set, fistMapping, hand);
                 return;
             }
@@ -183,6 +185,8 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             DrawNewExpressionButton(new Rect(rect.xMax - 48, rect.y + 4, 22, 18), set, expression, assign, undoName);
+            if (GUI.Button(new Rect(thumbRect.xMax + 6, rect.yMax - (fistMapping != null ? 41 : 21), 64, 18), "合成…", EditorStyles.miniButton))
+                OpenComposer(set, expression, assign, undoName);
             if (GUI.Button(new Rect(rect.xMax - 24, rect.y + 4, 22, 18), "×"))
             {
                 Modify(set, undoName + "を外す", () => assign(null));
@@ -196,7 +200,7 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// 新しい表情を作って、このマスに割り当てるボタン（今の顔から・空から・今の表情をコピー）。
+        /// ベース顔から調整、またはクリップ合成で作り、このマスに割り当てる。
         /// </summary>
         private void DrawNewExpressionButton(Rect rect, ExpressionSet set, Expression current, Action<string> assign, string place)
         {

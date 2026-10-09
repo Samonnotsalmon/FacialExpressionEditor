@@ -111,7 +111,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 HandleDragSource(rect, clip);
                 if (DrawCell(rect, expression != null ? ExpressionThumbnail(expression) : ClipThumbnail(clip), expression?.name ?? clip.name,
                         expression != null ? IsSelected(SelectionKind.Expression, expression.id, null) : IsSelected(SelectionKind.Clip, null, clip),
-                        moving ? "▶ 動く表情" : used ? null : "未割り当て"))
+                        !used ? "未割り当て" : _usage.IsUsedByPart(clip) ? "パーツ使用中" : "使用中",
+                        used ? new Color(0.22f, 0.38f, 0.24f, 0.9f) : new Color(0.6f, 0.4f, 0.12f, 0.9f),
+                        moving ? "▶ 動く表情" : null))
                 {
                     if (expression != null) Select(SelectionKind.Expression, expression.id, null);
                     else Select(SelectionKind.Clip, null, clip);
@@ -119,7 +121,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
             EditorGUILayout.EndScrollView();
 
-            if (GUILayout.Button("＋ 新しい表情", EditorStyles.miniButton))
+            if (GUILayout.Button("＋ 表情を作る…", EditorStyles.miniButton))
             {
                 ShowNewExpressionMenu(set, _selectionKind == SelectionKind.Expression ? set.FindExpression(_selectedId) : null);
             }
@@ -128,35 +130,34 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// 新しい表情を作る（今の顔から・空から・表情をコピー）。作ったら選んで、表情の編集ウィンドウで開く。
+        /// ベース顔から調整するか、素材クリップを合成するかを選ぶ。
         /// assign を渡すと、作った表情をそこ（ジェスチャーのマスなど）に割り当てる。
         /// </summary>
         private void ShowNewExpressionMenu(ExpressionSet set, Expression copySource, System.Action<string> assign = null, string place = null)
         {
             var menu = new GenericMenu();
-            menu.AddItem(new GUIContent("今の顔から"), false,
-                () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.CurrentFace, null, assign, place));
-            menu.AddItem(new GUIContent("空から（何も動かさない）"), false,
-                () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.Empty, null, assign, place));
-            if (copySource != null)
-            {
-                menu.AddItem(new GUIContent($"「{copySource.name}」をコピー"), false,
-                    () => CreateExpression(set, ExpressionSetUtility.NewExpressionSource.CopyExpression, copySource, assign, place));
-            }
-            else
-            {
-                menu.AddDisabledItem(new GUIContent(assign == null ? "選んでいる表情をコピー" : "表情をコピー"));
-            }
+            menu.AddItem(new GUIContent("ベース顔から作成して調整"), false,
+                () => CreateExpressionFromBase(set, assign, place));
+            menu.AddItem(new GUIContent("クリップを合成して作成"), false, () => OpenComposer(set, copySource, assign, place));
             menu.ShowAsContext();
         }
 
-        private void CreateExpression(ExpressionSet set, ExpressionSetUtility.NewExpressionSource source, Expression copyFrom,
-            System.Action<string> assign, string place)
+        private void OpenComposer(ExpressionSet set, Expression source = null, System.Action<string> assign = null, string place = null)
         {
-            var name = copyFrom != null ? $"{copyFrom.name} のコピー" : "新しい表情";
-            for (var i = 2; set.expressions.Any(e => e.name == name); i++) name = copyFrom != null ? $"{copyFrom.name} のコピー {i}" : $"新しい表情 {i}";
+            ExpressionComposerWindow.Open(set, source?.clip, expression =>
+            {
+                if (this == null || set == null) return;
+                if (assign != null) Modify(set, $"{place}に合成表情を割り当て", () => assign(expression.id));
+                MarkLibraryDirty(); Select(SelectionKind.Expression, expression.id, null); Repaint();
+            }, place);
+        }
 
-            var expression = ExpressionSetUtility.CreateExpression(set, name, source, copyFrom, AvatarRoot, Variant);
+        private void CreateExpressionFromBase(ExpressionSet set, System.Action<string> assign, string place)
+        {
+            var name = "新しい表情";
+            for (var i = 2; set.expressions.Any(e => e.name == name); i++) name = $"新しい表情 {i}";
+
+            var expression = ExpressionSetUtility.CreateExpression(set, name, ExpressionSetUtility.NewExpressionSource.CurrentFace, null, AvatarRoot, Variant);
             if (expression == null) return;
             if (assign != null) Modify(set, $"{place}に新しい表情を割り当て", () => assign(expression.id));
             MarkLibraryDirty();

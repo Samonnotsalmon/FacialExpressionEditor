@@ -32,13 +32,13 @@ namespace Samon.FacialExpressionEditor.Editor
         public static int EnsureCached(GameObject avatarRoot, ExpressionSet set, FaceVariant variant)
         {
             var plan = BuildPlan.Create(set);
-            var faceHash = ThumbnailKeys.FaceHash(avatarRoot);
+            var faceHash = ThumbnailKeys.FaceHash(avatarRoot, set);
             FacePreview preview = null;
             var rendered = 0;
 
             void Render(string key, AnimationClip clip)
             {
-                if (preview == null) preview = new FacePreview(avatarRoot);
+                if (preview == null) preview = new FacePreview(avatarRoot, set);
                 preview.Apply(clip);
                 var texture = preview.RenderStatic(ThumbnailCache.Size);
                 ThumbnailCache.SaveToDisk(key, texture);

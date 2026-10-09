@@ -9,13 +9,10 @@ namespace Samon.FacialExpressionEditor.Editor
     [CustomEditor(typeof(FacialExpressionAvatar))]
     internal class FacialExpressionAvatarEditor : UnityEditor.Editor
     {
-        private static readonly string[] SourceLabels = { "今の顔から", "既存の表情をコピー", "空から" };
 
         private int _partsLayerIndex = -1;
         private string _newVariantName;
         private string _newExpressionName = "新しい表情";
-        private ExpressionSetUtility.NewExpressionSource _newExpressionSource;
-        private int _copyFromIndex;
         private bool _showNewExpression;
         private bool _showBaseFace = true;
         private bool _showInactiveBaseFace;
@@ -112,39 +109,23 @@ namespace Samon.FacialExpressionEditor.Editor
 
             EditorGUI.indentLevel++;
             _newExpressionName = EditorGUILayout.TextField("名前", _newExpressionName);
-            _newExpressionSource = (ExpressionSetUtility.NewExpressionSource)EditorGUILayout.Popup("作り方",
-                (int)_newExpressionSource, SourceLabels);
-
-            Expression copyFrom = null;
-            if (_newExpressionSource == ExpressionSetUtility.NewExpressionSource.CopyExpression)
-            {
-                var names = set.expressions.Select(e => e.name).ToArray();
-                if (names.Length == 0)
-                {
-                    EditorGUILayout.LabelField("コピーできる表情がありません。", EditorStyles.miniLabel);
-                }
-                else
-                {
-                    _copyFromIndex = Mathf.Clamp(EditorGUILayout.Popup("コピー元", _copyFromIndex, names), 0, names.Length - 1);
-                    copyFrom = set.expressions[_copyFromIndex];
-                }
-            }
+            EditorGUILayout.LabelField("登録したベース顔から表情を作成します。", EditorStyles.wordWrappedMiniLabel);
 
             EditorGUILayout.LabelField($"保存先：{AssetPathUtility.FolderOf(set)}/Expressions/", EditorStyles.miniLabel);
             EditorGUI.indentLevel--;
 
-            using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(_newExpressionName) ||
-                                               _newExpressionSource == ExpressionSetUtility.NewExpressionSource.CopyExpression && copyFrom == null))
+            using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(_newExpressionName)))
             {
-                if (GUILayout.Button("作成"))
+                if (GUILayout.Button("ベース顔から作成"))
                 {
                     var expression = ExpressionSetUtility.CreateExpression(set, _newExpressionName.Trim(),
-                        _newExpressionSource, copyFrom, root, avatar.faceVariant);
+                        ExpressionSetUtility.NewExpressionSource.CurrentFace, null, root, avatar.faceVariant);
                     // 作った表情は、そのまま表情の編集ウィンドウで編集できるようにする。
                     if (expression != null) ExpressionClipEditorWindow.Open(avatar, expression);
                     GUIUtility.ExitGUI();
                 }
             }
+            if (GUILayout.Button("クリップを合成して作成…")) ExpressionComposerWindow.Open(set, null, e => ExpressionClipEditorWindow.Open(avatar, e));
         }
 
         private void DrawCreateVariant(FacialExpressionAvatar avatar, GameObject root, ExpressionSet set)

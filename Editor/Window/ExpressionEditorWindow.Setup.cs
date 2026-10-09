@@ -14,6 +14,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private string _startLipMesh = "";
         private readonly List<OriginalMenuSelection> _startRemovedMenus = new List<OriginalMenuSelection>();
         private bool _showOriginalMenus;
+        private bool _showStartReplacement;
 
         private void DrawStartTargets()
         {
@@ -27,9 +28,12 @@ namespace Samon.FacialExpressionEditor.Editor
                 var d = _startAvatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
                 _startLipMesh = d.VisemeSkinnedMesh != null ? AnimationUtility.CalculateTransformPath(d.VisemeSkinnedMesh.transform, _startAvatar.transform) : "";
                 _startLayerNames.AddRange(FxImporter.PeekGestures(d).layers);
+                _startPreviewHeight = 0.03f; _startPreviewZoom = 1f;
             }
+            DrawSetupCamera(_startAvatar, ref _startPreviewHeight, ref _startPreviewZoom);
             DrawTargets(_startAvatar, _startMeshPaths, _startObjectPaths, ref _startLipMesh);
-            EditorGUILayout.LabelField("置き換える元FXレイヤー", EditorStyles.boldLabel);
+            _showStartReplacement = EditorGUILayout.Foldout(_showStartReplacement, $"既存設定との置き換え（FX {_startLayerNames.Count} レイヤー）", true);
+            if (!_showStartReplacement) return;
             var descriptor = _startAvatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
             var fx = FxImporter.GetFx(descriptor);
             if (fx == null) return;
@@ -39,7 +43,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (next && !_startLayerNames.Contains(layer.name)) _startLayerNames.Add(layer.name);
                 if (!next) _startLayerNames.Remove(layer.name);
             }
-            EditorGUILayout.HelpBox("チェックしたレイヤーを新しい表情制御に置き換えます。表情ファイルの取り込み元とは別の設定です。ダンス・衣装・引き継ぐパーツは残してください。", MessageType.Info);
+            EditorGUILayout.HelpBox("チェックしたレイヤーを新しい表情制御に置き換えます。衣装・既存ギミック・引き継ぐパーツは残してください。", MessageType.Info);
             DrawOriginalMenuSelection(_startAvatar, _startRemovedMenus);
         }
 
@@ -74,6 +78,13 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             EditorGUILayout.HelpBox("この顔専用の設定です。表情クリップは取り込み時に複製し、作者の元データを保持します。", MessageType.Info);
             if (GUILayout.Button("この設定を別のベース顔用に複製…")) DuplicateFaceSetup(set);
+            var height = set.previewHeight; var zoom = set.previewZoom;
+            DrawSetupCamera(AvatarRoot, ref height, ref zoom);
+            if (height != set.previewHeight || zoom != set.previewZoom)
+            {
+                Modify(set, "プレビューカメラの位置", () => { set.previewHeight = height; set.previewZoom = zoom; });
+                DisposePreview(); _thumbnails.Clear();
+            }
             // リストを直接変更するUIはコピーに対して描き、変更があったときだけUndoを記録する。
             var meshes = set.faceMeshPaths.ToList(); var objects = set.linkedObjectPaths.ToList(); var lip = set.lipSyncMeshPath;
             DrawTargets(AvatarRoot, meshes, objects, ref lip);
@@ -100,12 +111,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 EditorUtility.SetDirty(_avatar); DisposePreview(); InvalidateDetailPreview();
             }
             EditorGUILayout.Space();
-            EditorGUI.BeginChangeCheck();
-            var dance = EditorGUILayout.ToggleLeft("付属ダンス中は表情制御を譲る", set.protectDance);
-            var parameter = EditorGUILayout.DelayedTextField("動作連携パラメータ（Int）", set.danceParameter);
-            if (EditorGUI.EndChangeCheck()) Modify(set, "ダンス連携", () => { set.protectDance = dance; set.danceParameter = parameter; });
-            EditorGUILayout.HelpBox("NagiyaRuriの VRCEmoteFXConect に対応。元FXに指定パラメータが存在し、値が0以外の間だけ制御を譲ります。固定・パーツの選択は保持します。", MessageType.Info);
-            if (GUILayout.Button("クリップを組み合わせて新しい表情…")) ExpressionComposerWindow.Open(set, null);
             DrawFistEyeProperties(set);
             DrawBatchBaseCorrections(set);
         }
@@ -149,7 +154,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 var next = EditorGUILayout.ToggleLeft(layer.name, was);
                 if (next != was) Modify(set, "置き換えるFXを選択", () => { if (next) set.originalGestureLayers.Add(layer.name); else set.originalGestureLayers.Remove(layer.name); });
             }
-            EditorGUILayout.HelpBox("選択したレイヤーだけを新しい表情制御に置換します。付属ダンス・衣装などのレイヤーは残します。", MessageType.Info);
+            EditorGUILayout.HelpBox("選択したレイヤーだけを新しい表情制御に置換します。衣装などの既存ギミックのレイヤーは残します。", MessageType.Info);
         }
 
         private void DrawFistEyeProperties(ExpressionSet set)

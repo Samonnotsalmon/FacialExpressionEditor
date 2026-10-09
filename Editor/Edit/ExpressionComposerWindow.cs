@@ -14,11 +14,14 @@ namespace Samon.FacialExpressionEditor.Editor
         private readonly List<bool> _expanded = new List<bool>();
         private string _name = "新しい合成表情";
         private Vector2 _scroll;
+        private System.Action<Expression> _created;
+        private string _destination;
 
-        public static void Open(ExpressionSet set, AnimationClip first)
+        public static void Open(ExpressionSet set, AnimationClip first, System.Action<Expression> created = null, string destination = null)
         {
             var w = CreateInstance<ExpressionComposerWindow>();
             w._set = set;
+            w._created = created; w._destination = destination;
             w.Add(first); w.Add(null);
             w.titleContent = new GUIContent("表情を合成");
             w.minSize = new Vector2(480, 360); w.Show();
@@ -29,6 +32,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             if (_set == null) { EditorGUILayout.HelpBox("表情データを選び直してください。", MessageType.Info); return; }
             _name = EditorGUILayout.TextField("新しい表情の名前", _name);
+            if (!string.IsNullOrEmpty(_destination)) EditorGUILayout.LabelField("作成後の割り当て先", _destination, EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.HelpBox("目元・口元などをD&Dしてください。同じ項目は下の素材を優先します。不要な項目はチェックを外せます。動く素材は元の時間軸を保持します。", MessageType.Info);
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
             for (var i = 0; i < _clips.Count; i++)
@@ -56,15 +60,16 @@ namespace Samon.FacialExpressionEditor.Editor
             var incompatible = moving.Count > 1 && moving.Any(c => Mathf.Abs(c.length - moving[0].length) > .001f || c.isLooping != moving[0].isLooping);
             if (incompatible) EditorGUILayout.HelpBox("動く素材の長さ／ループ設定が異なります。時間を引き伸ばさず合成するため、外部エディタで揃えてください。", MessageType.Warning);
             using (new EditorGUI.DisabledScope(incompatible || !_clips.Any(c => c != null) || string.IsNullOrWhiteSpace(_name)))
-            if (GUILayout.Button("合成してライブラリへ追加", GUILayout.Height(30)))
+            if (GUILayout.Button(string.IsNullOrEmpty(_destination) ? "合成してライブラリへ追加" : "合成してこの枠へ割り当て", GUILayout.Height(30)))
             {
                 var clip = Compose(_clips, _excluded);
                 clip.name = _name.Trim();
                 var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(_set), "Expressions");
                 AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(clip.name)}.anim"));
                 Undo.RecordObject(_set, "合成表情を追加");
-                _set.expressions.Add(new Expression { name = clip.name, clip = clip });
-                EditorUtility.SetDirty(_set); AssetDatabase.SaveAssets(); Close();
+                var expression = new Expression { name = clip.name, clip = clip };
+                _set.expressions.Add(expression);
+                EditorUtility.SetDirty(_set); _created?.Invoke(expression); AssetDatabase.SaveAssets(); Close();
             }
         }
 

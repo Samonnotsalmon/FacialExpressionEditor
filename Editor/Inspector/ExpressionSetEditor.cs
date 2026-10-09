@@ -75,10 +75,15 @@ namespace Samon.FacialExpressionEditor.Editor
                     if (clip != part.clip)
                     {
                         part.clip = clip;
+                        part.originalClip = ExpressionSetUtility.FindExpressionByClip(set, clip)?.originalClip ?? clip;
                         part.properties = FxImporter.DefaultPartProperties(clip);
                     }
 
                     part.exclusiveGroup = EditorGUILayout.TextField("排他グループ", part.exclusiveGroup);
+                    var groups = set.exclusiveGroups.Concat(set.parts.Select(p => p.exclusiveGroup)).Where(g => !string.IsNullOrWhiteSpace(g)).Distinct().OrderBy(g => g).ToList();
+                    var selectedGroup = EditorGUILayout.Popup("登録済みから選ぶ", groups.IndexOf(part.exclusiveGroup) + 1, new[] { "なし" }.Concat(groups).ToArray());
+                    part.exclusiveGroup = selectedGroup == 0 ? "" : groups[selectedGroup - 1];
+                    foreach (var group in groups) if (!set.exclusiveGroups.Contains(group)) set.exclusiveGroups.Add(group);
                     DrawPartProperties(part);
                 }
             }

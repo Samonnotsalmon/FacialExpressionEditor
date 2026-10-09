@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace Samon.FacialExpressionEditor.Editor
@@ -19,6 +20,7 @@ namespace Samon.FacialExpressionEditor.Editor
             public string Label;
             // 表情データからこの使用箇所を外す（Undoは呼び出し側で記録する）。
             public Action Remove;
+            public bool IsPart;
         }
 
         private readonly Dictionary<AnimationClip, List<Use>> _uses = new Dictionary<AnimationClip, List<Use>>();
@@ -63,7 +65,17 @@ namespace Samon.FacialExpressionEditor.Editor
 
             foreach (var part in set.parts)
             {
-                usage.Add(part.clip, $"パーツ：{part.name}", () => set.parts.Remove(part));
+                var source = part.originalClip;
+                // Earlier versions copied parts without recording the source. Only recover an unambiguous, unchanged copy.
+                if (source == null && part.clip != null)
+                {
+                    var matches = set.expressions.Where(e => e.clip != null && e.clip.name == part.clip.name &&
+                        ThumbnailKeys.AssetKey(e.clip) == ThumbnailKeys.AssetKey(part.clip)).ToList();
+                    if (matches.Count == 1) source = matches[0].clip;
+                }
+                var expression = ExpressionSetUtility.FindExpressionByClip(set, source);
+                foreach (var clip in new[] { part.clip, source, expression?.clip, expression?.originalClip }.Where(c => c != null).Distinct())
+                    usage.Add(clip, $"パーツ：{part.name}", () => set.parts.Remove(part), true);
             }
 
             foreach (var trigger in set.contactTriggers)
@@ -80,6 +92,7 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         public bool IsUsed(AnimationClip clip) => Of(clip).Count > 0;
+        public bool IsUsedByPart(AnimationClip clip) => Of(clip).Any(u => u.IsPart);
 
         /// <summary>
         /// 同じ表情が2か所以上に割り当てられているか（左右で同じジェスチャーは1か所と数える）。
@@ -96,11 +109,11 @@ namespace Samon.FacialExpressionEditor.Editor
             if (expression.originalClip != null && expression.originalClip != expression.clip) Add(expression.originalClip, label, remove);
         }
 
-        private void Add(AnimationClip clip, string label, Action remove)
+        private void Add(AnimationClip clip, string label, Action remove, bool isPart = false)
         {
             if (clip == null) return;
             if (!_uses.TryGetValue(clip, out var list)) _uses[clip] = list = new List<Use>();
-            list.Add(new Use { Label = label, Remove = remove });
+            list.Add(new Use { Label = label, Remove = remove, IsPart = isPart });
         }
     }
 }

@@ -202,14 +202,17 @@ namespace Samon.FacialExpressionEditor.Editor
             if (_preview == null || _preview.Source != AvatarRoot)
             {
                 DisposePreview();
-                _preview = new FacePreview(AvatarRoot);
+                _preview = new FacePreview(AvatarRoot, Set);
                 _previewDirty = true;
             }
 
+            if (!Mathf.Approximately(_preview.HeightOffset, Set != null ? Set.previewHeight : 0.03f) ||
+                !Mathf.Approximately(_preview.Zoom, _zoom * (Set != null ? Set.previewZoom : 1f))) _previewDirty = true;
             if (_previewDirty || _previewTexture == null)
             {
                 // ビルドと同じ処理（差し替えとベース顔）を通したクリップで描く。AFKは今の時間の形。
-                _preview.Zoom = _zoom;
+                _preview.Zoom = _zoom * (Set != null ? Set.previewZoom : 1f);
+                _preview.HeightOffset = Set != null ? Set.previewHeight : 0.03f;
                 _preview.Yaw = _yaw;
                 if (IsAfk)
                 {

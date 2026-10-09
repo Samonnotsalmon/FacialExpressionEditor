@@ -149,6 +149,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             Undo.RecordObject(set, "パーツを編集用に複製");
+            if (part.originalClip == null) part.originalClip = FindExpressionByClip(set, source)?.originalClip ?? source;
             part.clip = clip;
             EditorUtility.SetDirty(set);
             return clip;
@@ -408,6 +409,12 @@ namespace Samon.FacialExpressionEditor.Editor
         private static void WriteCurrentFace(AnimationClip clip, ExpressionSet set, GameObject avatarRoot, FaceVariant variant)
         {
             var keys = FaceVariantUtility.AnimatedBlendShapes(set);
+            foreach (var renderer in avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var path = AnimationUtility.CalculateTransformPath(renderer.transform, avatarRoot.transform);
+                if (renderer.sharedMesh == null || !set.faceMeshPaths.Contains(path)) continue;
+                for (var i = 0; i < renderer.sharedMesh.blendShapeCount; i++) keys.Add((path, renderer.sharedMesh.GetBlendShapeName(i)));
+            }
             var baseFace = new Dictionary<(string, string), float>();
             if (variant != null)
             {

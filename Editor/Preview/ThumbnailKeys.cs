@@ -14,9 +14,11 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// アバターの今の顔（全レンダラーのシェイプキーの値）。
         /// </summary>
-        public static string FaceHash(GameObject avatar)
+        public static string FaceHash(GameObject avatar, ExpressionSet set = null)
         {
             var hash = new Hash128();
+            hash.Append(set != null ? set.previewHeight : 0.03f);
+            hash.Append(set != null ? set.previewZoom : 1f);
             foreach (var renderer in avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 if (renderer.sharedMesh == null) continue;

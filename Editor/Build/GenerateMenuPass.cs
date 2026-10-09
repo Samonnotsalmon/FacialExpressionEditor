@@ -188,7 +188,7 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 if (!EditorApplication.isPlayingOrWillChangePlaymode) MenuIcons.EnsureCached(avatarRoot, set, variant);
 
-                var faceHash = ThumbnailKeys.FaceHash(avatarRoot);
+                var faceHash = ThumbnailKeys.FaceHash(avatarRoot, set);
                 var missing = 0;
 
                 void Load(string id, string key, string name)

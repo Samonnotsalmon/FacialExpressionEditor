@@ -13,6 +13,7 @@ namespace Samon.FacialExpressionEditor
         public string id = Expression.NewId();
         public string name;
         public AnimationClip clip;
+        public AnimationClip originalClip;
 
         // 同じグループのパーツは同時に出ない（1つのIntパラメータで切り替える）。空なら単独のトグル。
         public string exclusiveGroup = "";

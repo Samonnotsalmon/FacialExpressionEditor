@@ -413,15 +413,14 @@ namespace Samon.FacialExpressionEditor.Editor
 
             EditorGUI.BeginChangeCheck();
             var name = EditorGUILayout.TextField("名前", part.name);
-            var group = EditorGUILayout.TextField("排他グループ", part.exclusiveGroup);
             if (EditorGUI.EndChangeCheck())
             {
                 Modify(set, "パーツを変更", () =>
                 {
                     part.name = name;
-                    part.exclusiveGroup = group;
                 });
             }
+            DrawExclusiveGroup(set, part);
 
             using (new EditorGUI.DisabledScope(true))
             {
@@ -432,15 +431,42 @@ namespace Samon.FacialExpressionEditor.Editor
                 : AnimationUtility.GetCurveBindings(part.clip).Length + AnimationUtility.GetObjectReferenceCurveBindings(part.clip).Length;
             EditorGUILayout.LabelField("動かすプロパティ", $"{part.properties.Count} / {total}");
 
-            var groups = set.parts.Select(p => p.exclusiveGroup).Where(g => !string.IsNullOrEmpty(g)).Distinct().ToList();
-            if (groups.Count > 0)
-            {
-                EditorGUILayout.LabelField($"排他グループ：{string.Join("、", groups)}", EditorStyles.wordWrappedMiniLabel);
-            }
 
             if (GUILayout.Button("インスペクタでプロパティを選ぶ"))
             {
                 Selection.activeObject = set;
+            }
+        }
+
+        private string _groupPartId;
+        private string _newExclusiveGroup = "";
+        private bool _addingExclusiveGroup;
+        private void DrawExclusiveGroup(ExpressionSet set, FacialPart part)
+        {
+            if (_groupPartId != part.id) { _groupPartId = part.id; _addingExclusiveGroup = false; _newExclusiveGroup = ""; }
+            var groups = set.exclusiveGroups.Concat(set.parts.Select(p => p.exclusiveGroup))
+                .Where(g => !string.IsNullOrWhiteSpace(g)).Distinct().OrderBy(g => g).ToList();
+            var labels = new[] { "なし（重ねて使う）" }.Concat(groups).Concat(new[] { "＋ 新しいグループ…" }).ToArray();
+            var current = groups.IndexOf(part.exclusiveGroup) + 1;
+            var next = EditorGUILayout.Popup("排他グループ", _addingExclusiveGroup ? labels.Length - 1 : current, labels);
+            if (next == labels.Length - 1) _addingExclusiveGroup = true;
+            else if (next != current || _addingExclusiveGroup)
+            {
+                _addingExclusiveGroup = false;
+                Modify(set, "排他グループを選択", () =>
+                {
+                    part.exclusiveGroup = next == 0 ? "" : groups[next - 1];
+                    foreach (var group in groups) if (!set.exclusiveGroups.Contains(group)) set.exclusiveGroups.Add(group);
+                });
+            }
+            if (!_addingExclusiveGroup) return;
+            _newExclusiveGroup = EditorGUILayout.TextField("グループ名", _newExclusiveGroup);
+            using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(_newExclusiveGroup)))
+            if (GUILayout.Button("登録して選択"))
+            {
+                var name = _newExclusiveGroup.Trim();
+                Modify(set, "排他グループを登録", () => { if (!set.exclusiveGroups.Contains(name)) set.exclusiveGroups.Add(name); part.exclusiveGroup = name; });
+                _addingExclusiveGroup = false; _newExclusiveGroup = "";
             }
         }
     }
