@@ -29,8 +29,67 @@ namespace Samon.FacialExpressionEditor.Editor
 
             DrawCurrentProperties();
             EditorGUILayout.Space(12);
+            DrawMaterialInspector();
+            EditorGUILayout.Space(12);
             DrawAddProperty();
             EditorGUILayout.EndScrollView();
+        }
+
+        private Material _inspectorMaterial;
+        private Material _inspectorSource;
+        private MaterialEditor _materialEditor;
+        private int _materialSlot;
+
+        private void DisposeMaterialInspector()
+        {
+            if (_materialEditor != null) DestroyImmediate(_materialEditor);
+            if (_inspectorMaterial != null) DestroyImmediate(_inspectorMaterial);
+            _materialEditor = null;
+            _inspectorMaterial = null;
+            _inspectorSource = null;
+        }
+
+        private void DrawMaterialInspector()
+        {
+            EditorGUILayout.LabelField("マテリアルのインスペクター", EditorStyles.boldLabel);
+            var renderers = Root.GetComponentsInChildren<Renderer>(true)
+                .Where(r => (r is SkinnedMeshRenderer || r is MeshRenderer) && IsSelectedTarget(r.transform) && r.sharedMaterials.Any(m => m != null)).ToList();
+            if (renderers.Count == 0) return;
+            var paths = renderers.Select(r => PathOf(r.transform, Root)).ToList();
+            var index = Mathf.Max(0, paths.IndexOf(_shaderRendererPath));
+            index = EditorGUILayout.Popup("メッシュ", index, paths.ToArray());
+            _shaderRendererPath = paths[index];
+            var renderer = renderers[index];
+            var materials = renderer.sharedMaterials;
+            _materialSlot = EditorGUILayout.Popup("マテリアル", Mathf.Clamp(_materialSlot, 0, materials.Length - 1),
+                materials.Select((m, i) => $"{i}: {(m != null ? m.name : "なし")}").ToArray());
+            var source = materials[_materialSlot];
+            if (source == null || source.shader == null) return;
+            if (_inspectorSource != source || _inspectorMaterial == null || _inspectorMaterial.shader != source.shader)
+            {
+                DisposeMaterialInspector();
+                _inspectorSource = source;
+                _inspectorMaterial = new Material(source) { hideFlags = HideFlags.HideAndDontSave };
+                _materialEditor = (MaterialEditor)UnityEditor.Editor.CreateEditor(_inspectorMaterial);
+            }
+            // Only the temporary material is passed to ShaderGUI. Never edit the shared asset.
+            _inspectorMaterial.CopyPropertiesFromMaterial(source);
+            foreach (var pair in Values().Where(p => p.Key.path == _shaderRendererPath && p.Key.type == renderer.GetType() && p.Key.propertyName.StartsWith(ClipEditing.MaterialPrefix)))
+                MaterialAnimationValues.Apply(_inspectorMaterial, pair.Key.propertyName.Substring(ClipEditing.MaterialPrefix.Length), pair.Value);
+            var before = MaterialAnimationValues.Read(_inspectorMaterial);
+            EditorGUILayout.HelpBox("数値・色・ベクトル・テクスチャの位置とサイズを記録します。画像の差し替えやシェーダー変更は記録しません。同じメッシュ内で同名のプロパティを持つマテリアルには共通で適用されます。", MessageType.Info);
+            EditorGUI.BeginChangeCheck();
+            _materialEditor.PropertiesGUI();
+            if (EditorGUI.EndChangeCheck())
+            {
+                var changed = MaterialAnimationValues.Read(_inspectorMaterial)
+                    .Where(p => before.TryGetValue(p.Key, out var old) && !Mathf.Approximately(old, p.Value)).ToList();
+                if (changed.Count > 0) Modify("マテリアルのパラメータを変更", clip =>
+                {
+                    foreach (var pair in changed)
+                        ClipEditing.SetFloat(clip, EditorCurveBinding.FloatCurve(_shaderRendererPath, renderer.GetType(), ClipEditing.MaterialPrefix + pair.Key), pair.Value);
+                });
+            }
         }
 
         /// <summary>

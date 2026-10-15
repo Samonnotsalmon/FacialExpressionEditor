@@ -661,6 +661,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 on.Transitions = ImmutableList.Create(Transition(off, duration,
                     Condition(entry.Parameter, AnimatorConditionMode.IfNot, 0)));
 
+                builder.FillMissingMaterialDefaults(new[] { offClip, onClip });
                 if (!writeDefaults) builder.FillMissingWithDefaults(new[] { offClip, onClip });
                 layers.Add(layer);
             }
@@ -695,6 +696,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
                 stateMachine.AnyStateTransitions = transitions.ToImmutableList();
 
+                builder.FillMissingMaterialDefaults(clips);
                 if (!writeDefaults) builder.FillMissingWithDefaults(clips);
                 layers.Add(layer);
             }

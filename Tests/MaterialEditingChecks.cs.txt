@@ -1,0 +1,18 @@
+var assembly=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var helper=assembly.GetType("Samon.FacialExpressionEditor.Editor.MaterialAnimationValues",true);
+var read=helper.GetMethod("Read"); var apply=helper.GetMethod("Apply");
+var original=new Material(Shader.Find("Standard")); Material copy=null;
+try {
+ original.SetColor("_Color",new Color(.2f,.4f,.6f,.8f)); original.SetFloat("_Glossiness",.25f);
+ original.SetTextureScale("_MainTex",new Vector2(2,3)); original.SetTextureOffset("_MainTex",new Vector2(.1f,.2f));
+ copy=new Material(original);
+ apply.Invoke(null,new object[]{copy,"_Color.a",.5f});
+ apply.Invoke(null,new object[]{copy,"_Glossiness",.9f});
+ apply.Invoke(null,new object[]{copy,"_MainTex_ST.z",.7f});
+ var values=(System.Collections.Generic.Dictionary<string,float>)read.Invoke(null,new object[]{copy});
+ foreach(var expected in new[]{new{key="_Color.r",value=.2f},new{key="_Color.a",value=.5f},new{key="_Glossiness",value=.9f},new{key="_MainTex_ST.x",value=2f},new{key="_MainTex_ST.y",value=3f},new{key="_MainTex_ST.z",value=.7f},new{key="_MainTex_ST.w",value=.2f}})
+  if(!Mathf.Approximately(values[expected.key],expected.value))throw new Exception("Material round-trip failed: "+expected.key);
+ if(!Mathf.Approximately(original.GetColor("_Color").a,.8f)||!Mathf.Approximately(original.GetFloat("_Glossiness"),.25f)||!Mathf.Approximately(original.GetTextureOffset("_MainTex").x,.1f))throw new Exception("Original material was changed");
+ var editor=UnityEditor.Editor.CreateEditor(copy);try{if(!(editor is MaterialEditor))throw new Exception("Missing material inspector");}finally{UnityEngine.Object.DestroyImmediate(editor);}
+ return "Material value round-trip, source isolation and inspector creation passed";
+}finally{if(copy!=null)UnityEngine.Object.DestroyImmediate(copy);UnityEngine.Object.DestroyImmediate(original);}

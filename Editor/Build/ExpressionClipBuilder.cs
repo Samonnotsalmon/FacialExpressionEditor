@@ -184,6 +184,36 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
+        // Material animation needs explicit reset curves even with Write Defaults ON.
+        public void FillMissingMaterialDefaults(IEnumerable<VirtualClip> clips)
+        {
+            var list = clips.ToList();
+            var bindings = list.SelectMany(c => c.GetFloatCurveBindings())
+                .Where(b => typeof(Renderer).IsAssignableFrom(b.type) && b.propertyName.StartsWith("material.")).Distinct().ToList();
+            var materialValues = new Dictionary<Material, Dictionary<string, float>>();
+            foreach (var binding in bindings)
+            {
+                var transform = string.IsNullOrEmpty(binding.path) ? _avatarRoot.transform : _avatarRoot.transform.Find(binding.path);
+                var renderer = transform != null ? transform.GetComponent(binding.type) as Renderer : null;
+                if (renderer == null) continue;
+                var property = binding.propertyName.Substring("material.".Length);
+                float value = 0;
+                var found = false;
+                foreach (var material in renderer.sharedMaterials)
+                {
+                    if (material == null) continue;
+                    if (!materialValues.TryGetValue(material, out var values))
+                        materialValues[material] = values = MaterialAnimationValues.Read(material);
+                    if (!values.TryGetValue(property, out value)) continue;
+                    found = true;
+                    break;
+                }
+                if (!found) continue;
+                foreach (var clip in list.Where(c => c.GetFloatCurve(binding) == null))
+                    clip.SetFloatCurve(binding, AnimationCurve.Constant(0, 1, value));
+            }
+        }
+
         private static void CopyCurves(AnimationClip from, VirtualClip to, HashSet<string> only)
         {
             foreach (var binding in AnimationUtility.GetCurveBindings(from))

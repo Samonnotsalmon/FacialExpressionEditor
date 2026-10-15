@@ -78,6 +78,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void OnDisable()
         {
+            DisposeMaterialInspector();
             Undo.undoRedoPerformed -= OnUndoRedo;
             DisposePreview();
             ReleaseAfk();

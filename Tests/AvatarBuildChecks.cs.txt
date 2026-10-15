@@ -60,6 +60,17 @@ try {
    merge.layerType=VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX;
    merge.pathMode=nadena.dev.modular_avatar.core.MergeAnimatorPathMode.Absolute;
    merge.matchAvatarWriteDefaults=false;
+   var materialObject=new GameObject("NSL material fixture"); materialObject.transform.SetParent(avatar.transform,false);
+   var materialRenderer=materialObject.AddComponent<MeshRenderer>();
+   var material=new Material(Shader.Find("Standard")); material.SetFloat("_Glossiness",.2f); material.SetColor("_Color",new Color(.4f,.5f,.6f,.3f));
+   AssetDatabase.CreateAsset(material,folder+"/"+i+"/Material.mat"); materialRenderer.sharedMaterial=material;
+   foreach(var property in new[]{"_Glossiness","_Color.a","_Metallic"}) {
+    var clip=new AnimationClip(); var binding=EditorCurveBinding.FloatCurve("NSL material fixture",typeof(MeshRenderer),"material."+property);
+    AnimationUtility.SetEditorCurve(clip,binding,AnimationCurve.Constant(0,1,.9f));
+    AssetDatabase.CreateAsset(clip,folder+"/"+i+"/"+property+".anim");
+    var part=new Samon.FacialExpressionEditor.FacialPart{name=property.Replace(".","_"),clip=clip,exclusiveGroup=property=="_Glossiness"?"":"Material group"};
+    part.properties.Add(Samon.FacialExpressionEditor.FacialPart.PropertyKey(binding.path,binding.type,binding.propertyName)); set.parts.Add(part);
+   }
    avatar.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet=set;
    var legacyParameters=descriptor.expressionParameters!=null ? UnityEngine.Object.Instantiate(descriptor.expressionParameters) : ScriptableObject.CreateInstance<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters>();
    temporaryParameters=legacyParameters;
@@ -71,6 +82,21 @@ try {
    if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Expression")) throw new Exception("Missing generated expression layer: " + avatarPath);
    if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Blink")) throw new Exception("Missing mandatory blink replacement: " + avatarPath);
    if(fx.layers.Any(l=>set.originalGestureLayers.Contains(l.name))) throw new Exception("Original gesture layers were not replaced");
+   var materialLayers=fx.layers.Where(l=>l.name.StartsWith("[FacialExpressionEditor] Part")).ToArray();
+   if(materialLayers.Length!=2) throw new Exception("Missing material part layers");
+   foreach(var layer in materialLayers) {
+    var off=(AnimationClip)layer.stateMachine.defaultState.motion;
+    var bindings=AnimationUtility.GetCurveBindings(off).Where(b=>b.propertyName.StartsWith("material.")).ToArray();
+    if(bindings.Length!=(layer.name.Contains("Parts ")?2:1)) throw new Exception("Missing material resets");
+    foreach(var binding in bindings) {
+     var expected=binding.propertyName=="material._Glossiness"?.2f:binding.propertyName=="material._Color.a"?.3f:0f;
+     if(!Mathf.Approximately(AnimationUtility.GetEditorCurve(off,binding).Evaluate(0),expected)) throw new Exception("Incorrect material initial value");
+     foreach(var state in layer.stateMachine.states.Select(c=>c.state)) {
+      if(state.name!="Motion suspend" && state.motion is AnimationClip partClip && AnimationUtility.GetEditorCurve(partClip,binding)==null) throw new Exception("Missing material reset in sibling state: "+state.name);
+     }
+    }
+   }
+   if(!Mathf.Approximately(material.GetFloat("_Glossiness"),.2f)||!Mathf.Approximately(material.GetColor("_Color").a,.3f))throw new Exception("Source material modified");
    var builtWardrobe=fx.layers.Single(l=>l.name=="NSL Test Wardrobe");
    if(builtWardrobe.stateMachine.states.Length!=2 || builtWardrobe.stateMachine.anyStateTransitions.Length!=0) throw new Exception("Wardrobe was suspended or restructured");
    foreach(var outfitState in builtWardrobe.stateMachine.states.Select(c=>c.state)) {
