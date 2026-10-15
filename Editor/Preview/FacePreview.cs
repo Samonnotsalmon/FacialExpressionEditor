@@ -31,6 +31,25 @@ namespace Samon.FacialExpressionEditor.Editor
         private readonly HashSet<Renderer> _touchedRenderers = new HashSet<Renderer>();
         private readonly HashSet<GameObject> _touchedObjects = new HashSet<GameObject>();
 
+        // Shader previews use owned copies; shared material assets must never be edited.
+        private readonly Dictionary<(Renderer renderer, int slot), (Material source, Material copy)> _previewMaterials =
+            new Dictionary<(Renderer, int), (Material, Material)>();
+
+        private Material EditableMaterial(Renderer renderer, int slot)
+        {
+            var materials = renderer.sharedMaterials;
+            var key = (renderer, slot);
+            if (!_previewMaterials.TryGetValue(key, out var pair) || (materials[slot] != pair.source && materials[slot] != pair.copy))
+            {
+                if (pair.copy != null) Object.DestroyImmediate(pair.copy);
+                pair = (materials[slot], new Material(materials[slot]) { hideFlags = HideFlags.HideAndDontSave });
+                _previewMaterials[key] = pair;
+            }
+            materials[slot] = pair.copy;
+            renderer.sharedMaterials = materials;
+            return pair.copy;
+        }
+
         // 次の描画で焼き付け直すメッシュ。
         private readonly HashSet<SkinnedMeshRenderer> _needsBake = new HashSet<SkinnedMeshRenderer>();
 
@@ -210,6 +229,11 @@ namespace Samon.FacialExpressionEditor.Editor
                 target.enabled = skinned.enabled;
                 skinned.GetPropertyBlock(block);
                 target.SetPropertyBlock(block);
+                for (var slot = 0; slot < skinned.sharedMaterials.Length; slot++)
+                {
+                    skinned.GetPropertyBlock(block, slot);
+                    target.SetPropertyBlock(block, slot);
+                }
             }
             _needsBake.Clear();
         }
@@ -233,7 +257,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void ApplyClip(AnimationClip clip, float time)
         {
-            ClipApplier.Apply(_clone, clip, time, _touchedRenderers, _touchedObjects);
+            ClipApplier.Apply(_clone, clip, time, _touchedRenderers, _touchedObjects, EditableMaterial);
             foreach (var renderer in _touchedRenderers)
             {
                 if (renderer is SkinnedMeshRenderer skinned) _needsBake.Add(skinned);
@@ -255,6 +279,8 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void Restore()
         {
+            foreach (var pair in _previewMaterials.Values)
+                if (pair.source != null && pair.copy != null) pair.copy.CopyPropertiesFromMaterial(pair.source);
             foreach (var renderer in _touchedRenderers)
             {
                 if (renderer == null) continue;
@@ -264,6 +290,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     _needsBake.Add(skinned);
                 }
                 renderer.SetPropertyBlock(null);
+                for (var slot = 0; slot < renderer.sharedMaterials.Length; slot++) renderer.SetPropertyBlock(null, slot);
                 if (_baseRenderers.TryGetValue(renderer, out var state))
                 {
                     renderer.sharedMaterials = state.materials;
@@ -281,6 +308,8 @@ namespace Samon.FacialExpressionEditor.Editor
         public void Dispose()
         {
             _utility?.Cleanup();
+            foreach (var pair in _previewMaterials.Values) if (pair.copy != null) Object.DestroyImmediate(pair.copy);
+            _previewMaterials.Clear();
             foreach (var (_, _, mesh) in _baked)
             {
                 if (mesh != null) Object.DestroyImmediate(mesh);

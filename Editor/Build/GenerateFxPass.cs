@@ -51,6 +51,8 @@ namespace Samon.FacialExpressionEditor.Editor
             var writeDefaults = DetectWriteDefaults(fx);
             var avatarRoot = context.AvatarRootObject;
             var builder = new ExpressionClipBuilder(set, variant, avatarRoot);
+            builder.ReadMaterialDefaults(fx.Layers.Where((layer, index) => index == 0 || (Mathf.Approximately(layer.DefaultWeight, 1) && layer.BlendingMode == AnimatorLayerBlendingMode.Override))
+                .Select(layer => layer.StateMachine.DefaultState?.Motion).OfType<VirtualClip>());
             var cloneContext = controllerContext.CloneContext;
             var face = FaceControlPlan.Get(context, set, plan);
             var descriptor = avatarRoot.GetComponent<VRCAvatarDescriptor>();

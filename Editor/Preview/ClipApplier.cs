@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using UnityEditor;
@@ -19,11 +20,12 @@ namespace Samon.FacialExpressionEditor.Editor
         /// touchedRenderers / touchedObjects には、変更したレンダラーとオブジェクトを追加する（元に戻すときに使う）。
         /// </summary>
         public static void Apply(GameObject root, AnimationClip clip, float time,
-            ICollection<Renderer> touchedRenderers = null, ICollection<GameObject> touchedObjects = null)
+            ICollection<Renderer> touchedRenderers = null, ICollection<GameObject> touchedObjects = null,
+            Func<Renderer, int, Material> editableMaterial = null)
         {
             if (clip == null) return;
 
-            var blocks = new Dictionary<Renderer, MaterialPropertyBlock>();
+            var blocks = new Dictionary<(Renderer renderer, int slot), MaterialPropertyBlock>();
 
             foreach (var binding in AnimationUtility.GetCurveBindings(clip))
             {
@@ -59,17 +61,29 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
                 else if (binding.propertyName.StartsWith(MaterialPrefix))
                 {
-                    if (!blocks.TryGetValue(renderer, out var block))
+                    var materials = renderer.sharedMaterials;
+                    for (var slot = 0; slot < materials.Length; slot++)
                     {
-                        block = new MaterialPropertyBlock();
-                        renderer.GetPropertyBlock(block);
-                        blocks[renderer] = block;
+                        if (materials[slot] == null) continue;
+                        if (editableMaterial != null)
+                        {
+                            MaterialAnimationValues.Apply(editableMaterial(renderer, slot), binding.propertyName.Substring(MaterialPrefix.Length), value);
+                            continue;
+                        }
+                        var key = (renderer, slot);
+                        if (!blocks.TryGetValue(key, out var block))
+                        {
+                            block = new MaterialPropertyBlock();
+                            renderer.GetPropertyBlock(block, slot);
+                            if (block.isEmpty) renderer.GetPropertyBlock(block);
+                            blocks[key] = block;
+                        }
+                        SetMaterialProperty(materials[slot], block, binding.propertyName.Substring(MaterialPrefix.Length), value);
                     }
-                    SetMaterialProperty(renderer, block, binding.propertyName.Substring(MaterialPrefix.Length), value);
                 }
             }
 
-            foreach (var pair in blocks) pair.Key.SetPropertyBlock(pair.Value);
+            foreach (var pair in blocks) pair.Key.renderer.SetPropertyBlock(pair.Value, pair.Key.slot);
 
             foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
             {
@@ -95,7 +109,7 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// "_Color2nd.a" のような成分指定にも対応して、マテリアルのパラメータを書き込む。
         /// </summary>
-        private static void SetMaterialProperty(Renderer renderer, MaterialPropertyBlock block, string property, float value)
+        private static void SetMaterialProperty(Material material, MaterialPropertyBlock block, string property, float value)
         {
             var dot = property.LastIndexOf('.');
             if (dot < 0)
@@ -106,7 +120,6 @@ namespace Samon.FacialExpressionEditor.Editor
 
             var name = property.Substring(0, dot);
             var component = property.Substring(dot + 1);
-            var material = renderer.sharedMaterial;
             Vector4 vector = block.HasVector(name) ? block.GetVector(name)
                 : material != null && material.HasProperty(name) ? material.GetVector(name)
                 : Vector4.zero;
@@ -122,9 +135,9 @@ namespace Samon.FacialExpressionEditor.Editor
             block.SetVector(name, vector);
         }
 
-        private static Object ValueAt(ObjectReferenceKeyframe[] keys, float time)
+        private static UnityEngine.Object ValueAt(ObjectReferenceKeyframe[] keys, float time)
         {
-            Object value = null;
+            UnityEngine.Object value = null;
             foreach (var key in keys)
             {
                 if (key.time > time + 0.0001f) break;

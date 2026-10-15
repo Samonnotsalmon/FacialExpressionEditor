@@ -184,6 +184,23 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
+        private readonly Dictionary<EditorCurveBinding, float> _materialDefaults = new Dictionary<EditorCurveBinding, float>();
+
+        public void ReadMaterialDefaults(IEnumerable<VirtualClip> clips)
+        {
+            foreach (var clip in clips)
+            foreach (var binding in clip.GetFloatCurveBindings())
+            {
+                if (!binding.propertyName.StartsWith("material.")) continue;
+                var curve = clip.GetFloatCurve(binding);
+                if (curve == null || curve.length == 0) continue;
+                // A static default pose is authoritative when different material slots
+                // expose the same property with different asset defaults.
+                var value = curve.Evaluate(0);
+                if (curve.keys.All(k => Mathf.Approximately(k.value, value))) _materialDefaults[binding] = value;
+            }
+        }
+
         // Material animation needs explicit reset curves even with Write Defaults ON.
         public void FillMissingMaterialDefaults(IEnumerable<VirtualClip> clips)
         {
@@ -208,6 +225,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     found = true;
                     break;
                 }
+                if (_materialDefaults.TryGetValue(binding, out var initial)) { value = initial; found = true; }
                 if (!found) continue;
                 foreach (var clip in list.Where(c => c.GetFloatCurve(binding) == null))
                     clip.SetFloatCurve(binding, AnimationCurve.Constant(0, 1, value));

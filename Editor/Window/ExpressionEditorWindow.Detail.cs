@@ -10,6 +10,7 @@ namespace Samon.FacialExpressionEditor.Editor
         // （ウィンドウの再描画のたびに描き直すと重いため）。
         private AnimationClip _detailClip;
         private bool _detailClipReady;
+        private string _detailSelectionKey;
         private bool _detailTimeVarying;
         private Texture2D _detailTexture;
         private bool _detailTextureDirty = true;
@@ -138,7 +139,10 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void PrepareDetailClip(Expression expression, FacialPart part)
         {
-            if (_detailClipReady) return;
+            var key = $"{_selectionKind}|{_selectedId}|{_selectedHand}|{(_selectedClip != null ? _selectedClip.GetInstanceID() : 0)}";
+            if (_detailClipReady && _detailSelectionKey == key) return;
+            InvalidateDetailPreview();
+            _detailSelectionKey = key;
             _detailClipReady = true;
 
             if (expression != null)

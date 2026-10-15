@@ -17,6 +17,9 @@ namespace Samon.FacialExpressionEditor.Editor
         public static string FaceHash(GameObject avatar, ExpressionSet set = null)
         {
             var hash = new Hash128();
+            hash.Append("material-preview-v2");
+            foreach (var renderer in avatar.GetComponentsInChildren<Renderer>(true))
+                foreach (var material in renderer.sharedMaterials) hash.Append(AssetKey(material));
             hash.Append(set != null ? set.previewHeight : 0.03f);
             hash.Append(set != null ? set.previewZoom : 1f);
             foreach (var renderer in avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true))

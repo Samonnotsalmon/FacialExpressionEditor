@@ -14,5 +14,19 @@ try {
   if(!Mathf.Approximately(values[expected.key],expected.value))throw new Exception("Material round-trip failed: "+expected.key);
  if(!Mathf.Approximately(original.GetColor("_Color").a,.8f)||!Mathf.Approximately(original.GetFloat("_Glossiness"),.25f)||!Mathf.Approximately(original.GetTextureOffset("_MainTex").x,.1f))throw new Exception("Original material was changed");
  var editor=UnityEditor.Editor.CreateEditor(copy);try{if(!(editor is MaterialEditor))throw new Exception("Missing material inspector");}finally{UnityEngine.Object.DestroyImmediate(editor);}
- return "Material value round-trip, source isolation and inspector creation passed";
+ var root=new GameObject("Material defaults fixture");
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+ try {
+  root.AddComponent<MeshRenderer>().sharedMaterials=new[]{original,copy};
+  var builderType=assembly.GetType("Samon.FacialExpressionEditor.Editor.ExpressionClipBuilder",true);
+  var builder=Activator.CreateInstance(builderType,new object[]{set,null,root});
+  var binding=EditorCurveBinding.FloatCurve("",typeof(MeshRenderer),"material._Color.a");
+  var defaults=nadena.dev.ndmf.animator.VirtualClip.Create("Original default");defaults.SetFloatCurve(binding,AnimationCurve.Constant(0,1,0));
+  var off=nadena.dev.ndmf.animator.VirtualClip.Create("Off");
+  var on=nadena.dev.ndmf.animator.VirtualClip.Create("On");on.SetFloatCurve(binding,AnimationCurve.Constant(0,1,1));
+  builderType.GetMethod("ReadMaterialDefaults").Invoke(builder,new object[]{new[]{defaults}});
+  builderType.GetMethod("FillMissingMaterialDefaults").Invoke(builder,new object[]{new[]{off,on}});
+  if(off.GetFloatCurve(binding).Evaluate(0)!=0||on.GetFloatCurve(binding).Evaluate(0)!=1)throw new Exception("Original FX material default was not respected");
+ } finally {UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(set);}
+ return "Material round-trip, source isolation, inspector and original FX defaults passed";
 }finally{if(copy!=null)UnityEngine.Object.DestroyImmediate(copy);UnityEngine.Object.DestroyImmediate(original);}

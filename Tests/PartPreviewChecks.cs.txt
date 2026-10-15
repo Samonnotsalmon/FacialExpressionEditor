@@ -1,0 +1,34 @@
+// Run with a scene setup containing two visually distinct parts. No scene assets are modified.
+var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Public;
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var setup=McpSnippet.All<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true).First(c=>c.gameObject.scene.IsValid()&&c.expressionSet!=null&&c.expressionSet.parts.Count>=2);
+var sourceMaterials=setup.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>().GetComponentsInChildren<Renderer>(true).SelectMany(r=>r.sharedMaterials).Where(m=>m!=null).Distinct().ToDictionary(m=>m,m=>EditorJsonUtility.ToJson(m));
+var root=setup.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>().gameObject;
+var previewType=asm.GetType("Samon.FacialExpressionEditor.Editor.FacePreview");
+var previews=asm.GetType("Samon.FacialExpressionEditor.Editor.PreviewClips");
+var preview=Activator.CreateInstance(previewType,new object[]{root,setup.expressionSet});
+var wt=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow");
+var window=ScriptableObject.CreateInstance(wt);
+try{
+ wt.GetField("_avatar",flags).SetValue(window,setup);
+ var kind=wt.GetField("_selectionKind",flags);kind.SetValue(window,Enum.Parse(kind.FieldType,"Part"));
+ var samples=new System.Collections.Generic.List<string>();
+ foreach(var part in new[]{setup.expressionSet.parts[0],setup.expressionSet.parts[1],setup.expressionSet.parts[0]}){
+  wt.GetField("_selectedId",flags).SetValue(window,part.id);
+  wt.GetMethod("PrepareDetailClip",flags).Invoke(window,new object[]{null,part});
+  var clip=(AnimationClip)wt.GetField("_detailClip",flags).GetValue(window);
+  var sourceBindings=AnimationUtility.GetCurveBindings(part.clip).Where(b=>part.properties.Contains(Samon.FacialExpressionEditor.FacialPart.PropertyKey(b.path,b.type,b.propertyName))).ToArray();
+  if(!AnimationUtility.GetCurveBindings(clip).SequenceEqual(sourceBindings))throw new Exception("Stale part preview clip");
+  previewType.GetMethod("Apply").Invoke(preview,new object[]{clip,1f});
+  var texture=(Texture2D)previewType.GetMethod("RenderStatic").Invoke(preview,new object[]{128});
+  samples.Add(Hash128.Compute(texture.EncodeToPNG()).ToString());UnityEngine.Object.DestroyImmediate(texture);
+ }
+ if(samples[0]==samples[1]||samples[0]!=samples[2])throw new Exception("Part preview pixels did not switch/restore");
+ previewType.GetMethod("Apply").Invoke(preview,new object[]{null,1f});
+ var clone=(GameObject)previewType.GetField("_clone",flags).GetValue(preview);
+ foreach(var r in clone.GetComponentsInChildren<SkinnedMeshRenderer>(true))for(var slot=0;slot<r.sharedMaterials.Length;slot++){var block=new MaterialPropertyBlock();r.GetPropertyBlock(block,slot);if(!block.isEmpty)throw new Exception("Preview material override left after reset");}
+ if(sourceMaterials.Any(p=>EditorJsonUtility.ToJson(p.Key)!=p.Value))throw new Exception("Source material modified by preview");
+ return "Scene part previews A/B/A render distinct, restore identically, and clear per-slot overrides";
+}finally{((IDisposable)preview).Dispose();UnityEngine.Object.DestroyImmediate(window);}
+
+

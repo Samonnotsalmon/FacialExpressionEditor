@@ -134,6 +134,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             var expression = Expression;
             DrawToolbar(expression);
+            expression = Expression;
             if (expression == null)
             {
                 EditorGUILayout.HelpBox("編集する表情を選んでください。", MessageType.Info);

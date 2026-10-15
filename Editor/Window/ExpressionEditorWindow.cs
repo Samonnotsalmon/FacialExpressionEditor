@@ -406,6 +406,7 @@ namespace Samon.FacialExpressionEditor.Editor
             _selectedHand = hand;
             InvalidateDetailPreview();
             GUI.FocusControl(null);
+            Repaint();
         }
 
         private bool IsSelected(SelectionKind kind, string id, AnimationClip clip = null, Hand hand = default)
