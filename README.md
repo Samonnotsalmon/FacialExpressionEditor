@@ -33,6 +33,8 @@ VRChatアバターの表情・ジェスチャー設定を行うUnityエディタ
 最初の1回だけ、GitHub のリポジトリの Settings → Pages の Source を「GitHub Actions」にしておく。
 
 ## 開発
+表情の取り込み・作成・生成を変更する前に、[仕様書](docs/spec.md)の「アニメーションの記録範囲と未指定値の扱い」を確認する。未指定と明示的な0を区別し、Empty・部分表情の記録範囲を維持する。実装済みの動作と今後の修正候補も同節で管理する。
+
 開発用のUnityプロジェクトでは、VCC ではなく `Packages/manifest.json` の `dependencies` でこのフォルダを直接参照する（編集がすぐ反映される）。
 
 ```json
