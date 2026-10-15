@@ -1,0 +1,32 @@
+// Isolated material-inspector recording check. Temporary assets are removed afterward.
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var type=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionClipEditorWindow");
+var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+var folder="Assets/__FEE_InspectorCheck_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var avatar=new GameObject("Material inspector fixture");
+var source=new Material(Shader.Find("Standard"));source.SetFloat("_Glossiness",.2f);source.SetColor("_Color",new Color(.2f,.3f,.4f,.5f));
+var copy=new Material(source);var editor=UnityEditor.Editor.CreateEditor(copy) as MaterialEditor;
+var window=ScriptableObject.CreateInstance(type);
+try {
+ UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded(copy,true);
+ if(!editor.isVisible)throw new Exception("Embedded material inspector is hidden");
+ avatar.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var renderer=avatar.AddComponent<MeshRenderer>();renderer.sharedMaterial=source;
+ var setup=avatar.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();AssetDatabase.CreateAsset(set,folder+"/Set.asset");setup.expressionSet=set;
+ var part=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreatePart(set,"Inspector test");
+ type.GetMethod("SetTarget",flags).Invoke(window,new object[]{setup,part.id});
+ type.GetField("_inspectorMaterial",flags).SetValue(window,copy);
+ type.GetField("_shaderRendererPath",flags).SetValue(window,"");
+ var helper=asm.GetType("Samon.FacialExpressionEditor.Editor.MaterialAnimationValues");
+ type.GetField("_materialInspectorBaseline",flags).SetValue(window,helper.GetMethod("Read").Invoke(null,new object[]{copy}));
+ copy.SetFloat("_Glossiness",.8f);var color=copy.GetColor("_Color");color.a=.9f;copy.SetColor("_Color",color);
+ type.GetMethod("RecordMaterialInspectorChanges",flags).Invoke(window,new object[]{renderer});
+ var bindings=AnimationUtility.GetCurveBindings(part.clip);
+ if(bindings.Length!=2)throw new Exception("Unchanged properties were recorded");
+ foreach(var binding in bindings){var expected=binding.propertyName=="material._Glossiness"?.8f:.9f;if(!Mathf.Approximately(AnimationUtility.GetEditorCurve(part.clip,binding).Evaluate(0),expected))throw new Exception("Incorrect recorded value");if(!part.properties.Contains(Samon.FacialExpressionEditor.FacialPart.PropertyKey(binding.path,binding.type,binding.propertyName)))throw new Exception("Recorded curve not enabled for part");}
+ if(!Mathf.Approximately(source.GetFloat("_Glossiness"),.2f)||!Mathf.Approximately(source.GetColor("_Color").a,.5f))throw new Exception("Source material modified");
+ return "Inspector visible; changed values recorded and enabled for part; unchanged values and source material preserved";
+} finally {
+ UnityEngine.Object.DestroyImmediate(editor);UnityEngine.Object.DestroyImmediate(window);if(copy!=null)UnityEngine.Object.DestroyImmediate(copy);UnityEngine.Object.DestroyImmediate(source);UnityEngine.Object.DestroyImmediate(avatar);AssetDatabase.DeleteAsset(folder);
+}

@@ -12,26 +12,23 @@ namespace Samon.FacialExpressionEditor.Editor
     /// </summary>
     internal partial class ExpressionClipEditorWindow
     {
-        private const int PropertySearchLimit = 40;
         private static readonly string[] ColorComponents = { "r", "g", "b", "a" };
         private static readonly string[] VectorComponents = { "x", "y", "z", "w" };
 
         [SerializeField] private string _shaderRendererPath;
-        [SerializeField] private string _propertySearch = "";
+        [SerializeField] private bool _showRecordedMaterialProperties;
         private Vector2 _shaderScroll;
 
         private void DrawShaderProperties()
         {
             _shaderScroll = EditorGUILayout.BeginScrollView(_shaderScroll);
-            EditorGUILayout.LabelField("シェーダーのパラメータ", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("頬染めなど、表情の間だけマテリアルのパラメータを変えます（lilToon の 2nd メインカラーの不透明度など）。",
-                EditorStyles.wordWrappedMiniLabel);
-
-            DrawCurrentProperties();
-            EditorGUILayout.Space(12);
             DrawMaterialInspector();
             EditorGUILayout.Space(12);
-            DrawAddProperty();
+            var count = Values().Keys.Where(b => b.propertyName.StartsWith(ClipEditing.MaterialPrefix))
+                .Select(b => (b.path, b.type, name: BaseProperty(b.propertyName))).Distinct().Count();
+            _showRecordedMaterialProperties = EditorGUILayout.Foldout(_showRecordedMaterialProperties,
+                $"アニメーションに記録済みの項目（{count}）", true);
+            if (_showRecordedMaterialProperties) DrawCurrentProperties();
             EditorGUILayout.EndScrollView();
         }
 
@@ -39,6 +36,8 @@ namespace Samon.FacialExpressionEditor.Editor
         private Material _inspectorSource;
         private MaterialEditor _materialEditor;
         private int _materialSlot;
+        private string _materialInspectorContext;
+        private Dictionary<string, float> _materialInspectorBaseline;
 
         private void DisposeMaterialInspector()
         {
@@ -47,6 +46,8 @@ namespace Samon.FacialExpressionEditor.Editor
             _materialEditor = null;
             _inspectorMaterial = null;
             _inspectorSource = null;
+            _materialInspectorContext = null;
+            _materialInspectorBaseline = null;
         }
 
         private void DrawMaterialInspector()
@@ -54,7 +55,11 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorGUILayout.LabelField("マテリアルのインスペクター", EditorStyles.boldLabel);
             var renderers = Root.GetComponentsInChildren<Renderer>(true)
                 .Where(r => (r is SkinnedMeshRenderer || r is MeshRenderer) && IsSelectedTarget(r.transform) && r.sharedMaterials.Any(m => m != null)).ToList();
-            if (renderers.Count == 0) return;
+            if (renderers.Count == 0)
+            {
+                EditorGUILayout.HelpBox("アバター設定で、編集するマテリアルを持つメッシュを選択してください。", MessageType.Info);
+                return;
+            }
             var paths = renderers.Select(r => PathOf(r.transform, Root)).ToList();
             var index = Mathf.Max(0, paths.IndexOf(_shaderRendererPath));
             index = EditorGUILayout.Popup("メッシュ", index, paths.ToArray());
@@ -72,24 +77,47 @@ namespace Samon.FacialExpressionEditor.Editor
                 _inspectorMaterial = new Material(source) { hideFlags = HideFlags.HideAndDontSave };
                 _materialEditor = (MaterialEditor)UnityEditor.Editor.CreateEditor(_inspectorMaterial);
             }
-            // Only the temporary material is passed to ShaderGUI. Never edit the shared asset.
-            _inspectorMaterial.CopyPropertiesFromMaterial(source);
-            foreach (var pair in Values().Where(p => p.Key.path == _shaderRendererPath && p.Key.type == renderer.GetType() && p.Key.propertyName.StartsWith(ClipEditing.MaterialPrefix)))
-                MaterialAnimationValues.Apply(_inspectorMaterial, pair.Key.propertyName.Substring(ClipEditing.MaterialPrefix.Length), pair.Value);
-            var before = MaterialAnimationValues.Read(_inspectorMaterial);
-            EditorGUILayout.HelpBox("数値・色・ベクトル・テクスチャの位置とサイズを記録します。画像の差し替えやシェーダー変更は記録しません。同じメッシュ内で同名のプロパティを持つマテリアルには共通で適用されます。", MessageType.Info);
-            EditorGUI.BeginChangeCheck();
-            _materialEditor.PropertiesGUI();
-            if (EditorGUI.EndChangeCheck())
+            // Keep the editor instance and temporary values between GUI events (color pickers
+            // and shader foldouts also update outside the initiating mouse event).
+            var clip = TargetClip;
+            var context = $"{_expressionId}|{_shaderRendererPath}|{_materialSlot}|{source.GetInstanceID()}|{EditorUtility.GetDirtyCount(source)}|{(clip != null ? clip.GetInstanceID() : 0)}|{(clip != null ? EditorUtility.GetDirtyCount(clip) : 0)}";
+            if (_materialInspectorContext != context)
             {
-                var changed = MaterialAnimationValues.Read(_inspectorMaterial)
-                    .Where(p => before.TryGetValue(p.Key, out var old) && !Mathf.Approximately(old, p.Value)).ToList();
-                if (changed.Count > 0) Modify("マテリアルのパラメータを変更", clip =>
-                {
-                    foreach (var pair in changed)
-                        ClipEditing.SetFloat(clip, EditorCurveBinding.FloatCurve(_shaderRendererPath, renderer.GetType(), ClipEditing.MaterialPrefix + pair.Key), pair.Value);
-                });
+                _inspectorMaterial.CopyPropertiesFromMaterial(source);
+                foreach (var pair in Values().Where(p => p.Key.path == _shaderRendererPath && p.Key.type == renderer.GetType() && p.Key.propertyName.StartsWith(ClipEditing.MaterialPrefix)))
+                    MaterialAnimationValues.Apply(_inspectorMaterial, pair.Key.propertyName.Substring(ClipEditing.MaterialPrefix.Length), pair.Value);
+                _materialInspectorBaseline = MaterialAnimationValues.Read(_inspectorMaterial);
+                _materialInspectorContext = context;
             }
+            UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded(_inspectorMaterial, true);
+            EditorGUILayout.HelpBox("下のインスペクターで変更した数値・色・位置やサイズを、編集中のアニメーションへ自動記録します。元のマテリアルは変更しません。", MessageType.Info);
+            EditorGUILayout.LabelField("画像の差し替え・シェーダー変更は記録対象外。同じメッシュの同名パラメータには共通で適用されます。", EditorStyles.wordWrappedMiniLabel);
+            EditorGUI.BeginChangeCheck();
+            var labelWidth = EditorGUIUtility.labelWidth;
+            var fieldWidth = EditorGUIUtility.fieldWidth;
+            try
+            {
+                _materialEditor.SetDefaultGUIWidths();
+                _materialEditor.OnInspectorGUI();
+            }
+            finally
+            {
+                EditorGUIUtility.labelWidth = labelWidth;
+                EditorGUIUtility.fieldWidth = fieldWidth;
+            }
+            if (EditorGUI.EndChangeCheck()) RecordMaterialInspectorChanges(renderer);
+        }
+
+        private void RecordMaterialInspectorChanges(Renderer renderer)
+        {
+            var changed = MaterialAnimationValues.Read(_inspectorMaterial)
+                .Where(p => _materialInspectorBaseline.TryGetValue(p.Key, out var old) && !Mathf.Approximately(old, p.Value)).ToList();
+            if (changed.Count == 0) return;
+            Modify("マテリアルのパラメータを変更", targetClip =>
+            {
+                foreach (var pair in changed)
+                    ClipEditing.SetFloat(targetClip, EditorCurveBinding.FloatCurve(_shaderRendererPath, renderer.GetType(), ClipEditing.MaterialPrefix + pair.Key), pair.Value);
+            });
         }
 
         /// <summary>
@@ -97,7 +125,6 @@ namespace Samon.FacialExpressionEditor.Editor
         /// </summary>
         private void DrawCurrentProperties()
         {
-            var clip = TargetClip;
             var values = Values();
             var groups = values.Keys
                 .Where(b => b.propertyName.StartsWith(ClipEditing.MaterialPrefix))
@@ -106,7 +133,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             if (groups.Count == 0)
             {
-                EditorGUILayout.LabelField("変えているパラメータはありません。下から追加できます。", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField("記録済みの項目はありません。インスペクターで値を変更すると追加されます。", EditorStyles.miniLabel);
                 return;
             }
 
@@ -178,102 +205,6 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// メッシュを選び、そのマテリアルのシェーダーのパラメータを検索して追加する。追加するときの値は、今のマテリアルの値。
         /// </summary>
-        private void DrawAddProperty()
-        {
-            EditorGUILayout.LabelField("パラメータを追加", EditorStyles.boldLabel);
-
-            var renderers = Root.GetComponentsInChildren<Renderer>(true)
-                .Where(r => (r is SkinnedMeshRenderer || r is MeshRenderer) && r.sharedMaterials.Any(m => m != null))
-                .Where(r => IsSelectedTarget(r.transform))
-                .ToList();
-            if (renderers.Count == 0) return;
-
-            var paths = renderers.Select(r => PathOf(r.transform, Root)).ToList();
-            var index = paths.IndexOf(_shaderRendererPath);
-            if (index < 0)
-            {
-                var viseme = Descriptor != null ? Descriptor.VisemeSkinnedMesh : null;
-                index = Mathf.Max(0, renderers.IndexOf(viseme));
-            }
-            index = EditorGUILayout.Popup("メッシュ", index, paths.ToArray());
-            _shaderRendererPath = paths[index];
-            var renderer = renderers[index];
-
-            _propertySearch = EditorGUILayout.TextField("パラメータを検索", _propertySearch);
-            if (string.IsNullOrWhiteSpace(_propertySearch))
-            {
-                EditorGUILayout.LabelField("名前か説明で検索します（例：2nd、Color、Emission）。", EditorStyles.miniLabel);
-                return;
-            }
-
-            var search = _propertySearch.Trim();
-            var shown = 0;
-            foreach (var (material, shader, i) in ShaderProperties(renderer))
-            {
-                var name = shader.GetPropertyName(i);
-                var description = shader.GetPropertyDescription(i);
-                if (name.IndexOf(search, System.StringComparison.OrdinalIgnoreCase) < 0 &&
-                    description.IndexOf(search, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
-                if (++shown > PropertySearchLimit) break;
-
-                var type = shader.GetPropertyType(i);
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    EditorGUILayout.LabelField(new GUIContent(name, description), GUILayout.Width(200));
-                    EditorGUILayout.LabelField($"{description}（{type}）", EditorStyles.miniLabel);
-                    if (GUILayout.Button("追加", EditorStyles.miniButton, GUILayout.Width(40)))
-                    {
-                        var path = PathOf(renderer.transform, Root);
-                        Modify("パラメータを追加", c => AddProperty(c, path, renderer.GetType(), material, name, type));
-                        GUIUtility.ExitGUI();
-                    }
-                }
-            }
-            if (shown == 0) EditorGUILayout.LabelField("見つかりません。", EditorStyles.miniLabel);
-            else if (shown > PropertySearchLimit) EditorGUILayout.LabelField($"先頭の {PropertySearchLimit} 件だけ出しています。", EditorStyles.miniLabel);
-        }
-
-        private static void AddProperty(AnimationClip clip, string path, System.Type rendererType, Material material, string name, ShaderPropertyType type)
-        {
-            EditorCurveBinding Binding(string suffix) =>
-                EditorCurveBinding.FloatCurve(path, rendererType, $"{ClipEditing.MaterialPrefix}{name}{suffix}");
-
-            switch (type)
-            {
-                case ShaderPropertyType.Color:
-                    var color = material.GetColor(name);
-                    for (var i = 0; i < 4; i++) ClipEditing.SetFloat(clip, Binding("." + ColorComponents[i]), color[i]);
-                    break;
-                case ShaderPropertyType.Vector:
-                    var vector = material.GetVector(name);
-                    for (var i = 0; i < 4; i++) ClipEditing.SetFloat(clip, Binding("." + VectorComponents[i]), vector[i]);
-                    break;
-                default:
-                    ClipEditing.SetFloat(clip, Binding(""), material.GetFloat(name));
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// メッシュのマテリアルのシェーダーのパラメータ（テクスチャとインスペクタで隠しているものを除く。同じ名前は1つ）。
-        /// </summary>
-        private static IEnumerable<(Material material, Shader shader, int index)> ShaderProperties(Renderer renderer)
-        {
-            var seen = new HashSet<string>();
-            foreach (var material in renderer.sharedMaterials.Where(m => m != null && m.shader != null))
-            {
-                var shader = material.shader;
-                for (var i = 0; i < shader.GetPropertyCount(); i++)
-                {
-                    var type = shader.GetPropertyType(i);
-                    if (type == ShaderPropertyType.Texture) continue;
-                    if ((shader.GetPropertyFlags(i) & ShaderPropertyFlags.HideInInspector) != 0) continue;
-                    if (!seen.Add(shader.GetPropertyName(i))) continue;
-                    yield return (material, shader, i);
-                }
-            }
-        }
-
         private static string BaseProperty(string propertyName)
         {
             var name = propertyName.Substring(ClipEditing.MaterialPrefix.Length);
