@@ -56,9 +56,12 @@ namespace Samon.FacialExpressionEditor.Editor
         [MenuItem("Tools/NotSalmon/NSL_Facial Expression Editor")]
         private static void OpenFromMenu()
         {
-            // メニューから開いたときは、アバターを選ぶところから始める。
+            // ウィンドウを開く前の選択を、ドロップと同じ経路で読み込む。
+            var selectedAvatar = AvatarSetup.FindAvatarRoot(Selection.activeObject);
             Open(null);
-            GetWindow<ExpressionEditorWindow>().BeginSelectAvatar();
+            var window = GetWindow<ExpressionEditorWindow>();
+            window.BeginSelectAvatar();
+            if (selectedAvatar != null) window.SetStartAvatar(selectedAvatar);
         }
 
         /// <summary>
