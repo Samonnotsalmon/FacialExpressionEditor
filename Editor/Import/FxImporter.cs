@@ -189,6 +189,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     s.motion == expression.clip && s.timeParameterActive &&
                     (s.timeParameter == "GestureLeftWeight" || s.timeParameter == "GestureRightWeight"));
                 if (set.independentClips && !ExpressionSetUtility.OwnsClip(set, expression.clip)) ExpressionSetUtility.MakeClipEditable(set, expression);
+                if (ExpressionSetUtility.OwnsClip(set, expression.clip)) LipSyncProtection.Remove(expression.clip, avatarRoot, set);
             }
 
             // 前の取り込みで入った、パッケージの中のダミー（ProxyAnim など）の表情と、Assets の外のフォルダを外す。

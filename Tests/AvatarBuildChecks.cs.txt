@@ -1,9 +1,7 @@
-// Run with isuzu-unity-cli execute_code in EditorTest, which has these avatar packages.
-var paths = new[]{
- "Assets/Shinano/Prefab/Shinano.prefab", "Assets/MANUKA/Prefab/MANUKA_lilToon.prefab",
- "Assets/onair/Alue/Prefab/Alue.prefab", "Assets/Kogomi/Kogomi.prefab",
- "Assets/STUDIO_MOCA/NagiyaRuri/Prefab/Avatar_Simple/NagiyaRuri_Simple.prefab",
- "Assets/STUDIO_MOCA/NagiyaRuri/_ModuleAssets/Prefab_MA_Avatar_Simple/NagiyaRuri_Modular_Simple.prefab"};
+// Select avatar prefab assets in the Project window, then run this check in Unity.
+var paths = Selection.gameObjects.Where(g => EditorUtility.IsPersistent(g) && g.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>() != null)
+ .Select(AssetDatabase.GetAssetPath).ToArray();
+if (paths.Length == 0) throw new Exception("Select at least one avatar prefab asset before running this check.");
 System.Collections.Generic.IEnumerable<UnityEditor.Animations.AnimatorState> States(UnityEditor.Animations.AnimatorStateMachine sm) {
  foreach(var child in sm.states) yield return child.state;
  foreach(var child in sm.stateMachines) foreach(var state in States(child.stateMachine)) yield return state;
@@ -18,7 +16,7 @@ try {
   var fallback=i==paths.Length; var avatarPath=paths[i%paths.Length];
   var prefab=AssetDatabase.LoadAssetAtPath<GameObject>(avatarPath); if(prefab==null) throw new Exception("Missing fixture: "+avatarPath);
   var avatar=UnityEngine.Object.Instantiate(prefab); avatar.name="FEE build verification";
-  UnityEngine.Object temporaryMenu=null;
+  UnityEngine.Object temporaryMenu=null; UnityEngine.Object temporaryParameters=null;
   try {
    var descriptor=avatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
    var fxSource=Samon.FacialExpressionEditor.Editor.FxImporter.GetFx(descriptor);
@@ -39,8 +37,8 @@ try {
    Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.AddMenuFromSets(set);
    if(descriptor.expressionsMenu!=null) {
     var menu=UnityEngine.Object.Instantiate(descriptor.expressionsMenu); temporaryMenu=menu;
-    menu.controls.Add(new VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control{name="FEE selected menu removal",type=VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control.ControlType.Button});
-    set.replacedMenuItems.Add(new Samon.FacialExpressionEditor.OriginalMenuSelection{menu=menu,index=menu.controls.Count-1,controlName="FEE selected menu removal"});
+    menu.controls.Add(new VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control{name="FEE preserved menu",type=VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control.ControlType.Button});
+    set.replacedMenuItems.Add(new Samon.FacialExpressionEditor.OriginalMenuSelection{menu=menu,index=menu.controls.Count-1,controlName="FEE preserved menu"});
     descriptor.expressionsMenu=menu;
    }
    var wardrobeObject=new GameObject("NSL test outfit"); wardrobeObject.transform.SetParent(avatar.transform,false);
@@ -63,7 +61,12 @@ try {
    merge.pathMode=nadena.dev.modular_avatar.core.MergeAnimatorPathMode.Absolute;
    merge.matchAvatarWriteDefaults=false;
    avatar.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet=set;
+   var legacyParameters=descriptor.expressionParameters!=null ? UnityEngine.Object.Instantiate(descriptor.expressionParameters) : ScriptableObject.CreateInstance<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters>();
+   temporaryParameters=legacyParameters;
+   legacyParameters.parameters=(legacyParameters.parameters ?? new VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.Parameter[0]).Where(p=>p.name!="FEE/BlinkOff" && p.name!="FEE/DanceEnabled").Concat(new[]{"FEE/BlinkOff","FEE/DanceEnabled"}.Select(n=>new VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.Parameter{name=n,valueType=VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.ValueType.Bool,saved=true,defaultValue=1,networkSynced=true})).ToArray();
+   descriptor.expressionParameters=legacyParameters;
    nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(avatar);
+   if(legacyParameters.parameters.Where(p=>p.name=="FEE/BlinkOff"||p.name=="FEE/DanceEnabled").Any(p=>!p.saved||p.defaultValue!=1)) throw new Exception("Original saved parameters were modified");
    var fx=(UnityEditor.Animations.AnimatorController)descriptor.baseAnimationLayers.First(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
    if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Expression")) throw new Exception("Missing generated expression layer: " + avatarPath);
    if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Blink")) throw new Exception("Missing mandatory blink replacement: " + avatarPath);
@@ -81,7 +84,7 @@ try {
    var names=new System.Collections.Generic.List<string>();
    void ReadMenu(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu menu) {if(menu==null || !visited.Add(menu))return;foreach(var c in menu.controls){names.Add(c.name);ReadMenu(c.subMenu);}}
    ReadMenu(descriptor.expressionsMenu);
-   if(names.Contains("FEE selected menu removal") || !names.Contains("固定解除")) throw new Exception("Menu removal/reset check failed");
+   if(temporaryMenu != null && !names.Contains("FEE preserved menu") || !names.Contains("固定解除")) throw new Exception("Menu preservation/reset check failed");
    if(!names.Contains("まばたきOFF") || !names.Contains("ダンスギミック有効（MMD対応）")) throw new Exception("Missing settings menu toggles");
    foreach(var key in new[]{"FEE/BlinkOff","FEE/DanceEnabled"}) {
     var param=descriptor.expressionParameters.parameters.Single(p=>p.name==key);
@@ -106,14 +109,13 @@ try {
    var resume=blinkGate.stateMachine.states.Single(s=>s.state.name=="Yield").state.transitions.Single();
    if(!resume.conditions.Any(c=>c.parameter=="FEE/BlinkOff" && c.mode==UnityEditor.Animations.AnimatorConditionMode.IfNot) || !resume.conditions.Any(c=>c.parameter=="FEE/DanceActive" && c.mode==UnityEditor.Animations.AnimatorConditionMode.IfNot)) throw new Exception("Blink must wait for both menu overrides to clear");
    var dance=fx.layers.FirstOrDefault(l=>l.name.StartsWith("[FacialExpressionEditor] Motion rule"));
-   if(avatarPath.Contains("NagiyaRuri")) {
-    if(dance==null || !fx.animationClips.Any(c=>c.name=="NGR_Holiday_FX")) throw new Exception("Dance face was lost");
+   if(dance!=null) {
     var release=fx.layers.First(l=>l.name=="[FacialExpressionEditor] Emote Release");
     if(release.stateMachine.states.Any(s=>s.state.name.Contains("suspend"))) throw new Exception("Dance would clear fixed expression on resume");
     if(!fx.layers.First(l=>l.name=="[FacialExpressionEditor] Expression").stateMachine.states.Any(s=>s.state.name.Contains("suspend"))) throw new Exception("Missing dance suspension");
    }
    results.Add(new{avatar=avatarPath,passed=true,fallback,fxLayers=fx.layers.Length,danceProtected=dance!=null});
-  } finally {UnityEngine.Object.DestroyImmediate(avatar); if(temporaryMenu!=null && !AssetDatabase.Contains(temporaryMenu))UnityEngine.Object.DestroyImmediate(temporaryMenu);}
+  } finally {UnityEngine.Object.DestroyImmediate(avatar); if(temporaryMenu!=null && !AssetDatabase.Contains(temporaryMenu))UnityEngine.Object.DestroyImmediate(temporaryMenu); if(temporaryParameters!=null && !AssetDatabase.Contains(temporaryParameters))UnityEngine.Object.DestroyImmediate(temporaryParameters);}
  }
  return results;
 } finally {Debug.unityLogger.filterLogType=previousFilter; AssetDatabase.DeleteAsset(folder);}

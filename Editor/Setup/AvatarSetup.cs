@@ -145,6 +145,30 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
                 EditorUtility.SetDirty(baseline);
             }
+            var currentRoot = AvatarRootOf(source);
+            if (currentRoot != null)
+            {
+                if (baseline == null)
+                {
+                    baseline = ScriptableObject.CreateInstance<FaceVariant>();
+                    AssetDatabase.CreateAsset(baseline, $"{folder}/{name}_ベース顔.asset");
+                }
+                copy.faceMeshPaths = copy.faceMeshPaths.Where(path =>
+                {
+                    var t = string.IsNullOrEmpty(path) ? currentRoot.transform : currentRoot.transform.Find(path);
+                    return t != null && t.GetComponent<SkinnedMeshRenderer>()?.sharedMesh != null;
+                }).ToList();
+                if (copy.faceMeshPaths.Count == 0)
+                    copy.faceMeshPaths = currentRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                        .Where(r => r.sharedMesh != null && r.sharedMesh.blendShapeCount > 0)
+                        .Select(r => AnimationUtility.CalculateTransformPath(r.transform, currentRoot.transform)).ToList();
+                FaceVariantUtility.DetectBaseFace(baseline, copy, currentRoot);
+                baseline.useCapturedValues = true;
+                foreach (var expression in copy.expressions) LipSyncProtection.Remove(expression.clip, currentRoot, copy);
+                foreach (var replacement in baseline.overrides) LipSyncProtection.Remove(replacement.clip, currentRoot, copy);
+                EditorUtility.SetDirty(copy);
+                EditorUtility.SetDirty(baseline);
+            }
             var sourceAvatar = PrefabOf(AvatarRootOf(source)) ?? source.sourceAvatar;
             var prefab = CreateSetupPrefab(folder, name, copy, baseline, sourceAvatar);
             if (prefab == null) throw new System.InvalidOperationException("専用Prefabを作成できませんでした。");

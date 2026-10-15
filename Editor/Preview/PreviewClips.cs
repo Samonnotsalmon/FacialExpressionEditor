@@ -24,6 +24,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     b => AnimationUtility.GetEditorCurve(clip, b),
                     (b, c) => AnimationUtility.SetEditorCurve(clip, b, c));
             }
+            LipSyncProtection.Remove(clip, avatarRoot);
             if (expression.freezeAnimation) Freeze(clip, expression.freezePosition);
             return clip;
         }

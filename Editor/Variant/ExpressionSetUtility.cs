@@ -467,6 +467,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 AssetDatabase.CreateAsset(clip, path);
             }
 
+            LipSyncProtection.Remove(clip, avatarRoot, set);
             Undo.RecordObject(set, "新しい表情を作成");
             var expression = new Expression { name = name, clip = clip };
             MatchExpressionNameToFile(set, expression);

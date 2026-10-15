@@ -562,8 +562,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 set.lipSyncMeshPath = _startLipMesh;
                 set.explicitLayerSelection = true;
                 set.importLayerNames = _startLayerNames.ToList();
-                set.explicitMenuSelection = true;
-                set.replacedMenuItems = _startRemovedMenus.ToList();
                 AssetDatabase.CreateAsset(set, AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(name)}{DataSuffix}.asset"));
                 if (_startImportFx && info.GestureClips > 0)
                 {
@@ -584,7 +582,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 foreach (var part in set.parts.Where(p => !ExpressionSetUtility.OwnsPartClip(set, p.clip)))
                     ExpressionSetUtility.MakePartClipEditable(set, part);
                 foreach (var library in _startFolders.Where(f => f != null)) FxImporter.AddFolder(set, library);
-                ExpressionFileImporter.Import(set, _startClips.Cast<Object>().Concat(_startFolders));
+                ExpressionFileImporter.Import(set, _startClips.Cast<Object>().Concat(_startFolders), avatar);
                 EditorUtility.SetDirty(set);
 
                 // 取り込んだ表情で動くシェイプキーも含めて、元のプレハブと違えば顔バリアントにする。

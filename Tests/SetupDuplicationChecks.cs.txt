@@ -24,6 +24,13 @@ try {
  AssetDatabase.CreateAsset(baseline,folder+"/Source/Base.asset");
  var prefab=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("CreateSetupPrefab",folder+"/Source","Original_FEE",set,baseline,null);
  var avatar=new GameObject("Avatar"); avatar.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var faceObject=new GameObject("Face"); var faceMesh=new Mesh(); faceMesh.vertices=new[]{Vector3.zero};
+ faceMesh.AddBlendShapeFrame("Smile",100,new[]{Vector3.up},null,null);
+ AssetDatabase.CreateAsset(faceMesh,folder+"/FaceMesh.asset");
+ faceObject.AddComponent<SkinnedMeshRenderer>().sharedMesh=faceMesh;
+ var facePrefab=PrefabUtility.SaveAsPrefabAsset(faceObject,folder+"/Face.prefab"); UnityEngine.Object.DestroyImmediate(faceObject);
+ var currentFace=(GameObject)PrefabUtility.InstantiatePrefab(facePrefab,avatar.transform);
+ currentFace.GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0,45);
  var otherAvatar=new GameObject("Other avatar"); otherAvatar.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
  var original=(GameObject)PrefabUtility.InstantiatePrefab(prefab.gameObject,avatar.transform);
  original.transform.localPosition=new Vector3(1,2,3);
@@ -37,7 +44,8 @@ try {
  Check(copied!=set && copied.expressions[0].clip!=expression.clip && copied.parts[0].clip!=part.clip,"Expression and part clips are independent");
  Check(copied.gestureSets[0].mapping.right[1]==expression.id && copied.menu[0].expressionId==expression.id,"Gesture and menu assignments are retained");
  Check(copied.expressions[0].enableLipSync && copied.expressions[0].mouthMorphCancel,"Control flags start unchanged");
- Check(applied.faceVariant!=baseline && applied.faceVariant.baseFace[0].variantValue==20 && applied.faceVariant.overrides[0].clip!=expression.clip,"Captured face and override clips are copied");
+ Check(applied.faceVariant!=baseline && applied.faceVariant.hasSourceFaceSnapshot && applied.faceVariant.overrides[0].clip!=expression.clip,"Current face is captured and override clips are copied");
+ Check(applied.faceVariant.baseFace.Single(k=>k.blendShape=="Smile").variantValue==45 && baseline.baseFace[0].variantValue==20,"Duplication captures current scene face instead of old base values");
  Check(copied.blinkAnimation!=set.blinkAnimation && copied.mouthCancelAnimation!=set.mouthCancelAnimation,"Auxiliary animations are copied");
  Undo.FlushUndoRecordObjects(); Undo.IncrementCurrentGroup(); Undo.PerformUndo();
  var restored=avatar.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true);
@@ -58,8 +66,8 @@ try {
  Check(System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(siblingPath)).Replace('\\','/')==folder,"Automatic duplicate folder is beside source folder");
  var another=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateBesideSource",prefab,null);
  Check(AssetDatabase.GetAssetPath(another.expressionSet)!=siblingPath && sibling.expressionSet!=another.expressionSet,"Repeated automatic duplication creates unique independent folders");
- var named=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateBesideSource",prefab,"Shinano_マスコット");
- Check(AssetDatabase.GetAssetPath(named.gameObject)==folder+"/Shinano_マスコット/Shinano_マスコット_FEE.prefab","Chosen name is used for sibling folder and prefab");
+ var named=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateBesideSource",prefab,"Avatar_マスコット");
+ Check(AssetDatabase.GetAssetPath(named.gameObject)==folder+"/Avatar_マスコット/Avatar_マスコット_FEE.prefab","Chosen name is used for sibling folder and prefab");
  Check(Call("ValidateSetupName","../outside")!=null && Call("ValidateSetupName","")!=null && Call("ValidateSetupName","CON")!=null,"Invalid folder names are rejected");
  var planned=(string)Call("DedicatedSetupFolder",prefab,"NotCreated");
  Check(!AssetDatabase.IsValidFolder(planned),"Previewing destination does not create assets");

@@ -43,13 +43,10 @@ namespace Samon.FacialExpressionEditor.Editor
             if (!_libraryDirty) return;
             _libraryDirty = false;
 
-            _libraryFolders = set.libraryFolderGuids
-                .Select(AssetDatabase.GUIDToAssetPath)
-                .Where(AssetDatabase.IsValidFolder)
-                .ToList();
+            _libraryFolders = ExpressionFileImporter.Folders(set).ToList();
 
             var expressionsFolder = $"{AssetPathUtility.FolderOf(set)}/Expressions";
-            var searchFolders = _libraryFolders.ToList();
+            var searchFolders = set.libraryFolderGuids.Select(AssetDatabase.GUIDToAssetPath).Where(AssetDatabase.IsValidFolder).Distinct().ToList();
             if (AssetDatabase.IsValidFolder(expressionsFolder)) searchFolders.Add(expressionsFolder);
 
             var clips = new List<AnimationClip>();
@@ -212,7 +209,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             Modify(set, "ライブラリにフォルダを追加", () => FxImporter.AddFolder(set, folder));
-            ExpressionFileImporter.Import(set, new Object[] { folder });
+            ExpressionFileImporter.Import(set, new Object[] { folder }, AvatarRoot);
             MarkLibraryDirty();
         }
 
@@ -247,7 +244,7 @@ namespace Samon.FacialExpressionEditor.Editor
                         AddLibraryFolder(set);
                         GUIUtility.ExitGUI();
                     },
-                    onCanRemoveCallback = list => list.index >= 0 && list.index < _libraryFolders.Count,
+                    onCanRemoveCallback = list => list.index >= 0 && list.index < _libraryFolders.Count && set.libraryFolderGuids.Contains(AssetDatabase.AssetPathToGUID(_libraryFolders[list.index])),
                     onRemoveCallback = list => RemoveLibraryFolder(set, _libraryFolders[list.index]),
                 };
             }
@@ -300,7 +297,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var assets = sources.ToList();
             Undo.RecordObject(set, "取り込み元を追加");
             foreach (var folder in assets.OfType<DefaultAsset>().Where(f => AssetDatabase.IsValidFolder(AssetDatabase.GetAssetPath(f)))) FxImporter.AddFolder(set, folder);
-            var count = ExpressionFileImporter.Import(set, assets);
+            var count = ExpressionFileImporter.Import(set, assets, AvatarRoot);
             MarkLibraryDirty(); InvalidateDetailPreview();
             ShowNotification(new GUIContent($"{count} 件をこのベース顔専用に取り込みました"));
         }

@@ -26,6 +26,10 @@ namespace Samon.FacialExpressionEditor.Editor
                     seq.Run(GenerateFxPass.Instance);
                 });
 
+            InPhase(BuildPhase.Optimizing)
+                .AfterPlugin("nadena.dev.modular-avatar")
+                .Run(FinalizeMenuParametersPass.Instance);
+
             // 他のTransformingパスが追加したFXも含め、ビルド用データで整合性を取る。
             InPhase(BuildPhase.Optimizing)
                 .WithRequiredExtension(typeof(AnimatorServicesContext), seq => seq.Run(MmdWriteDefaultsPass.Instance));

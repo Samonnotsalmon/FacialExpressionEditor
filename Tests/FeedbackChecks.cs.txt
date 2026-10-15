@@ -1,0 +1,46 @@
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+object Call(string type,string method,params object[] args)=>asm.GetType("Samon.FacialExpressionEditor.Editor."+type).GetMethod(method,System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static).Invoke(null,args);
+var folder="Assets/__FEE_Feedback_"+Guid.NewGuid().ToString("N"); AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+AssetDatabase.CreateFolder(folder,"Input"); AssetDatabase.CreateFolder(folder+"/Input","Eyes"); AssetDatabase.CreateFolder(folder+"/Input/Eyes","Happy"); AssetDatabase.CreateFolder(folder,"Data");
+var root=new GameObject("Feedback test avatar"); var descriptor=root.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+var face=new GameObject("Face"); face.transform.SetParent(root.transform);
+var mesh=new Mesh();mesh.vertices=new[]{Vector3.zero};
+mesh.AddBlendShapeFrame("vrc.v_aa",100,new[]{Vector3.up},null,null); mesh.AddBlendShapeFrame("Smile",100,new[]{Vector3.right},null,null);
+var renderer=face.AddComponent<SkinnedMeshRenderer>();renderer.sharedMesh=mesh;renderer.SetBlendShapeWeight(0,10);renderer.SetBlendShapeWeight(1,20);
+descriptor.VisemeSkinnedMesh=renderer;descriptor.VisemeBlendShapes=new[]{"vrc.v_aa"};
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>(); set.independentClips=true;set.faceMeshPaths.Add("Face");
+AssetDatabase.CreateAsset(set,folder+"/Data/Face.asset");
+var viseme=EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.vrc.v_aa");var smile=EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.Smile");
+var source=new AnimationClip();AnimationUtility.SetEditorCurve(source,viseme,AnimationCurve.Constant(0,1,70));AnimationUtility.SetEditorCurve(source,smile,AnimationCurve.Constant(0,1,50));
+AssetDatabase.CreateAsset(source,folder+"/Input/Eyes/Happy/Happy.anim");
+var baseline=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.FaceVariant>();baseline.useCapturedValues=true;baseline.baseFace.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path="Face",blendShape="vrc.v_aa",variantValue=30});
+try{
+ var created=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(set,"New",Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.CurrentFace,null,root,baseline);
+ Check(AnimationUtility.GetEditorCurve(created.clip,viseme)==null && AnimationUtility.GetEditorCurve(created.clip,smile)!=null,"New expressions omit visemes and retain expression shapes");
+ Samon.FacialExpressionEditor.Editor.ExpressionFileImporter.Import(set,new UnityEngine.Object[]{AssetDatabase.LoadAssetAtPath<DefaultAsset>(folder+"/Input")},root);
+ var imported=set.expressions.Single(e=>e.originalClip==source);
+ Check(AnimationUtility.GetEditorCurve(imported.clip,viseme)==null && AnimationUtility.GetEditorCurve(source,viseme)!=null,"Import cleans editable copy without altering author clip");
+ var raw=new Samon.FacialExpressionEditor.Expression{name="Raw",clip=source};
+ var preview=(AnimationClip)Call("PreviewClips","ForExpression",raw,baseline,root);
+ try{Check(AnimationUtility.GetEditorCurve(preview,viseme)==null && AnimationUtility.GetEditorCurve(preview,smile)!=null,"Preview strips both source and base-face viseme curves");}finally{UnityEngine.Object.DestroyImmediate(preview);}
+ var builderType=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionClipBuilder"); var builder=Activator.CreateInstance(builderType,new object[]{set,baseline,root});
+ var built=builderType.GetMethod("Build").Invoke(builder,new object[]{raw});
+ var bindings=((System.Collections.Generic.IEnumerable<EditorCurveBinding>)built.GetType().GetMethod("GetFloatCurveBindings").Invoke(built,null)).ToArray();
+ Check(!bindings.Any(b=>b.propertyName==viseme.propertyName)&&bindings.Any(b=>b.propertyName==smile.propertyName),"Build excludes viseme curves from old expressions");
+ var folders=Samon.FacialExpressionEditor.Editor.ExpressionFileImporter.Folders(set).ToArray();
+ Check(folders.SequenceEqual(new[]{folder+"/Input",folder+"/Input/Eyes",folder+"/Input/Eyes/Happy"}),"Library includes nested folders in hierarchy order");
+ Check(set.menu.Count==0,"Folder import does not populate fixed menu");
+ foreach(var target in new[]{BuildTarget.Android,BuildTarget.iOS,BuildTarget.StandaloneWindows64}){
+  var format=(TextureFormat)Call("GenerateMenuPass","IconFormat",target);
+  Check(format==(target==BuildTarget.StandaloneWindows64?TextureFormat.DXT5:TextureFormat.ASTC_6x6),"Correct icon format for "+target);
+  var texture=new Texture2D(128,128,TextureFormat.RGBA32,false); texture.Apply();
+  try{EditorUtility.CompressTexture(texture,format,TextureCompressionQuality.Normal);Check(texture.format==format,"Icon compression succeeds for "+target);}finally{UnityEngine.Object.DestroyImmediate(texture);}
+ }
+ foreach(var name in new[]{"FEE/BlinkOff","FEE/DanceEnabled"}){
+  var parameter=(nadena.dev.modular_avatar.core.ParameterConfig)Call("GenerateMenuPass","Parameter",name,nadena.dev.modular_avatar.core.ParameterSyncType.Bool,false);
+  Check(!parameter.saved && parameter.defaultValue==0,"Unsaved default for "+name);
+ }
+ return new{passed=checks.Count,checks};
+}finally{UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(mesh);UnityEngine.Object.DestroyImmediate(baseline);AssetDatabase.DeleteAsset(folder);}

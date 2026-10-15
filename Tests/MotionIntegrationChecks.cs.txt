@@ -3,8 +3,9 @@ void Check(bool value,string label){if(!value)throw new Exception(label);checks.
 var assembly=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
 object Call(string type,string method,params object[] args)=>assembly.GetType("Samon.FacialExpressionEditor.Editor."+type).GetMethod(method,System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic).Invoke(null,args);
 bool Matches(UnityEditor.Animations.AnimatorCondition condition,float value){switch(condition.mode){case UnityEditor.Animations.AnimatorConditionMode.If:return value!=0;case UnityEditor.Animations.AnimatorConditionMode.IfNot:return value==0;case UnityEditor.Animations.AnimatorConditionMode.Equals:return value==condition.threshold;case UnityEditor.Animations.AnimatorConditionMode.NotEqual:return value!=condition.threshold;case UnityEditor.Animations.AnimatorConditionMode.Greater:return value>condition.threshold;default:return value<condition.threshold;}}
-var path="Assets/STUDIO_MOCA/NagiyaRuri/Prefab/Avatar_Simple/NagiyaRuri_Simple.prefab";
-var avatar=UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(path));
+var selectedAvatar=Selection.gameObjects.FirstOrDefault(g=>EditorUtility.IsPersistent(g)&&g.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>()!=null);
+if(selectedAvatar==null)throw new Exception("Select an avatar prefab with existing Action/FX motion integration.");
+var avatar=UnityEngine.Object.Instantiate(selectedAvatar);
 var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.menuIcons=false;set.faceControlImported=true;
 var baseline=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.FaceVariant>();baseline.useCapturedValues=true;
 var cleanup=new System.Collections.Generic.List<UnityEngine.Object>{set,baseline};
@@ -18,7 +19,8 @@ try{
  Check(set.motionRules.Count==1&&set.motionRulesConfigured,"Migration is idempotent");
  var candidates=(System.Collections.IEnumerable)Call("MotionIntegration","Candidates",descriptor);
  Check(candidates.Cast<object>().Any(c=>((string)c.GetType().GetField("playable").GetValue(c))=="Action"),"Source candidates include Action as well as FX");
- var holiday=AssetDatabase.LoadAssetAtPath<AnimationClip>(AssetDatabase.FindAssets("NGR_Holiday_FX t:AnimationClip").Select(AssetDatabase.GUIDToAssetPath).First(p=>p.EndsWith("NGR_Holiday_FX.anim")));
+ var holiday=Selection.objects.OfType<AnimationClip>().FirstOrDefault();
+ if(holiday==null)throw new Exception("Select the original motion expression clip along with the avatar prefab.");
  var binding=AnimationUtility.GetCurveBindings(holiday).First(b=>b.type==typeof(SkinnedMeshRenderer)&&b.propertyName.StartsWith("blendShape.")&&AnimationUtility.GetEditorCurve(holiday,b).Evaluate(0)<50);
  var expected=Mathf.Clamp(AnimationUtility.GetEditorCurve(holiday,binding).Evaluate(0)+17,0,100);
  baseline.baseFace.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path=binding.path,blendShape=binding.propertyName.Substring(11),referenceValue=0,variantValue=17});

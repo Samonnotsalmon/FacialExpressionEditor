@@ -12,8 +12,6 @@ namespace Samon.FacialExpressionEditor.Editor
         private List<string> _startObjectPaths = new List<string>();
         private List<string> _startLayerNames = new List<string>();
         private string _startLipMesh = "";
-        private readonly List<OriginalMenuSelection> _startRemovedMenus = new List<OriginalMenuSelection>();
-        private bool _showOriginalMenus;
         private bool _showStartReplacement;
         [SerializeField] private bool _showSetupCamera;
 
@@ -22,7 +20,6 @@ namespace Samon.FacialExpressionEditor.Editor
             if (_targetsAvatar != _startAvatar)
             {
                 _targetsAvatar = _startAvatar;
-                _startRemovedMenus.Clear();
                 _startMeshPaths.Clear(); _startObjectPaths.Clear(); _startLayerNames.Clear();
                 var face = AvatarSetup.FaceRenderer(_startAvatar);
                 if (face != null) _startMeshPaths.Add(AnimationUtility.CalculateTransformPath(face.transform, _startAvatar.transform));
@@ -45,7 +42,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (!next) _startLayerNames.Remove(layer.name);
             }
             EditorGUILayout.HelpBox("チェックしたレイヤーを新しい表情制御に置き換えます。衣装・既存ギミック・引き継ぐパーツは残してください。", MessageType.Info);
-            DrawOriginalMenuSelection(_startAvatar, _startRemovedMenus);
+
         }
 
         private static void DrawTargets(GameObject root, List<string> meshes, List<string> objects, ref string lipMesh)
@@ -105,44 +102,11 @@ namespace Samon.FacialExpressionEditor.Editor
                 Modify(set, "アバターの編集対象", () => { set.faceMeshPaths = meshes; set.linkedObjectPaths = objects; set.lipSyncMeshPath = lip; });
             EditorGUILayout.Space();
             DrawReplacementLayers(set);
-            var explicitMenus = EditorGUILayout.ToggleLeft("元メニューの置換対象を個別に選ぶ", set.explicitMenuSelection);
-            if (explicitMenus != set.explicitMenuSelection) Modify(set, "元メニューの扱い", () => set.explicitMenuSelection = explicitMenus);
-            if (explicitMenus)
-            {
-                var selections = set.replacedMenuItems.ToList();
-                DrawOriginalMenuSelection(AvatarRoot, selections);
-                if (!selections.SequenceEqual(set.replacedMenuItems)) Modify(set, "置き換えるメニューを選択", () => set.replacedMenuItems = selections);
-            }
+            EditorGUILayout.LabelField("元メニューの編集はModular Avatarで行ってください。", EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space();
         }
 
         private bool _showReplacementLayers;
-        private void DrawOriginalMenuSelection(GameObject root, List<OriginalMenuSelection> selected)
-        {
-            _showOriginalMenus = EditorGUILayout.Foldout(_showOriginalMenus, $"置き換える元メニュー（{selected.Count} 項目）", true);
-            if (!_showOriginalMenus) return;
-            EditorGUILayout.HelpBox("チェックした元メニュー項目をビルド時に取り除きます。未選択の項目とパラメータは保持します。", MessageType.Info);
-            var roots = new List<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu>();
-            var descriptor = root.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
-            roots.Add(descriptor.expressionsMenu);
-            roots.AddRange(root.GetComponentsInChildren<nadena.dev.modular_avatar.core.ModularAvatarMenuInstaller>(true).Select(i => i.menuToAppend));
-            var visited = new HashSet<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu>();
-            void Draw(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu menu, string prefix)
-            {
-                if (menu == null || !visited.Add(menu)) return;
-                for (var index = 0; index < menu.controls.Count; index++)
-                {
-                    var c = menu.controls[index];
-                    var item = selected.Find(s => s.menu == menu && s.index == index && s.controlName == c.name);
-                    var next = EditorGUILayout.ToggleLeft(prefix + c.name, item != null);
-                    if (next && item == null) selected.Add(new OriginalMenuSelection { menu = menu, index = index, controlName = c.name });
-                    if (!next && item != null) selected.Remove(item);
-                    Draw(c.subMenu, prefix + c.name + " / ");
-                }
-            }
-            foreach (var menu in roots) Draw(menu, "");
-        }
-
         private void DrawReplacementLayers(ExpressionSet set)
         {
             _showReplacementLayers = EditorGUILayout.Foldout(_showReplacementLayers, "置き換える元FXレイヤー", true);

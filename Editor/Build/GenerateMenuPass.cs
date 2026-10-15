@@ -14,8 +14,7 @@ namespace Samon.FacialExpressionEditor.Editor
 {
     /// <summary>
     /// 表情メニュー（表情セットと固定の表情）とパーツのメニュー、パラメータを、MAのコンポーネントとして生成する。
-    /// 置き換える元FXレイヤーだけが使っていたパラメータ（しなのの F_Set / F_Parts など）は、
-    /// メニューとExpression Parametersから取り除く。
+    /// 元のメニューとパラメータは保持し、整理はModular Avatar側で行う。
     /// </summary>
     internal class GenerateMenuPass : Pass<GenerateMenuPass>
     {
@@ -33,9 +32,7 @@ namespace Samon.FacialExpressionEditor.Editor
             if (descriptor == null) return;
 
             var plan = BuildPlan.Create(set);
-            var face = FaceControlPlan.Get(context, set, plan);
-            RemoveReplacedParameters(context, descriptor, set,
-                face.BlinkLayersToReplace.Concat(face.MouthCancelerLayersToReplace).Concat(face.DisabledLayers));
+            context.GetState<MenuBuildState>().Generated = true;
 
             var icons = set.menuIcons ? RenderIcons(context, set, plan, avatar.faceVariant) : new Dictionary<string, Texture2D>();
             var root = BuildRootMenu(context, set, plan, icons);
@@ -59,6 +56,9 @@ namespace Samon.FacialExpressionEditor.Editor
                     parameter.IsGrouped ? ParameterSyncType.Int : ParameterSyncType.Bool, false));
             }
         }
+
+        internal static TextureFormat IconFormat(BuildTarget target) =>
+            target == BuildTarget.Android || target == BuildTarget.iOS ? TextureFormat.ASTC_6x6 : TextureFormat.DXT5;
 
         private const string NeutralIconKey = "";
 
@@ -206,7 +206,7 @@ namespace Samon.FacialExpressionEditor.Editor
                         return;
                     }
                     texture.name = name;
-                    EditorUtility.CompressTexture(texture, TextureFormat.DXT5, TextureCompressionQuality.Normal);
+                    EditorUtility.CompressTexture(texture, IconFormat(EditorUserBuildSettings.activeBuildTarget), TextureCompressionQuality.Normal);
                     context.AssetSaver.SaveAsset(texture);
                     icons[id] = texture;
                 }
@@ -286,104 +286,5 @@ namespace Samon.FacialExpressionEditor.Editor
             };
         }
 
-        /// <summary>
-        /// 置き換える元FXレイヤーだけが使っていたパラメータを、メニューとExpression Parametersから取り除く。
-        /// 元のアセットは変更せず、複製したものをアバターに設定し直す。
-        /// </summary>
-        private static void RemoveReplacedParameters(BuildContext context, VRCAvatarDescriptor descriptor, ExpressionSet set,
-            IEnumerable<string> otherReplacedLayers)
-        {
-            if (set.explicitMenuSelection)
-            {
-                var clones = new Dictionary<VRCExpressionsMenu, VRCExpressionsMenu>();
-                var none = new HashSet<string>();
-                if (descriptor.expressionsMenu != null)
-                    descriptor.expressionsMenu = CloneMenuWithout(context, descriptor.expressionsMenu, none, clones, set.replacedMenuItems);
-                foreach (var installer in context.AvatarRootObject.GetComponentsInChildren<ModularAvatarMenuInstaller>(true))
-                    if (installer.menuToAppend != null) installer.menuToAppend = CloneMenuWithout(context, installer.menuToAppend, none, clones, set.replacedMenuItems);
-                // Keep parameters: an unselected menu or another gimmick can still use them.
-                return;
-            }
-            var fx = FxImporter.GetFx(descriptor);
-            if (fx == null || descriptor.expressionParameters == null) return;
-
-            var replaced = new HashSet<string>(set.originalGestureLayers.Concat(set.originalPartLayers).Concat(otherReplacedLayers));
-            if (replaced.Count == 0) return;
-
-            var usedByReplaced = AnimatorParameterUsage.Collect(fx.layers.Where(l => replaced.Contains(l.name)));
-            var usedByOthers = AnimatorParameterUsage.CollectFromAvatar(descriptor, fx, replaced);
-            var removed = new HashSet<string>(descriptor.expressionParameters.parameters
-                .Select(p => p.name)
-                .Where(n => usedByReplaced.Contains(n) && !usedByOthers.Contains(n)));
-            if (removed.Count == 0) return;
-
-            var parameters = Object.Instantiate(descriptor.expressionParameters);
-            parameters.name = descriptor.expressionParameters.name;
-            parameters.parameters = parameters.parameters.Where(p => !removed.Contains(p.name)).ToArray();
-            context.AssetSaver.SaveAsset(parameters);
-            descriptor.expressionParameters = parameters;
-
-            if (descriptor.expressionsMenu != null)
-            {
-                var clones = new Dictionary<VRCExpressionsMenu, VRCExpressionsMenu>();
-                descriptor.expressionsMenu = CloneMenuWithout(context, descriptor.expressionsMenu, removed, clones);
-            }
-        }
-
-        private static VRCExpressionsMenu CloneMenuWithout(BuildContext context, VRCExpressionsMenu menu,
-            HashSet<string> removed, Dictionary<VRCExpressionsMenu, VRCExpressionsMenu> clones, List<OriginalMenuSelection> selected = null)
-        {
-            if (clones.TryGetValue(menu, out var existing)) return existing;
-
-            var clone = Object.Instantiate(menu);
-            clone.name = menu.name;
-            clones[menu] = clone;
-
-            var controls = new List<Control>();
-            for (var index = 0; index < menu.controls.Count; index++)
-            {
-                var control = menu.controls[index];
-                if (selected != null && selected.Any(s => s.menu == menu && s.index == index && s.controlName == control.name)) continue;
-                if (UsesRemoved(control, removed)) continue;
-
-                if (control.type == Control.ControlType.SubMenu && control.subMenu != null)
-                {
-                    var sub = CloneMenuWithout(context, control.subMenu, removed, clones, selected);
-                    // 取り除いた結果サブメニューが空になったら、サブメニューごと外す。
-                    if (sub.controls.Count == 0 && control.subMenu.controls.Count > 0) continue;
-
-                    controls.Add(CopyControl(control, sub));
-                    continue;
-                }
-
-                controls.Add(CopyControl(control, control.subMenu));
-            }
-
-            clone.controls = controls;
-            context.AssetSaver.SaveAsset(clone);
-            return clone;
-        }
-
-        private static bool UsesRemoved(Control control, HashSet<string> removed)
-        {
-            if (control.parameter != null && removed.Contains(control.parameter.name)) return true;
-            return control.subParameters != null && control.subParameters.Any(p => p != null && removed.Contains(p.name));
-        }
-
-        private static Control CopyControl(Control control, VRCExpressionsMenu subMenu)
-        {
-            return new Control
-            {
-                name = control.name,
-                icon = control.icon,
-                type = control.type,
-                parameter = control.parameter,
-                value = control.value,
-                style = control.style,
-                subMenu = subMenu,
-                subParameters = control.subParameters,
-                labels = control.labels,
-            };
-        }
     }
 }

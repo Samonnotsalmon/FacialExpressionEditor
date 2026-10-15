@@ -358,6 +358,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var before = part != null ? PartPropertyValues(clip) : null;
             Undo.RecordObject(clip, undoName);
             change(clip);
+            if (part == null) LipSyncProtection.Remove(clip, AvatarRoot, Set);
             EditorUtility.SetDirty(clip);
             if (part != null) SyncPartProperties(part, before, clip);
             AfterEdit();
