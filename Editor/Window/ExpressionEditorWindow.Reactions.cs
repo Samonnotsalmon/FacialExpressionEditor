@@ -9,7 +9,6 @@ namespace Samon.FacialExpressionEditor.Editor
     {
         private List<ReactionImporter.Candidate> _reactionCandidates;
         private AvatarFaceDefaults _reactionDefaults;
-        private readonly HashSet<AnimationClip> _openReactionProperties = new HashSet<AnimationClip>();
         private readonly HashSet<string> _openReactionLayers = new HashSet<string>();
         private List<ReactionImporter.Candidate> ReactionCandidates
         {
@@ -23,7 +22,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawReactionsTab(ExpressionSet set)
         {
-            EditorGUILayout.HelpBox("元FXの条件・遷移・優先順位・ON/OFF設定をそのまま使い、クリップだけを編集・差し替えます。不要な反応は「アバター設定 → 置き換える元FXレイヤー」で除外できます。", MessageType.None);
+            EditorGUILayout.HelpBox("コンタクト・PhysBoneを直接使う表情だけを表示します。瞬き・口モーフキャンセル、別レイヤーの耳・尻尾は対象外です。元FXの条件・遷移・優先順位・ON/OFF設定をそのまま使い、クリップだけを編集・差し替えます。不要な反応は「アバター設定 → 置き換える元FXレイヤー」で除外できます。", MessageType.None);
             if (GUILayout.Button("元FXを再読み込み", GUILayout.Width(150))) { _reactionCandidates = null; _faceDefaults = null; }
             var fx = FxImporter.GetFx(Descriptor);
             foreach (var candidate in ReactionCandidates)
@@ -63,20 +62,6 @@ namespace Samon.FacialExpressionEditor.Editor
                                         expression = ReactionImporter.EditClip(set, layerName, source, replacement, AvatarRoot);
                                         MarkLibraryDirty(); InvalidateDetailPreview();
                                     }
-                                    var propertiesOpen = EditorGUILayout.Foldout(_openReactionProperties.Contains(source), "固定中も動かす顔メッシュの項目", true);
-                                    if (propertiesOpen) _openReactionProperties.Add(source); else _openReactionProperties.Remove(source);
-                                    if (propertiesOpen)
-                                    {
-                                        EditorGUILayout.LabelField("同じ顔メッシュに含まれる耳などの項目を指定します。骨のTransformは自動で動きを維持します。", EditorStyles.wordWrappedMiniLabel);
-                                        foreach (var binding in AnimationUtility.GetCurveBindings(shown).Concat(AnimationUtility.GetObjectReferenceCurveBindings(shown))
-                                            .Where(b => typeof(Renderer).IsAssignableFrom(b.type) && !LipSyncProtection.IsProtected(b, AvatarRoot, set)))
-                                        {
-                                            var key = ExpressionClipBuilder.Key(binding);
-                                            var was = set.reactionFixedPassthroughProperties.Contains(key);
-                                            var next = EditorGUILayout.ToggleLeft(binding.path + " / " + binding.propertyName, was);
-                                            if (next != was) Modify(set, "固定中の反応項目を変更", () => { if (next) set.reactionFixedPassthroughProperties.Add(key); else set.reactionFixedPassthroughProperties.Remove(key); });
-                                        }
-                                    }
                                     using (new EditorGUILayout.HorizontalScope())
                                     {
                                         if (GUILayout.Button(expression == null ? "複製して編集" : "編集"))
@@ -104,7 +89,7 @@ namespace Samon.FacialExpressionEditor.Editor
             foreach (var entry in orphaned)
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    EditorGUILayout.LabelField("元FXで見つからない差し替え：" + entry.layerName, EditorStyles.wordWrappedMiniLabel);
+                    EditorGUILayout.LabelField("現在の反応対象外／元FXで見つからない差し替え：" + entry.layerName, EditorStyles.wordWrappedMiniLabel);
                     if (GUILayout.Button("差し替えを解除", GUILayout.Width(110)))
                     { Modify(set, "古い反応の差し替えを解除", () => set.reactionClips.Remove(entry)); MarkLibraryDirty(); GUIUtility.ExitGUI(); }
                 }

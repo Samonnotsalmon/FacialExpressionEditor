@@ -59,45 +59,6 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
-        internal static void GateGestureOnlyLinkedMotion(VirtualAnimatorController fx, CloneContext context, FaceControlPlan face)
-        {
-            var paths = new HashSet<string>(fx.Layers.Where(l => face.ReactionLayers.Contains(l.Name))
-                .SelectMany(l => l.AllReachableNodes().OfType<VirtualState>()).SelectMany(s => ClipsOf(s.Motion))
-                .SelectMany(c => c.GetFloatCurveBindings()).Where(b => b.type == typeof(Transform)).Select(b => b.path));
-            if (paths.Count == 0) return;
-            var gates = new List<VirtualLayer>();
-            foreach (var layer in fx.Layers.Where(l => !l.Name.StartsWith(LayerPrefix) && !face.ReactionLayers.Contains(l.Name)).ToList())
-            {
-                var states = layer.AllReachableNodes().OfType<VirtualState>().ToList();
-                var conditions = layer.AllReachableNodes().OfType<VirtualTransitionBase>().SelectMany(t => t.Conditions).ToList();
-                if (!conditions.Any(c => c.parameter == GestureLeft || c.parameter == GestureRight)) continue;
-                var clips = states.SelectMany(s => ClipsOf(s.Motion)).Distinct().ToList();
-                var bindings = clips.SelectMany(c => c.GetFloatCurveBindings()).ToList();
-                // Only the separate gesture-driven animation of already linked bones is suppressed.
-                // A mixed face/body or wardrobe layer is never disabled by this inference.
-                if (bindings.Count == 0 || bindings.Any(b => b.type != typeof(Transform) || !paths.Contains(b.path)) || clips.Any(c => c.GetObjectCurveBindings().Any())) continue;
-                var hasOwnWeightControl = fx.Layers.SelectMany(l => l.AllReachableNodes().OfType<VirtualState>()).SelectMany(s => s.Behaviours)
-                    .OfType<VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl>().Any(c => c.layer == layer.VirtualLayerIndex &&
-                        c.playable == VRC.SDKBase.VRC_AnimatorLayerControl.BlendableLayer.FX);
-                if (hasOwnWeightControl)
-                {
-                    Debug.LogWarning("[FacialExpressionEditor] 固定中の連動ジェスチャー停止：独自のレイヤー重み制御を持つため、元の制御を維持します：" + layer.Name);
-                    continue;
-                }
-                var gate = VirtualLayer.Create(context, LayerPrefix + "Fixed linked motion " + layer.Name);
-                var normal = gate.StateMachine.AddState("Gesture", VirtualClip.Create("Gesture"), Vector3.zero);
-                var fixedState = gate.StateMachine.AddState("Fixed", VirtualClip.Create("Fixed"), new Vector3(300, 0, 0));
-                normal.WriteDefaultValues = fixedState.WriteDefaultValues = true;
-                gate.StateMachine.DefaultState = normal;
-                normal.Transitions = ImmutableList.Create(Transition(fixedState, 0, Condition(BuildPlan.EmoteParameter, AnimatorConditionMode.Greater, 0)));
-                fixedState.Transitions = ImmutableList.Create(Transition(normal, 0, Condition(BuildPlan.EmoteParameter, AnimatorConditionMode.Equals, 0)));
-                SetPartLayerWeight(normal, layer, layer.DefaultWeight);
-                SetPartLayerWeight(fixedState, layer, 0);
-                gates.Add(gate);
-            }
-            fx.Layers = fx.Layers.Concat(gates).ToList();
-        }
-
         private static VirtualClip CopyReactionClip(VirtualClip source)
         {
             var copy = VirtualClip.Create(source.Name); copy.Settings = source.Settings;

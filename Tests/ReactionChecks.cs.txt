@@ -29,14 +29,20 @@ try{
  controller.AddLayer("Linked motion");var linked=controller.layers[2].stateMachine;var linkedIdle=linked.AddState("Idle");linkedIdle.motion=empty;var linkedOn=linked.AddState("On");linkedOn.motion=earClip;linkedIdle.AddTransition(linkedOn).AddCondition(UnityEditor.Animations.AnimatorConditionMode.If,0,"Linked");
  controller.AddLayer("Independent");controller.layers[3].stateMachine.AddState("Same clip elsewhere").motion=source;
  controller.AddLayer("Gesture linked");var gs=controller.layers[4].stateMachine;var gi=gs.AddState("Idle");gi.motion=empty;var go=gs.AddState("On");go.motion=earClip;gi.AddTransition(go).AddCondition(UnityEditor.Animations.AnimatorConditionMode.Equals,2,"GestureRight");
+ var serviceClip=new AnimationClip{name="Face service"};AnimationUtility.SetEditorCurve(serviceClip,faceBinding,AnimationCurve.Linear(0,0,1,70));AssetDatabase.CreateAsset(serviceClip,folder+"/Service.anim");
+ void AddService(string name,AnimationClip clip,string parameter){controller.AddLayer(name);var m=controller.layers.Last().stateMachine;var a=m.AddState("Idle");a.motion=empty;var b=m.AddState("Active");b.motion=clip;a.AddTransition(b).AddCondition(parameter=="Linked"?UnityEditor.Animations.AnimatorConditionMode.If:UnityEditor.Animations.AnimatorConditionMode.Greater,.1f,parameter);}
+ AddService("Driver face service",serviceClip,"Linked");
+ AddService("Direct bone only",earClip,"Touch");
+ AddService("Blink",serviceClip,"Touch");
+ controller.AddParameter("Viseme",AnimatorControllerParameterType.Int);AddService("Mouth cancellation",serviceClip,"Touch");controller.layers.Last().stateMachine.states[0].state.transitions[0].AddCondition(UnityEditor.Animations.AnimatorConditionMode.Greater,0,"Viseme");
  var layers=controller.layers;for(var i=1;i<layers.Length;i++)layers[i].defaultWeight=1;controller.layers=layers;
  descriptor.baseAnimationLayers=new[]{new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomAnimLayer{type=VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX,isDefault=false,animatorController=controller}};
  AssetDatabase.SaveAssets();
  var candidates=((System.Collections.IEnumerable)Call("ReactionImporter","Scan",descriptor,set,variant)).Cast<object>().ToList();
  Check(candidates.Count==1,"Contact and PhysBone conditions form one connected reaction");
- var candidateLayers=(System.Collections.Generic.List<string>)candidates[0].GetType().GetField("Layers").GetValue(candidates[0]);Check(candidateLayers.SequenceEqual(new[]{"Reaction","Linked motion"}),"Driver-linked motion is detected without unrelated shared clips or gestures");
+ var candidateLayers=(System.Collections.Generic.List<string>)candidates[0].GetType().GetField("Layers").GetValue(candidates[0]);Check(candidateLayers.SequenceEqual(new[]{"Reaction"}),"Only direct sensor-driven facial layers are listed; blink, mouth cancellation, driven services and bone-only layers are excluded");
  var edited=(Samon.FacialExpressionEditor.Expression)Call("ReactionImporter","EditClip",set,"Reaction",source,null,root);
- Check(edited.clip!=source&&AnimationUtility.GetCurveBindings(edited.clip).Length==2&&set.linkedObjectPaths.Contains("Ear"),"Editing duplicates sparse motion and includes linked edit targets");
+ Check(edited.clip!=source&&AnimationUtility.GetCurveBindings(edited.clip).Length==2&&!set.linkedObjectPaths.Contains("Ear"),"Editing preserves embedded bone motion without adding bone editing targets");
  Check((Samon.FacialExpressionEditor.Expression)Call("ReactionImporter","EditClip",set,"Reaction",source,null,root)==edited,"Reopening does not duplicate again");
  var replacement=new AnimationClip{name="Face replacement"};AnimationUtility.SetEditorCurve(replacement,faceBinding,AnimationCurve.Linear(0,5,1,35));AssetDatabase.CreateAsset(replacement,folder+"/Replacement.anim");
  edited=(Samon.FacialExpressionEditor.Expression)Call("ReactionImporter","EditClip",set,"Reaction",source,replacement,root);
@@ -70,8 +76,7 @@ try{
  set.reactionFixedPassthroughProperties.Add(Samon.FacialExpressionEditor.FacialPart.PropertyKey("Face",typeof(SkinnedMeshRenderer),"material._Color.r"));
  Check(Call("GenerateFxPass","BuildReactionFixedFace",fx,clone,set,plan,facePlan,builder,root)==null,"Passthrough materials are not reintroduced by default completion");
  set.reactionFixedPassthroughProperties.Clear();
- Call("GenerateFxPass","GateGestureOnlyLinkedMotion",fx,clone,facePlan);
- Check(fx.Layers.Count()==originalLayers.Count+1&&fx.Layers.Last().Name.Contains("Gesture linked"),"Only the separate gesture-linked bone layer is gated");
+ Check(fx.Layers.SequenceEqual(originalLayers),"Separate linked and gesture bone layers are left unchanged");
  Check(!fx.Parameters.Keys.Any(p=>p.StartsWith("FEE/Reaction/")),"No new reaction toggle parameters are generated");
  var copy=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.Duplicate(set,folder+"/Copy.asset");Check(copy.reactionClips.Count==1&&copy.FindExpression(edited.id).clip!=edited.clip,"Duplicated setup preserves replacement assignment with independent clip");
  set.originalGestureLayers.Add("Reaction");Call("GenerateFxPass","ApplyReactionClips",fx,set,builder);Check(true,"Removed reaction layers skip replacement validation");

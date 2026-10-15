@@ -5,12 +5,11 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
-using VRC.SDKBase;
 using Object = UnityEngine.Object;
 
 namespace Samon.FacialExpressionEditor.Editor
 {
-    // Read the existing graph, including parameter-driver dependencies. Never infer a reaction from clip names.
+    // Only direct sensor-driven facial layers are editable. Do not follow their output drivers into face services or bones.
     internal static class ReactionImporter
     {
         internal sealed class Candidate
@@ -54,14 +53,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
                 Tree(state.motion);
             }
-            foreach (var driver in Behaviours(layer).OfType<VRCAvatarParameterDriver>())
-                foreach (var p in driver.parameters.Where(p => p.type == VRC_AvatarParameterDriver.ChangeType.Copy)) reads.Add(p.source);
             reads.Remove(""); reads.Remove(null);
             return reads;
         }
-
-        private static IEnumerable<StateMachineBehaviour> Behaviours(AnimatorControllerLayer layer) =>
-            Machines(layer.stateMachine).SelectMany(m => m.behaviours.Concat(m.states.SelectMany(s => s.state.behaviours)));
 
         internal static List<Candidate> Scan(VRCAvatarDescriptor descriptor, ExpressionSet set, FaceVariant variant)
         {
@@ -71,35 +65,21 @@ namespace Samon.FacialExpressionEditor.Editor
             var layers = fx.layers;
             var sensors = OriginalFxAnalysis.ContactParameters(descriptor);
             var reads = layers.Select(Reads).ToList();
-            var writes = layers.Select(l => new HashSet<string>(Behaviours(l).OfType<VRCAvatarParameterDriver>()
-                .SelectMany(d => d.parameters).Select(p => p.name))).ToList();
+            var defaults = AvatarFaceDefaults.Find(descriptor, set);
+            var excluded = new HashSet<string>(defaults.MouthCancelerLayers);
+            if (defaults.BlinkLayer != null) excluded.Add(defaults.BlinkLayer);
             var facePaths = OriginalFxAnalysis.FacePathsOf(descriptor, set, variant);
             facePaths.UnionWith(set.faceMeshPaths);
             bool Face(AnimationClip c) => AnimationUtility.GetCurveBindings(c).Any(b => facePaths.Contains(b.path) && typeof(Renderer).IsAssignableFrom(b.type));
-            var groups = new List<HashSet<int>>();
-            foreach (var sensor in sensors)
+            for (var i = layers.Length - 1; i >= 0; i--)
             {
-                var parameters = new HashSet<string> { sensor.parameter };
-                var found = new HashSet<int>();
-                bool changed;
-                do
-                {
-                    changed = false;
-                    for (var i = 0; i < layers.Length; i++)
-                        if (reads[i].Overlaps(parameters) && found.Add(i)) { parameters.UnionWith(writes[i]); changed = true; }
-                } while (changed);
-                if (found.Count == 0) continue;
-                // Shared state graphs cannot be split without changing their priority/driver semantics.
-                foreach (var old in groups.Where(g => g.Overlaps(found)).ToList()) { found.UnionWith(old); groups.Remove(old); }
-                groups.Add(found);
-            }
-            foreach (var group in groups.OrderByDescending(g => g.Max()))
-            {
-                var clips = group.SelectMany(i => FxImporter.AllStates(layers[i].stateMachine)).SelectMany(s => Clips(s.motion)).Distinct().ToList();
+                var layer = layers[i];
+                if (excluded.Contains(layer.name)) continue;
+                var inputs = sensors.Where(p => reads[i].Contains(p.parameter)).Select(p => p.parameter).ToList();
+                if (inputs.Count == 0) continue;
+                var clips = FxImporter.AllStates(layer.stateMachine).SelectMany(s => Clips(s.motion)).Distinct().ToList();
                 if (!clips.Any(Face)) continue;
-                var candidate = new Candidate { Name = layers[group.Max()].name, Layers = group.OrderBy(i => i).Select(i => layers[i].name).ToList(), Clips = clips };
-                candidate.Parameters = sensors.Where(p => group.Any(i => reads[i].Contains(p.parameter))).Select(p => p.parameter).ToList();
-                result.Add(candidate);
+                result.Add(new Candidate { Name = layer.name, Layers = new List<string> { layer.name }, Clips = clips, Parameters = inputs });
             }
             return result;
         }
@@ -131,7 +111,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             foreach (var binding in AnimationUtility.GetCurveBindings(clip).Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)))
             {
-                if (string.IsNullOrEmpty(binding.path) && binding.type == typeof(Animator)) continue;
+                if (binding.type == typeof(Transform) || (string.IsNullOrEmpty(binding.path) && binding.type == typeof(Animator))) continue;
                 var t = string.IsNullOrEmpty(binding.path) ? root.transform : root.transform.Find(binding.path);
                 if (t == null) continue;
                 if (binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape."))

@@ -117,7 +117,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 (face.BlinkLayersToReplace, new List<VirtualLayer>()),
                 (face.DisabledLayers, new List<VirtualLayer>()),
             });
-            GateGestureOnlyLinkedMotion(fx, cloneContext, face);
             var reactionFixedFace = BuildReactionFixedFace(fx, cloneContext, set, plan, face, builder, avatarRoot);
             if (reactionFixedFace != null) fx.Layers = fx.Layers.Concat(new[] { reactionFixedFace }).ToList();
             // Parts are overlays even when their original layers preceded gesture layers.
