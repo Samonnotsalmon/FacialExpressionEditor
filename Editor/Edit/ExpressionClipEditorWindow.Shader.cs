@@ -18,10 +18,11 @@ namespace Samon.FacialExpressionEditor.Editor
         [SerializeField] private string _shaderRendererPath;
         [SerializeField] private bool _showRecordedMaterialProperties;
         private Vector2 _shaderScroll;
+        private Rect _shaderViewport;
 
         private void DrawShaderProperties()
         {
-            _shaderScroll = EditorGUILayout.BeginScrollView(_shaderScroll);
+            _shaderScroll = EditorGUILayout.BeginScrollView(_shaderScroll, GUILayout.ExpandHeight(true));
             DrawMaterialInspector();
             EditorGUILayout.Space(12);
             var count = Values().Keys.Where(b => b.propertyName.StartsWith(ClipEditing.MaterialPrefix))
@@ -30,6 +31,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 $"アニメーションに記録済みの項目（{count}）", true);
             if (_showRecordedMaterialProperties) DrawCurrentProperties();
             EditorGUILayout.EndScrollView();
+            if (Event.current.type == EventType.Repaint) _shaderViewport = GUILayoutUtility.GetLastRect();
         }
 
         private Material _inspectorMaterial;
@@ -97,8 +99,14 @@ namespace Samon.FacialExpressionEditor.Editor
             var fieldWidth = EditorGUIUtility.fieldWidth;
             try
             {
-                _materialEditor.SetDefaultGUIWidths();
-                _materialEditor.OnInspectorGUI();
+                // MaterialEditor.PropertiesGUI temporarily ends/restarts its parent vertical
+                // group for the version-control bar. Give it a dedicated group so it cannot
+                // close our scroll-view content and collapse the viewport.
+                using (new EditorGUILayout.VerticalScope())
+                {
+                    _materialEditor.SetDefaultGUIWidths();
+                    _materialEditor.OnInspectorGUI();
+                }
             }
             finally
             {

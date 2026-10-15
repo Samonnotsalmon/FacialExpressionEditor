@@ -1,0 +1,8 @@
+// Run after the shader-parameter tab has been painted in an open expression editor.
+var type=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly.GetType("Samon.FacialExpressionEditor.Editor.ExpressionClipEditorWindow");
+var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+var window=Resources.FindObjectsOfTypeAll(type).Cast<EditorWindow>().FirstOrDefault();
+if(window==null || type.GetField("_tab",flags).GetValue(window).ToString()!="ShaderProperties")throw new Exception("Open the shader-parameter tab before checking its layout");
+var viewport=(Rect)type.GetField("_shaderViewport",flags).GetValue(window);
+if(viewport.height<window.position.height*.7f || viewport.width<300 || viewport.yMax>window.position.height+1)throw new Exception("Material inspector scroll viewport collapsed or overflowed: "+viewport);
+return "Material inspector viewport fills editor area: "+viewport;
