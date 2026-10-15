@@ -35,6 +35,8 @@ try{
  renderer.SetBlendShapeWeight(1,80);
  var fixedBase=builderType.GetMethod("BuildBaseFace").Invoke(builder,null);
  var baseCurve=(AnimationCurve)fixedBase.GetType().GetMethod("GetFloatCurve",new[]{typeof(EditorCurveBinding)}).Invoke(fixedBase,new object[]{smile});
+ var basePreview=(AnimationClip)Call("PreviewClips","ForBaseFace",set,baseline,root);
+ try{Check(AnimationUtility.GetEditorCurve(basePreview,smile).Evaluate(0)==20,"Base thumbnail uses the same captured face as fixation");}finally{UnityEngine.Object.DestroyImmediate(basePreview);}
  Check(baseCurve.Evaluate(0)==20,"Base face fixation uses captured value, not later scene changes");
  Check(fixedBase.GetType().GetMethod("GetFloatCurve",new[]{typeof(EditorCurveBinding)}).Invoke(fixedBase,new object[]{viseme})==null,"Base face fixation leaves lip sync free");
  var basePlan=Call("BuildPlan","Create",set);

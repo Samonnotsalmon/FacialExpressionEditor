@@ -18,7 +18,6 @@ namespace Samon.FacialExpressionEditor
         public float previewZoom = 1f;
         public List<string> faceMeshPaths = new List<string>();
         public List<string> linkedObjectPaths = new List<string>();
-        public string lipSyncMeshPath = "";
         public bool explicitLayerSelection;
         public List<string> importLayerNames = new List<string>();
         public bool explicitMenuSelection;

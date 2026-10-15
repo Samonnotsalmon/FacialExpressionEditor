@@ -11,7 +11,6 @@ namespace Samon.FacialExpressionEditor.Editor
         private List<string> _startMeshPaths = new List<string>();
         private List<string> _startObjectPaths = new List<string>();
         private List<string> _startLayerNames = new List<string>();
-        private string _startLipMesh = "";
         private bool _showStartReplacement;
         [SerializeField] private bool _showSetupCamera;
 
@@ -24,12 +23,11 @@ namespace Samon.FacialExpressionEditor.Editor
                 var face = AvatarSetup.FaceRenderer(_startAvatar);
                 if (face != null) _startMeshPaths.Add(AnimationUtility.CalculateTransformPath(face.transform, _startAvatar.transform));
                 var d = _startAvatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
-                _startLipMesh = d.VisemeSkinnedMesh != null ? AnimationUtility.CalculateTransformPath(d.VisemeSkinnedMesh.transform, _startAvatar.transform) : "";
                 _startLayerNames.AddRange(FxImporter.PeekGestures(d).layers);
                 _startPreviewHeight = 0.03f; _startPreviewZoom = 1f;
             }
             DrawSetupCamera(_startAvatar, ref _startPreviewHeight, ref _startPreviewZoom);
-            DrawTargets(_startAvatar, _startMeshPaths, _startObjectPaths, ref _startLipMesh);
+            DrawTargets(_startAvatar, _startMeshPaths, _startObjectPaths);
             _showStartReplacement = EditorGUILayout.Foldout(_showStartReplacement, $"既存設定との置き換え（FX {_startLayerNames.Count} レイヤー）", true);
             if (!_showStartReplacement) return;
             var descriptor = _startAvatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
@@ -45,7 +43,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         }
 
-        private static void DrawTargets(GameObject root, List<string> meshes, List<string> objects, ref string lipMesh)
+        private static void DrawTargets(GameObject root, List<string> meshes, List<string> objects)
         {
             EditorGUILayout.LabelField("表情を編集するメッシュ", EditorStyles.boldLabel);
             var renderers = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(r => r.sharedMesh != null && r.sharedMesh.blendShapeCount > 0).ToList();
@@ -56,10 +54,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (on && !meshes.Contains(path)) meshes.Add(path);
                 if (!on) meshes.Remove(path);
             }
-            var names = new[] { "現在の設定を維持" }.Concat(renderers.Select(r => AnimationUtility.CalculateTransformPath(r.transform, root.transform))).ToArray();
-            var index = System.Array.IndexOf(names, lipMesh);
-            var selected = EditorGUILayout.Popup("リップシンクのメッシュ", Mathf.Max(0, index), names);
-            lipMesh = selected == 0 ? "" : names[selected];
             EditorGUILayout.LabelField("連動するオブジェクト／マテリアルの対象", EditorStyles.boldLabel);
             foreach (var path in objects.ToList())
                 using (new EditorGUILayout.HorizontalScope())
@@ -96,10 +90,10 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
             }
             // リストを直接変更するUIはコピーに対して描き、変更があったときだけUndoを記録する。
-            var meshes = set.faceMeshPaths.ToList(); var objects = set.linkedObjectPaths.ToList(); var lip = set.lipSyncMeshPath;
-            DrawTargets(AvatarRoot, meshes, objects, ref lip);
-            if (!meshes.SequenceEqual(set.faceMeshPaths) || !objects.SequenceEqual(set.linkedObjectPaths) || lip != set.lipSyncMeshPath)
-                Modify(set, "アバターの編集対象", () => { set.faceMeshPaths = meshes; set.linkedObjectPaths = objects; set.lipSyncMeshPath = lip; });
+            var meshes = set.faceMeshPaths.ToList(); var objects = set.linkedObjectPaths.ToList();
+            DrawTargets(AvatarRoot, meshes, objects);
+            if (!meshes.SequenceEqual(set.faceMeshPaths) || !objects.SequenceEqual(set.linkedObjectPaths))
+                Modify(set, "アバターの編集対象", () => { set.faceMeshPaths = meshes; set.linkedObjectPaths = objects; });
             EditorGUILayout.Space();
             DrawReplacementLayers(set);
             EditorGUILayout.LabelField("元メニューの編集はModular Avatarで行ってください。", EditorStyles.wordWrappedMiniLabel);

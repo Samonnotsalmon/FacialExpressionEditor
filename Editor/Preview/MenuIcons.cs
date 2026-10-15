@@ -64,6 +64,13 @@ namespace Samon.FacialExpressionEditor.Editor
                     }
                 }
 
+                var baseKey = ThumbnailKeys.BaseFace(variant, faceHash);
+                if (!ThumbnailCache.ExistsOnDisk(baseKey))
+                {
+                    var clip = PreviewClips.ForBaseFace(set, variant, avatarRoot);
+                    try { Render(baseKey, clip); }
+                    finally { PreviewClips.Release(clip); }
+                }
                 var neutralKey = ThumbnailKeys.Neutral(faceHash);
                 if (NeedsNeutral(plan) && !ThumbnailCache.ExistsOnDisk(neutralKey)) Render(neutralKey, null);
             }

@@ -72,11 +72,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var plan = new FaceControlPlan();
             var descriptor = avatarRoot.GetComponent<VRCAvatarDescriptor>();
-            if (descriptor != null && !string.IsNullOrEmpty(set.lipSyncMeshPath))
-            {
-                var mesh = avatarRoot.transform.Find(set.lipSyncMeshPath)?.GetComponent<SkinnedMeshRenderer>();
-                if (mesh != null) descriptor.VisemeSkinnedMesh = mesh;
-            }
+
             var defaults = AvatarFaceDefaults.Find(descriptor, set);
             plan.MotionRules = MotionIntegration.Rules(set, descriptor).Where(r => r.enabled).ToList();
             plan.MotionParameters = MotionIntegration.Parameters(descriptor);

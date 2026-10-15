@@ -11,6 +11,20 @@ namespace Samon.FacialExpressionEditor.Editor
     /// </summary>
     internal static class PreviewClips
     {
+        public static AnimationClip ForBaseFace(ExpressionSet set, FaceVariant variant, GameObject avatarRoot)
+        {
+            var clip = new AnimationClip { hideFlags = HideFlags.HideAndDontSave };
+            var keys = variant != null && variant.hasSourceFaceSnapshot
+                ? variant.sourceFaceSnapshot : FaceVariantUtility.CaptureSourceFace(set, avatarRoot);
+            foreach (var key in keys)
+            {
+                var binding = EditorCurveBinding.FloatCurve(key.path, typeof(SkinnedMeshRenderer), "blendShape." + key.blendShape);
+                if (!LipSyncProtection.IsProtected(binding, avatarRoot, set))
+                    AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, key.variantValue));
+            }
+            return clip;
+        }
+
         public static AnimationClip ForExpression(Expression expression, FaceVariant variant, GameObject avatarRoot)
         {
             var overridden = FaceVariantUtility.EffectiveOverride(variant, expression);

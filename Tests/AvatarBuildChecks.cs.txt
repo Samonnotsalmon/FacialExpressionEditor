@@ -85,7 +85,8 @@ try {
    void ReadMenu(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu menu) {if(menu==null || !visited.Add(menu))return;foreach(var c in menu.controls){names.Add(c.name);ReadMenu(c.subMenu);}}
    ReadMenu(descriptor.expressionsMenu);
    if(temporaryMenu != null && !names.Contains("FEE preserved menu") || !names.Contains("固定解除")) throw new Exception("Menu preservation/reset check failed");
-   if(!names.Contains("ベース顔を固定")) throw new Exception("Missing base face fixation menu");
+   if(set.menuIcons && visited.SelectMany(m=>m.controls).Single(c=>c.name=="Base").icon==null) throw new Exception("Missing Base thumbnail");
+   if(!names.Contains("Base")) throw new Exception("Missing base face fixation menu");
    var expressionLayer=fx.layers.Single(l=>l.name=="[FacialExpressionEditor] Expression");
    var baseState=States(expressionLayer.stateMachine).Single(s=>s.name=="Base Face");
    var baseEntry=expressionLayer.stateMachine.anyStateTransitions.Single(t=>t.destinationState==baseState);

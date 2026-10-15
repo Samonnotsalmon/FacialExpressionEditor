@@ -99,6 +99,8 @@ namespace Samon.FacialExpressionEditor.Editor
             return $"part|{part.id}|{AssetKey(part.clip)}|{string.Join(",", part.properties)}|{faceHash}";
         }
 
+        public static string BaseFace(FaceVariant variant, string faceHash) => $"base|{AssetKey(variant)}|{faceHash}";
+
         public static string Neutral(string faceHash)
         {
             return $"neutral|{faceHash}";

@@ -61,6 +61,7 @@ namespace Samon.FacialExpressionEditor.Editor
             target == BuildTarget.Android || target == BuildTarget.iOS ? TextureFormat.ASTC_6x6 : TextureFormat.DXT5;
 
         private const string NeutralIconKey = "";
+        private const string BaseIconKey = "__base__";
 
         /// <summary>
         /// FaceEmoと同じ構成のメニューを作る。
@@ -156,7 +157,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 var release = Toggle("固定解除", BuildPlan.EmoteParameter, 0);
                 release.type = Control.ControlType.Button;
                 emoteControls.Insert(0, release);
-                emoteControls.Insert(1, Toggle("ベース顔を固定", BuildPlan.EmoteParameter, plan.BaseFaceValue));
+                var baseControl = Toggle("Base", BuildPlan.EmoteParameter, plan.BaseFaceValue);
+                if (icons.TryGetValue(BaseIconKey, out var baseIcon)) baseControl.icon = baseIcon;
+                emoteControls.Insert(1, baseControl);
                 rootControls.Add(SubMenu("表情選択", Menu(context, "表情選択", emoteControls)));
             }
 
@@ -216,6 +219,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     Load(expression.id, ThumbnailKeys.Expression(expression, variant, faceHash), expression.name);
                 }
+                Load(BaseIconKey, ThumbnailKeys.BaseFace(variant, faceHash), "Base");
                 if (MenuIcons.NeedsNeutral(plan)) Load(NeutralIconKey, ThumbnailKeys.Neutral(faceHash), "無表情");
 
                 if (missing > 0)

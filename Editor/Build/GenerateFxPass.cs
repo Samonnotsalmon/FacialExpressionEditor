@@ -54,11 +54,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var cloneContext = controllerContext.CloneContext;
             var face = FaceControlPlan.Get(context, set, plan);
             var descriptor = avatarRoot.GetComponent<VRCAvatarDescriptor>();
-            if (!string.IsNullOrEmpty(set.lipSyncMeshPath))
-            {
-                var mesh = avatarRoot.transform.Find(set.lipSyncMeshPath)?.GetComponent<SkinnedMeshRenderer>();
-                if (mesh != null) descriptor.VisemeSkinnedMesh = mesh;
-            }
+
 
             var expressionLayer = BuildExpressionLayer(cloneContext, set, plan, face, builder, writeDefaults);
             var expressionLayers = new List<VirtualLayer> { expressionLayer };

@@ -29,14 +29,9 @@ namespace Samon.FacialExpressionEditor.Editor
         public VirtualClip BuildBaseFace()
         {
             var clip = VirtualClip.Create("Base Face (Fixed)");
-            var keys = _variant != null && _variant.hasSourceFaceSnapshot
-                ? _variant.sourceFaceSnapshot : FaceVariantUtility.CaptureSourceFace(_set, _avatarRoot);
-            foreach (var key in keys)
-            {
-                var binding = EditorCurveBinding.FloatCurve(key.path, typeof(SkinnedMeshRenderer), "blendShape." + key.blendShape);
-                if (!LipSyncProtection.IsProtected(binding, _avatarRoot, _set))
-                    clip.SetFloatCurve(binding, AnimationCurve.Constant(0, 1, key.variantValue));
-            }
+            var source = PreviewClips.ForBaseFace(_set, _variant, _avatarRoot);
+            try { CopyCurves(source, clip, null); }
+            finally { PreviewClips.Release(source); }
             return clip;
         }
 

@@ -559,7 +559,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 set.previewHeight = _startPreviewHeight; set.previewZoom = _startPreviewZoom;
                 set.faceMeshPaths = _startMeshPaths.ToList();
                 set.linkedObjectPaths = _startObjectPaths.ToList();
-                set.lipSyncMeshPath = _startLipMesh;
                 set.explicitLayerSelection = true;
                 set.importLayerNames = _startLayerNames.ToList();
                 AssetDatabase.CreateAsset(set, AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(name)}{DataSuffix}.asset"));
