@@ -1,0 +1,31 @@
+var folder="Assets/__FEE_Sparse_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var root=new GameObject("Sparse fixture");var face=new GameObject("Face");face.transform.SetParent(root.transform,false);
+var mesh=new Mesh();mesh.vertices=new[]{Vector3.zero};foreach(var name in new[]{"Base","ExplicitZero","Unused","Motion"})mesh.AddBlendShapeFrame(name,100,new[]{Vector3.zero},new[]{Vector3.zero},new[]{Vector3.zero});
+face.AddComponent<SkinnedMeshRenderer>().sharedMesh=mesh;
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.faceMeshPaths.Add("Face");AssetDatabase.CreateAsset(set,folder+"/Set.asset");
+var variant=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.FaceVariant>();variant.useCapturedValues=true;variant.hasSourceFaceSnapshot=true;
+foreach(var name in new[]{"Base","ExplicitZero","Unused","Motion"})variant.sourceFaceSnapshot.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path="Face",blendShape=name,variantValue=name=="Base"?20:0});
+variant.baseFace.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path="Face",blendShape="Base",referenceValue=0,variantValue=20});
+variant.baseFace.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path="Face",blendShape="ExplicitZero",referenceValue=30,variantValue=0});
+EditorCurveBinding Binding(string name)=>EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape."+name);
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+AnimationClip Preview(Samon.FacialExpressionEditor.Expression e)=>(AnimationClip)asm.GetType("Samon.FacialExpressionEditor.Editor.PreviewClips").GetMethod("ForExpression").Invoke(null,new object[]{e,variant,root});
+try{
+ var e=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(set,"Sparse",Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.CurrentFace,null,root,variant);
+ if(AnimationUtility.GetCurveBindings(e.clip).Length!=2||AnimationUtility.GetEditorCurve(e.clip,Binding("Base")).Evaluate(0)!=20||AnimationUtility.GetEditorCurve(e.clip,Binding("ExplicitZero")).Evaluate(0)!=0)throw new Exception("Sparse base scope or explicit zero lost");
+ AnimationUtility.SetEditorCurve(e.clip,Binding("Base"),AnimationCurve.Constant(0,1,5));
+ var preview=Preview(e);try{if(AnimationUtility.GetEditorCurve(preview,Binding("Base")).Evaluate(0)!=5||AnimationUtility.GetCurveBindings(preview).Length!=2)throw new Exception("Base correction reapplied");}finally{UnityEngine.Object.DestroyImmediate(preview);}
+ var copy=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(set,"Copy",Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.CopyExpression,e,root,variant);
+ if(AnimationUtility.GetCurveBindings(copy.clip).Length!=2||AnimationUtility.GetEditorCurve(copy.clip,Binding("Base")).Evaluate(0)!=5)throw new Exception("Copy expanded or rebased source");
+ var legacyClip=new AnimationClip();AnimationUtility.SetEditorCurve(legacyClip,Binding("Motion"),AnimationCurve.Linear(0,10,1,80));AnimationUtility.SetEditorCurve(legacyClip,Binding("Unused"),AnimationCurve.Constant(0,1,0));AssetDatabase.CreateAsset(legacyClip,folder+"/Legacy.anim");
+ var legacy=new Samon.FacialExpressionEditor.Expression{name="Legacy",clip=legacyClip};
+ var legacyCopy=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(set,"LegacyCopy",Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.CopyExpression,legacy,root,variant);
+ if(AnimationUtility.GetCurveBindings(legacyCopy.clip).Length!=4||AnimationUtility.GetEditorCurve(legacyCopy.clip,Binding("Unused"))==null||Math.Abs(AnimationUtility.GetEditorCurve(legacyCopy.clip,Binding("Motion")).Evaluate(.5f)-45)>.001f||AnimationUtility.GetEditorCurve(legacyCopy.clip,Binding("Base")).Evaluate(0)!=20||AnimationUtility.GetCurveBindings(legacyClip).Length!=2)throw new Exception("Legacy copy lost authored zero, motion or base, or changed original");
+ var empty=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(set,"Empty",Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.Empty,null,root,variant);
+ preview=Preview(empty);try{if(AnimationUtility.GetCurveBindings(preview).Length!=0)throw new Exception("Empty filled during preview");}finally{UnityEngine.Object.DestroyImmediate(preview);}
+ var part=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreatePart(set,"Part");if(AnimationUtility.GetCurveBindings(part.clip).Length!=0)throw new Exception("New part not empty");
+ part.clip=e.clip;part.properties.Add(Samon.FacialExpressionEditor.FacialPart.PropertyKey("Face",typeof(SkinnedMeshRenderer),"blendShape.ExplicitZero"));
+ Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.MakePartClipEditable(set,part);
+ if(AnimationUtility.GetCurveBindings(part.clip).Length!=1||AnimationUtility.GetEditorCurve(part.clip,Binding("ExplicitZero"))==null||AnimationUtility.GetCurveBindings(e.clip).Length!=2)throw new Exception("Part scope or source preservation failed");
+ return "Sparse base, explicit zero, direct edit, copy, legacy motion and zero preservation, Empty preview, part scope and source preservation passed";
+}finally{UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(mesh);UnityEngine.Object.DestroyImmediate(variant);AssetDatabase.DeleteAsset(folder);}

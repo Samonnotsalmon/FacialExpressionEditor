@@ -108,7 +108,7 @@ namespace Samon.FacialExpressionEditor.Editor
             };
 
             // パーツは今の表情に重ねるものなので、ベース顔（青い行）は出さない。
-            var variant = IsPart ? null : Variant;
+            var variant = IsPart || expression.baseFaceBaked ? null : Variant;
             if (variant != null)
             {
                 foreach (var key in variant.baseFace.Where(k => k.enabled && k.path == _shapes.Path))

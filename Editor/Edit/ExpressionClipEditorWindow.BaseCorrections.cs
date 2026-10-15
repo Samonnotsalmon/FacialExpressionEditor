@@ -8,7 +8,7 @@ namespace Samon.FacialExpressionEditor.Editor
     {
         private void DrawBaseFaceExclusions(Expression expression)
         {
-            if (IsAfk || IsPart) return;
+            if (IsAfk || IsPart || expression.baseFaceBaked) return;
             var baseline = Variant;
             if (baseline == null || baseline.baseFace.Count == 0) return;
             EditorGUILayout.Space();

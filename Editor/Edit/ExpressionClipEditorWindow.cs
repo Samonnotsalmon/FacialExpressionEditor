@@ -279,7 +279,7 @@ namespace Samon.FacialExpressionEditor.Editor
                         EditorStyles.wordWrappedMiniLabel);
                 }
             }
-            if (variant != null && variant.baseFace.Any(k => k.enabled))
+            if (!expression.baseFaceBaked && variant != null && variant.baseFace.Any(k => k.enabled))
             {
                 EditorGUILayout.LabelField("青い行（ベース顔）は、この顔のこの表情だけの値を変えます。", EditorStyles.wordWrappedMiniLabel);
             }
@@ -389,7 +389,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
                 // 未編集の差し替えは、プレビューでは共有の表情＋ベース顔に見えている。その見えている形を書き込んでから編集する
                 // （書き込まずに編集すると、編集した途端に差し替えクリップがそのまま使われてベース顔が消えるため）。
-                if (!FaceVariantUtility.IsEdited(entry, expression))
+                if (!expression.baseFaceBaked && !FaceVariantUtility.IsEdited(entry, expression))
                 {
                     var clip = entry.clip;
                     Undo.RecordObject(clip, "ベース顔を反映");

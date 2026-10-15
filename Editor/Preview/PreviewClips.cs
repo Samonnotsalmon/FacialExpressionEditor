@@ -32,7 +32,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var clip = source != null ? Object.Instantiate(source) : new AnimationClip();
             clip.hideFlags = HideFlags.HideAndDontSave;
 
-            if (variant != null)
+            if (variant != null && !expression.baseFaceBaked)
             {
                 BaseFaceProcessor.Apply(variant, expression.id, overridden != null, avatarRoot,
                     b => AnimationUtility.GetEditorCurve(clip, b),

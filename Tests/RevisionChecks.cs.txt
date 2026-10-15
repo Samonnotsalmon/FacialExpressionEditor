@@ -29,6 +29,7 @@ try {
  Check(expression.clip!=clip && expression.originalClip==clip && expression.clip.isLooping,"Imported clip is independent and preserves looping");
  Check(Samon.FacialExpressionEditor.Editor.ExpressionFileImporter.Import(set,new UnityEngine.Object[]{clip})==0,"Repeated import is idempotent");
  var part=new Samon.FacialExpressionEditor.FacialPart{name=expression.clip.name,clip=expression.clip}; set.parts.Add(part);
+ foreach(var binding in AnimationUtility.GetCurveBindings(part.clip)) part.properties.Add(Samon.FacialExpressionEditor.FacialPart.PropertyKey(binding.path,binding.type,binding.propertyName));
  Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.MakePartClipEditable(set,part);
  object Usage()=>Call("ClipUsage","Compute",set);
  bool Used(object usage,AnimationClip c)=>(bool)usage.GetType().GetMethod("IsUsed").Invoke(usage,new object[]{c});

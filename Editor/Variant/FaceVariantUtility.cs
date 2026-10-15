@@ -195,6 +195,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 expressionId = expression.id,
                 clip = clip,
                 sourceHash = SourceHash(expression.clip),
+                baseFaceBaked = expression.baseFaceBaked,
             };
             variant.overrides.Add(entry);
             BakeBaseFace(variant, entry);

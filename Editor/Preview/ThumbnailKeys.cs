@@ -94,7 +94,7 @@ namespace Samon.FacialExpressionEditor.Editor
         public static string Expression(Expression expression, FaceVariant variant, string faceHash)
         {
             var overridden = variant != null ? variant.FindOverride(expression.id) : null;
-            return $"expr|{expression.id}|{expression.freezeAnimation}|{expression.freezePosition}|{AssetKey(expression.clip)}|{AssetKey(overridden?.clip)}|{AssetKey(variant)}|{faceHash}";
+            return $"expr|{expression.id}|{expression.baseFaceBaked}|{expression.freezeAnimation}|{expression.freezePosition}|{AssetKey(expression.clip)}|{AssetKey(overridden?.clip)}|{AssetKey(variant)}|{faceHash}";
         }
 
         public static string Part(FacialPart part, string faceHash)

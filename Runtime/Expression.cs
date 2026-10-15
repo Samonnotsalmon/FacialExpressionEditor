@@ -14,6 +14,9 @@ namespace Samon.FacialExpressionEditor
         public string name;
         public AnimationClip clip;
 
+        // New clips store their base-face values directly. False preserves legacy correction behavior.
+        public bool baseFaceBaked;
+
         // 作者のクリップを編集するために複製したとき、その元のクリップ（元FXの取り込みやライブラリで、同じ表情として扱う）。
         public AnimationClip originalClip;
 

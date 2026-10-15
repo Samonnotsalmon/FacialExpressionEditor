@@ -212,6 +212,11 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 clip = Object.Instantiate(source);
                 clip.name = part.name;
+                var selected = new HashSet<string>(part.properties);
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    if (!selected.Contains(ExpressionClipBuilder.Key(binding))) AnimationUtility.SetEditorCurve(clip, binding, null);
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    if (!selected.Contains(ExpressionClipBuilder.Key(binding))) AnimationUtility.SetObjectReferenceCurve(clip, binding, null);
                 AssetDatabase.CreateAsset(clip, path);
             }
             else
@@ -456,9 +461,13 @@ namespace Samon.FacialExpressionEditor.Editor
             if (source == NewExpressionSource.CopyExpression)
             {
                 if (copyFrom == null) return null;
-                var sourceClip = variant?.FindOverride(copyFrom.id)?.clip ?? copyFrom.clip;
+                var overridden = FaceVariantUtility.EffectiveOverride(variant, copyFrom);
+                var sourceClip = overridden?.clip ?? copyFrom.clip;
                 if (sourceClip == null || !AssetDatabase.CopyAsset(AssetDatabase.GetAssetPath(sourceClip), path)) return null;
                 clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+                if (variant != null && !copyFrom.baseFaceBaked)
+                    BaseFaceProcessor.Apply(variant, copyFrom.id, overridden != null, avatarRoot,
+                        b => AnimationUtility.GetEditorCurve(clip, b), (b, c) => AnimationUtility.SetEditorCurve(clip, b, c));
             }
             else
             {
@@ -469,7 +478,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             LipSyncProtection.Remove(clip, avatarRoot, set);
             Undo.RecordObject(set, "新しい表情を作成");
-            var expression = new Expression { name = name, clip = clip };
+            var expression = new Expression { name = name, clip = clip, baseFaceBaked = true };
             MatchExpressionNameToFile(set, expression);
             set.expressions.Add(expression);
             EditorUtility.SetDirty(set);
@@ -478,38 +487,37 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// 表情で動くシェイプキー（既存の表情が動かすものと、顔バリアントのベース顔）に、アバターの今の値を書き込む。
-        /// ベース顔のシェイプキーは元Prefabの値にする（共有の表情なので。この顔の値はビルド時にベース顔として足される）。
+        /// Record only nonzero base-face values and explicitly configured corrections (including zero).
+        /// The full snapshot remains on the variant; unrelated zero-valued shapes are not authored.
         /// </summary>
         private static void WriteCurrentFace(AnimationClip clip, ExpressionSet set, GameObject avatarRoot, FaceVariant variant)
         {
-            var keys = FaceVariantUtility.AnimatedBlendShapes(set);
-            foreach (var renderer in avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            var values = new Dictionary<(string path, string shape), float>();
+            if (variant != null && variant.hasSourceFaceSnapshot)
             {
-                var path = AnimationUtility.CalculateTransformPath(renderer.transform, avatarRoot.transform);
-                if (renderer.sharedMesh == null || !set.faceMeshPaths.Contains(path)) continue;
-                for (var i = 0; i < renderer.sharedMesh.blendShapeCount; i++) keys.Add((path, renderer.sharedMesh.GetBlendShapeName(i)));
+                foreach (var key in variant.sourceFaceSnapshot.Where(k => k.variantValue != 0))
+                    values[(key.path, key.blendShape)] = key.variantValue;
             }
-            var baseFace = new Dictionary<(string, string), float>();
-            if (variant != null)
+            else if (avatarRoot != null)
             {
-                foreach (var key in variant.baseFace.Where(k => k.enabled))
+                foreach (var renderer in avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                 {
-                    keys.Add((key.path, key.blendShape));
-                    baseFace[(key.path, key.blendShape)] = key.referenceValue;
+                    var path = AnimationUtility.CalculateTransformPath(renderer.transform, avatarRoot.transform);
+                    if (renderer.sharedMesh == null || !set.faceMeshPaths.Contains(path)) continue;
+                    for (var i = 0; i < renderer.sharedMesh.blendShapeCount; i++)
+                    {
+                        var value = renderer.GetBlendShapeWeight(i);
+                        if (value != 0) values[(path, renderer.sharedMesh.GetBlendShapeName(i))] = value;
+                    }
                 }
             }
-
-            foreach (var (path, blendShape) in keys.OrderBy(k => k.path).ThenBy(k => k.blendShape))
+            if (variant != null)
+                foreach (var key in variant.baseFace.Where(k => k.enabled))
+                    values[(key.path, key.blendShape)] = key.variantValue;
+            foreach (var pair in values.OrderBy(p => p.Key.path).ThenBy(p => p.Key.shape))
             {
-                var transform = string.IsNullOrEmpty(path) ? avatarRoot.transform : avatarRoot.transform.Find(path);
-                var renderer = transform != null ? transform.GetComponent<SkinnedMeshRenderer>() : null;
-                var index = renderer != null && renderer.sharedMesh != null ? renderer.sharedMesh.GetBlendShapeIndex(blendShape) : -1;
-                if (index < 0) continue;
-
-                var value = baseFace.TryGetValue((path, blendShape), out var reference) ? reference : renderer.GetBlendShapeWeight(index);
-                var binding = EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), "blendShape." + blendShape);
-                AnimationUtility.SetEditorCurve(clip, binding, new AnimationCurve(new Keyframe(0, value)));
+                var binding = EditorCurveBinding.FloatCurve(pair.Key.path, typeof(SkinnedMeshRenderer), "blendShape." + pair.Key.shape);
+                AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 0, pair.Value));
             }
         }
     }
