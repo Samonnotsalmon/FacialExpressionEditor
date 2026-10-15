@@ -85,6 +85,11 @@ try {
    void ReadMenu(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu menu) {if(menu==null || !visited.Add(menu))return;foreach(var c in menu.controls){names.Add(c.name);ReadMenu(c.subMenu);}}
    ReadMenu(descriptor.expressionsMenu);
    if(temporaryMenu != null && !names.Contains("FEE preserved menu") || !names.Contains("固定解除")) throw new Exception("Menu preservation/reset check failed");
+   if(!names.Contains("ベース顔を固定")) throw new Exception("Missing base face fixation menu");
+   var expressionLayer=fx.layers.Single(l=>l.name=="[FacialExpressionEditor] Expression");
+   var baseState=States(expressionLayer.stateMachine).Single(s=>s.name=="Base Face");
+   var baseEntry=expressionLayer.stateMachine.anyStateTransitions.Single(t=>t.destinationState==baseState);
+   if(!baseEntry.conditions.Any(c=>c.parameter=="FEE/Emote" && c.mode==UnityEditor.Animations.AnimatorConditionMode.Equals && c.threshold>0) || baseEntry.conditions.Any(c=>c.parameter=="GestureLeft" || c.parameter=="GestureRight")) throw new Exception("Base fixation must be independent of gestures");
    if(!names.Contains("まばたきOFF") || !names.Contains("ダンスギミック有効（MMD対応）")) throw new Exception("Missing settings menu toggles");
    foreach(var key in new[]{"FEE/BlinkOff","FEE/DanceEnabled"}) {
     var param=descriptor.expressionParameters.parameters.Single(p=>p.name==key);

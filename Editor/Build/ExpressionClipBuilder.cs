@@ -26,6 +26,20 @@ namespace Samon.FacialExpressionEditor.Editor
 
         public string NameOf(Expression expression) => FxNames.Expression(_set, expression);
 
+        public VirtualClip BuildBaseFace()
+        {
+            var clip = VirtualClip.Create("Base Face (Fixed)");
+            var keys = _variant != null && _variant.hasSourceFaceSnapshot
+                ? _variant.sourceFaceSnapshot : FaceVariantUtility.CaptureSourceFace(_set, _avatarRoot);
+            foreach (var key in keys)
+            {
+                var binding = EditorCurveBinding.FloatCurve(key.path, typeof(SkinnedMeshRenderer), "blendShape." + key.blendShape);
+                if (!LipSyncProtection.IsProtected(binding, _avatarRoot, _set))
+                    clip.SetFloatCurve(binding, AnimationCurve.Constant(0, 1, key.variantValue));
+            }
+            return clip;
+        }
+
         public VirtualClip Build(Expression expression)
         {
             if (_cache.TryGetValue(expression.id, out var cached)) return cached;

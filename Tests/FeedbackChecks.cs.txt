@@ -29,6 +29,16 @@ try{
  var built=builderType.GetMethod("Build").Invoke(builder,new object[]{raw});
  var bindings=((System.Collections.Generic.IEnumerable<EditorCurveBinding>)built.GetType().GetMethod("GetFloatCurveBindings").Invoke(built,null)).ToArray();
  Check(!bindings.Any(b=>b.propertyName==viseme.propertyName)&&bindings.Any(b=>b.propertyName==smile.propertyName),"Build excludes viseme curves from old expressions");
+ baseline.hasSourceFaceSnapshot=true;
+ baseline.sourceFaceSnapshot.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path="Face",blendShape="Smile",variantValue=20});
+ baseline.sourceFaceSnapshot.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path="Face",blendShape="vrc.v_aa",variantValue=30});
+ renderer.SetBlendShapeWeight(1,80);
+ var fixedBase=builderType.GetMethod("BuildBaseFace").Invoke(builder,null);
+ var baseCurve=(AnimationCurve)fixedBase.GetType().GetMethod("GetFloatCurve",new[]{typeof(EditorCurveBinding)}).Invoke(fixedBase,new object[]{smile});
+ Check(baseCurve.Evaluate(0)==20,"Base face fixation uses captured value, not later scene changes");
+ Check(fixedBase.GetType().GetMethod("GetFloatCurve",new[]{typeof(EditorCurveBinding)}).Invoke(fixedBase,new object[]{viseme})==null,"Base face fixation leaves lip sync free");
+ var basePlan=Call("BuildPlan","Create",set);
+ Check((bool)basePlan.GetType().GetProperty("UsesEmoteParameter").GetValue(basePlan) && (int)basePlan.GetType().GetProperty("BaseFaceValue").GetValue(basePlan)==1,"Base fixation is available with no assigned expressions");
  var folders=Samon.FacialExpressionEditor.Editor.ExpressionFileImporter.Folders(set).ToArray();
  Check(folders.SequenceEqual(new[]{folder+"/Input",folder+"/Input/Eyes",folder+"/Input/Eyes/Happy"}),"Library includes nested folders in hierarchy order");
  Check(set.menu.Count==0,"Folder import does not populate fixed menu");

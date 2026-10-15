@@ -56,7 +56,9 @@ namespace Samon.FacialExpressionEditor.Editor
         public readonly List<PartGroup> PartGroups = new List<PartGroup>();
 
         public bool UsesModeParameter => Modes.Count > 1;
-        public bool UsesEmoteParameter => EmoteValues.Count > 0;
+        // ベース顔固定にも同じIntパラメータを使い、通常表情の値は変更しない。
+        public int BaseFaceValue => EmoteValues.Count + 1;
+        public bool UsesEmoteParameter => true;
 
         public Mode ModeOf(MenuNode node) => Modes.Find(m => m.Node == node);
 
@@ -141,6 +143,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 plan.Parts.Add(entry);
             }
 
+            if (plan.BaseFaceValue > 255)
+                throw new System.InvalidOperationException("固定できる表情は、ベース顔を除いて254個までです。");
             return plan;
         }
     }

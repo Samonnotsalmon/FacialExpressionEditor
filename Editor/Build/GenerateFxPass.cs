@@ -254,6 +254,9 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             var transitions = new List<VirtualStateTransition>();
+            var baseFace = AddState(fixedMachine, "Base Face", builder.BuildBaseFace(), 0, null);
+            transitions.Add(Transition(baseFace, set.defaultTransitionDuration,
+                Condition(BuildPlan.EmoteParameter, AnimatorConditionMode.Equals, plan.BaseFaceValue)));
 
             // 固定用のステートは表情ごとに1つ（表情選択の値が違っても同じ表情なら共有する）。
             // 切り替え演出があればクリップの頭に挟む表情を入れる（ステートや遷移は増やさない）。
@@ -323,6 +326,12 @@ namespace Samon.FacialExpressionEditor.Editor
 
                 var label = plan.UsesModeParameter ? $"Mode {mode.Value} {FxNames.GestureSet(set, mode.GestureSet)}: " : "";
                 AddGestureTransitions(set, builder, mode.GestureSet.mapping, prefix, label, neutral, GestureState, transitions);
+            }
+            if (plan.Modes.Count == 0)
+            {
+                var conditions = new List<AnimatorCondition> { Condition(BuildPlan.EmoteParameter, AnimatorConditionMode.Equals, 0) };
+                conditions.AddRange(triggers.Select(ContactOff));
+                transitions.Add(Transition(neutral, set.defaultTransitionDuration, conditions.ToArray()));
             }
             root.AnyStateTransitions = transitions.ToImmutableList();
 

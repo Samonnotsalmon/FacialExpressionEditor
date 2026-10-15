@@ -156,6 +156,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 var release = Toggle("固定解除", BuildPlan.EmoteParameter, 0);
                 release.type = Control.ControlType.Button;
                 emoteControls.Insert(0, release);
+                emoteControls.Insert(1, Toggle("ベース顔を固定", BuildPlan.EmoteParameter, plan.BaseFaceValue));
                 rootControls.Add(SubMenu("表情選択", Menu(context, "表情選択", emoteControls)));
             }
 
