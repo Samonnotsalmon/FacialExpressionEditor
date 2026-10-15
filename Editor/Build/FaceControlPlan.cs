@@ -49,6 +49,7 @@ namespace Samon.FacialExpressionEditor.Editor
         // 元FXの、顔を動かしているレイヤーの扱い。AFK は顔にベース顔とこの顔だけのAFKの動きを適用し、
         // それ以外は表情データの指定に従って顔のカーブを取り除くか、レイヤーごと使わない。
         public HashSet<string> FacePaths { get; private set; } = new HashSet<string>();
+        public HashSet<string> ReactionLayers { get; private set; } = new HashSet<string>();
         public List<string> AfkLayers { get; private set; } = new List<string>();
         public List<string> StripFaceLayers { get; private set; } = new List<string>();
         public List<string> DisabledLayers { get; private set; } = new List<string>();
@@ -136,6 +137,8 @@ namespace Samon.FacialExpressionEditor.Editor
             if (defaults.BlinkLayer != null) handled.Add(defaults.BlinkLayer);
             var analysis = OriginalFxAnalysis.Analyze(descriptor, set, avatar != null ? avatar.faceVariant : null, handled);
             plan.FacePaths = analysis.FacePaths;
+            plan.FacePaths.UnionWith(set.faceMeshPaths);
+            plan.ReactionLayers = new HashSet<string>(ReactionImporter.Scan(descriptor, set, avatar != null ? avatar.faceVariant : null).SelectMany(r => r.Layers));
             plan.AfkLayers = analysis.AfkLayers;
             foreach (var setting in set.originalLayerSettings.Where(s => analysis.FaceLayers.Contains(s.layerName)))
             {

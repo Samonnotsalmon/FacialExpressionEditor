@@ -11,7 +11,6 @@ namespace Samon.FacialExpressionEditor.Editor
         private GameObject _motionSourceRoot;
         private readonly HashSet<string> _openMotionRules = new HashSet<string>();
         private readonly Dictionary<string, string> _motionSearch = new Dictionary<string, string>();
-        private bool _showLegacyContacts;
 
         private void DrawMotionIntegration(ExpressionSet set)
         {

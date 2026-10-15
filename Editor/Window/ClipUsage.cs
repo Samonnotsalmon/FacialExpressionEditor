@@ -83,6 +83,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 usage.Add(set, trigger.expressionId, $"コンタクト・PhysBone：{trigger.parameter}", () => trigger.expressionId = null);
             }
 
+            foreach (var reaction in set.reactionClips)
+                usage.Add(set, reaction.expressionId, "反応：" + reaction.layerName, () => set.reactionClips.Remove(reaction));
             return usage;
         }
 

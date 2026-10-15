@@ -362,15 +362,22 @@ namespace Samon.FacialExpressionEditor.Editor
         // プレビューの下に、握り具合（Fist）やパラメータの値（元FXのレイヤー）のスライダーを出すか。
         private bool UsesDetailSlider =>
             (_selectionKind == SelectionKind.Fist || (_selectionKind == SelectionKind.OriginalClip &&
-                FxAnalysis.FaceLayerTriggers.TryGetValue(_selectedId, out var triggers) && triggers.Any(t => t.Clip == _selectedClip && t.Gradual))) && _detailTimeVarying;
+                OriginalTrigger(_selectedId, _selectedClip)?.Gradual == true)) && _detailTimeVarying;
 
         /// <summary>
         /// 元FXの、コンタクト・PhysBoneなどで顔を動かすレイヤーのクリップ。何で出るかと、ビルドでの扱い。
         /// </summary>
+        private OriginalFxAnalysis.FaceLayerClip OriginalTrigger(string layer, AnimationClip clip)
+        {
+            var replacement = Set.reactionClips.Find(c => c.layerName == layer && Set.FindExpression(c.expressionId)?.clip == clip);
+            var source = replacement?.source ?? clip;
+            return FxAnalysis.FaceLayerTriggers.TryGetValue(layer, out var list) ? list.Find(t => t.Clip == source) : null;
+        }
+
         private void DrawOriginalClipDetail(string layer, AnimationClip clip)
         {
             EditorGUILayout.LabelField(clip.name, EditorStyles.boldLabel);
-            var trigger = FxAnalysis.FaceLayerTriggers.TryGetValue(layer, out var list) ? list.Find(t => t.Clip == clip) : null;
+            var trigger = OriginalTrigger(layer, clip);
             EditorGUILayout.LabelField($"元FXの「{layer}」レイヤーの表情です。", EditorStyles.wordWrappedMiniLabel);
             if (trigger != null && !string.IsNullOrEmpty(trigger.Parameter))
             {
@@ -380,7 +387,7 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 EditorGUILayout.LabelField("上のスライダーで、パラメータの値ごとの顔を確かめられます。", EditorStyles.wordWrappedMiniLabel);
             }
-            EditorGUILayout.LabelField("ビルドでの扱いは「AFK・コンタクト」タブの「顔を動かしている元FXのレイヤー」で変えられます。",
+            EditorGUILayout.LabelField("反応の編集・差し替えは「反応」タブ、レイヤーの除外は「アバター設定」で行います。",
                 EditorStyles.wordWrappedMiniLabel);
             using (new EditorGUI.DisabledScope(true))
             {

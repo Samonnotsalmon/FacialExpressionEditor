@@ -46,7 +46,7 @@ namespace Samon.FacialExpressionEditor.Editor
             return BitConverter.ToSingle(BitConverter.GetBytes(bits), 0);
         }
         private static void BuildMotionIntegration(VirtualAnimatorController fx, CloneContext context, FaceControlPlan face,
-            VirtualLayer expression, VirtualLayer blink, List<VirtualLayer> mouth, List<VirtualLayer> parts)
+            VirtualLayer expression, VirtualLayer blink, List<VirtualLayer> mouth, List<VirtualLayer> parts, VirtualLayer reactionFixedFace = null)
         {
             var evaluation = new List<VirtualLayer>();
             var requests = new Dictionary<VirtualLayer, List<string>>();
@@ -91,6 +91,8 @@ namespace Samon.FacialExpressionEditor.Editor
                     requests[target].Add(parameter);
                 }
             }
+            if (reactionFixedFace != null)
+                requests[reactionFixedFace] = requests[expression].ToList();
             var gates = new List<VirtualLayer>();
             foreach (var request in requests)
             {
@@ -105,7 +107,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 suspended.Transitions = ImmutableList.Create(Transition(resume, 0, resumeConditions));
                 sm.AnyStateTransitions = request.Value.Select(p => Transition(suspended, 0, Condition(p, AnimatorConditionMode.If, 0))).Concat(sm.AnyStateTransitions).ToImmutableList();
 
-                if (parts.Contains(target))
+                if (parts.Contains(target) || target == reactionFixedFace)
                 {
                     // Part states own their weight. A separate resume gate setting weight 1
                     // would make an OFF part override expressions after a motion ends.

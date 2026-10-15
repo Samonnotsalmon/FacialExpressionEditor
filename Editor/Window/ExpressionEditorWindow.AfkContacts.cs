@@ -37,9 +37,6 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorGUILayout.Space(12);
             DrawAfk();
             EditorGUILayout.Space(12);
-            _showLegacyContacts = EditorGUILayout.Foldout(_showLegacyContacts, "追加設定：コンタクト・PhysBone", true);
-            if (_showLegacyContacts) DrawContacts(set);
-            EditorGUILayout.Space(12);
             DrawOriginalFaceLayers(set);
         }
 
@@ -104,18 +101,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 DrawContactRow(set, trigger, i, candidates, new Rect(row.x, row.y, width, ContactRowHeight));
             }
 
-            using (new EditorGUI.DisabledScope(candidates.Count == 0))
-            {
-                if (GUILayout.Button("コンタクト・PhysBoneを追加", GUILayout.Width(200)))
-                {
-                    var first = candidates[0];
-                    Modify(set, "コンタクト・PhysBoneを追加", () => set.contactTriggers.Add(new ContactTrigger
-                    {
-                        parameter = first.parameter,
-                        isFloat = first.isFloat,
-                    }));
-                }
-            }
         }
 
         private void DrawContactRow(ExpressionSet set, ContactTrigger trigger, int index,
@@ -197,7 +182,8 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawOriginalFaceLayers(ExpressionSet set)
         {
             EditorGUILayout.LabelField("顔を動かしている元FXのレイヤー", EditorStyles.boldLabel);
-            var layers = FxAnalysis.FaceLayers;
+            var reactionLayers = new HashSet<string>(ReactionCandidates.SelectMany(r => r.Layers));
+            var layers = FxAnalysis.FaceLayers.Where(l => !reactionLayers.Contains(l)).ToList();
             if (layers.Count == 0)
             {
                 EditorGUILayout.LabelField("置き換えていないのに顔を動かしているレイヤーはありません。", EditorStyles.wordWrappedMiniLabel);

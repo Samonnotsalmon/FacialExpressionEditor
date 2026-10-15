@@ -103,6 +103,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 EnsureParameter(fx, trigger.parameter, trigger.isFloat ? AnimatorControllerParameterType.Float : AnimatorControllerParameterType.Bool);
             }
 
+            ApplyReactionClips(fx, set, builder);
             ProcessOriginalFaceLayers(fx, face, variant, avatarRoot);
             ApplyMotionCorrections(controllerContext.Controllers.Values, face, variant, avatarRoot);
 
@@ -116,13 +117,16 @@ namespace Samon.FacialExpressionEditor.Editor
                 (face.BlinkLayersToReplace, new List<VirtualLayer>()),
                 (face.DisabledLayers, new List<VirtualLayer>()),
             });
+            GateGestureOnlyLinkedMotion(fx, cloneContext, face);
+            var reactionFixedFace = BuildReactionFixedFace(fx, cloneContext, set, plan, face, builder, avatarRoot);
+            if (reactionFixedFace != null) fx.Layers = fx.Layers.Concat(new[] { reactionFixedFace }).ToList();
             // Parts are overlays even when their original layers preceded gesture layers.
             fx.Layers = fx.Layers.Where(l => !partLayers.Contains(l)).Concat(partLayers).ToList();
             var mmdState = context.GetState<MmdBuildState>();
             mmdState.PreserveGimmicks = !set.mmdStopEntireFx;
             mmdState.UnifyWriteDefaults = set.mmdUnifyFxWriteDefaults;
             BuildDanceMenuControl(fx, cloneContext, set.mmdStopEntireFx);
-            BuildMotionIntegration(fx, cloneContext, face, expressionLayer, blinkLayer, cancelerLayers, partLayers);
+            BuildMotionIntegration(fx, cloneContext, face, expressionLayer, blinkLayer, cancelerLayers, partLayers, reactionFixedFace);
             if (!set.mmdStopEntireFx)
                 foreach (var state in fx.Layers.Where(l => l.Name.StartsWith(LayerPrefix))
                     .SelectMany(l => l.AllReachableNodes().OfType<VirtualState>())) state.WriteDefaultValues = true;

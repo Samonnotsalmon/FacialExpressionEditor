@@ -16,13 +16,13 @@ namespace Samon.FacialExpressionEditor.Editor
         private const float LibraryWidth = 300f;
         private const float DetailWidth = 280f;
 
-        private enum Tab { Menu, Parts, Face, AfkContacts, Setup }
+        private enum Tab { Menu, Parts, Face, AfkContacts, Setup, Reactions }
 
         // Fist：表情セットの表で、握り具合を使う手のFistのマスを選んだとき（握り込みの設定とプレビュー）。
         // OriginalClip：元FXの、コンタクト・PhysBoneなどで顔を動かすレイヤーのクリップ（_selectedId はレイヤー名）。
         private enum SelectionKind { None, Expression, Clip, Part, Fist, OriginalClip }
 
-        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口", "モーション連携", "アバター設定" };
+        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口", "モーション連携", "アバター設定", "反応" };
 
         // 編集している表情設定（プロジェクトのプレハブか、シーンのアバターの中にあるもの）。
         [SerializeField] private FacialExpressionAvatar _avatar;
@@ -230,6 +230,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 _filteredClips = FilteredClips();
             }
 
+            _tab = (Tab)GUILayout.Toolbar((int)_tab, TabLabels, GUILayout.Height(24));
             using (new EditorGUILayout.HorizontalScope())
             {
                 using (var library = new EditorGUILayout.VerticalScope(GUILayout.Width(LibraryWidth)))
@@ -240,7 +241,6 @@ namespace Samon.FacialExpressionEditor.Editor
 
                 using (new EditorGUILayout.VerticalScope())
                 {
-                    _tab = (Tab)GUILayout.Toolbar((int)_tab, TabLabels, GUILayout.Height(24));
                     _centerScroll = EditorGUILayout.BeginScrollView(_centerScroll);
                     switch (_tab)
                     {
@@ -249,6 +249,7 @@ namespace Samon.FacialExpressionEditor.Editor
                         case Tab.Face: DrawFaceTab(set); break;
                         case Tab.AfkContacts: DrawAfkContactsTab(set); break;
                         case Tab.Setup: DrawSetupTab(set); break;
+                        case Tab.Reactions: DrawReactionsTab(set); break;
                     }
                     EditorGUILayout.EndScrollView();
                 }

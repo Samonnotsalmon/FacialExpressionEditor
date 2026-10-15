@@ -67,7 +67,11 @@ namespace Samon.FacialExpressionEditor
         // 表情ごとのまばたき・リップシンクを、元FXから取り込み済みか（この機能より前に作った表情データのため）。
         public bool faceControlImported;
 
-        // コンタクト・PhysBoneで出す表情（上にあるものほど優先）。
+        // 元FXの反応クリップのみ差し替える。反応の制御と順序は元FXを使う。
+        public List<ReactionClip> reactionClips = new List<ReactionClip>();
+        public List<string> reactionFixedPassthroughProperties = new List<string>();
+
+        // 旧方式の簡易反応。既存設定の互換性を維持する。
         public List<ContactTrigger> contactTriggers = new List<ContactTrigger>();
 
         // 顔を動かしている元FXのレイヤーの扱い（指定が無いものはそのまま使う）。
