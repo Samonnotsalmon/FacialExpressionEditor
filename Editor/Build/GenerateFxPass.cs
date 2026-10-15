@@ -74,6 +74,14 @@ namespace Samon.FacialExpressionEditor.Editor
             if (face.HasMouthCanceler) cancelerLayers.Add(BuildMouthCancelerLayer(cloneContext, face, avatarRoot, writeDefaults));
 
             var partLayers = BuildPartLayers(cloneContext, set, plan, builder, writeDefaults);
+            if (plan.Parts.Count > 0)
+            {
+                // The expression layer owns the fallback. Preserve explicit expression values
+                // and fill only missing material curves so neutral/base poses restore reliably.
+                var expressionClips = expressionLayer.AllReachableNodes().OfType<VirtualState>()
+                    .SelectMany(s => ClipsOf(s.Motion)).Distinct();
+                builder.FillMissingMaterialDefaults(expressionClips.Concat(plan.Parts.Select(p => builder.BuildPart(p.Part))));
+            }
 
             EnsureParameter(fx, BuildPlan.BlinkOffParameter, AnimatorControllerParameterType.Bool);
             EnsureParameter(fx, GestureLeft, AnimatorControllerParameterType.Int);
@@ -108,6 +116,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 (face.BlinkLayersToReplace, new List<VirtualLayer>()),
                 (face.DisabledLayers, new List<VirtualLayer>()),
             });
+            // Parts are overlays even when their original layers preceded gesture layers.
+            fx.Layers = fx.Layers.Where(l => !partLayers.Contains(l)).Concat(partLayers).ToList();
             var mmdState = context.GetState<MmdBuildState>();
             mmdState.PreserveGimmicks = !set.mmdStopEntireFx;
             mmdState.UnifyWriteDefaults = set.mmdUnifyFxWriteDefaults;
@@ -645,65 +655,41 @@ namespace Samon.FacialExpressionEditor.Editor
             var layers = new List<VirtualLayer>();
             var duration = set.defaultTransitionDuration;
 
-            foreach (var entry in plan.Parts.Where(p => !p.IsGrouped))
+            // Keep one override layer per part, including exclusive groups. A disabled
+            // sibling must not reset properties supplied by the current expression.
+            foreach (var entry in plan.Parts)
             {
                 var layer = VirtualLayer.Create(cloneContext, LayerPrefix + "Part " + FxNames.Part(set, entry.Part));
+                layer.DefaultWeight = 0;
                 var stateMachine = layer.StateMachine;
                 var offClip = VirtualClip.Create("Off");
                 var onClip = builder.BuildPart(entry.Part);
-
                 var off = stateMachine.AddState("Off", offClip, new Vector3(300, 0, 0));
                 var on = stateMachine.AddState("On", onClip, new Vector3(300, 80, 0));
-                off.WriteDefaultValues = writeDefaults;
-                on.WriteDefaultValues = writeDefaults;
+                off.WriteDefaultValues = on.WriteDefaultValues = writeDefaults;
                 stateMachine.DefaultState = off;
-
+                SetPartLayerWeight(off, layer, 0);
+                SetPartLayerWeight(on, layer, 1);
                 off.Transitions = ImmutableList.Create(Transition(on, duration,
-                    Condition(entry.Parameter, AnimatorConditionMode.If, 0)));
+                    Condition(entry.Parameter, entry.IsGrouped ? AnimatorConditionMode.Equals : AnimatorConditionMode.If, entry.Value)));
                 on.Transitions = ImmutableList.Create(Transition(off, duration,
-                    Condition(entry.Parameter, AnimatorConditionMode.IfNot, 0)));
-
+                    Condition(entry.Parameter, entry.IsGrouped ? AnimatorConditionMode.NotEqual : AnimatorConditionMode.IfNot, entry.Value)));
                 builder.FillMissingMaterialDefaults(new[] { offClip, onClip });
                 if (!writeDefaults) builder.FillMissingWithDefaults(new[] { offClip, onClip });
                 layers.Add(layer);
             }
 
-            for (var g = 0; g < plan.PartGroups.Count; g++)
-            {
-                var group = plan.PartGroups[g];
-                var layer = VirtualLayer.Create(cloneContext, LayerPrefix + "Parts " + FxNames.Group(group.Name, g));
-                var stateMachine = layer.StateMachine;
-                var clips = new List<VirtualClip>();
-
-                var offClip = VirtualClip.Create("Off");
-                clips.Add(offClip);
-                var off = stateMachine.AddState("Off", offClip, new Vector3(300, 0, 0));
-                off.WriteDefaultValues = writeDefaults;
-                stateMachine.DefaultState = off;
-
-                var transitions = new List<VirtualStateTransition>
-                {
-                    Transition(off, duration, Condition(group.Parameter, AnimatorConditionMode.Equals, 0)),
-                };
-
-                foreach (var entry in group.Parts)
-                {
-                    var clip = builder.BuildPart(entry.Part);
-                    clips.Add(clip);
-                    var state = stateMachine.AddState(FxNames.Part(set, entry.Part), clip, new Vector3(600, 60 * entry.Value, 0));
-                    state.WriteDefaultValues = writeDefaults;
-                    transitions.Add(Transition(state, duration,
-                        Condition(group.Parameter, AnimatorConditionMode.Equals, entry.Value)));
-                }
-
-                stateMachine.AnyStateTransitions = transitions.ToImmutableList();
-
-                builder.FillMissingMaterialDefaults(clips);
-                if (!writeDefaults) builder.FillMissingWithDefaults(clips);
-                layers.Add(layer);
-            }
-
             return layers;
+        }
+
+        private static void SetPartLayerWeight(VirtualState state, VirtualLayer layer, float weight)
+        {
+            var control = ScriptableObject.CreateInstance<VRCAnimatorLayerControl>();
+            control.playable = VRC_AnimatorLayerControl.BlendableLayer.FX;
+            control.layer = layer.VirtualLayerIndex;
+            control.goalWeight = weight;
+            control.blendDuration = 0;
+            state.Behaviours = state.Behaviours.Add(control);
         }
 
         private static VirtualStateTransition Transition(VirtualState target, float duration, params AnimatorCondition[] conditions)

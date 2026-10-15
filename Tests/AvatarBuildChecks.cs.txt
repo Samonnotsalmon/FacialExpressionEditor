@@ -64,6 +64,9 @@ try {
    var materialRenderer=materialObject.AddComponent<MeshRenderer>();
    var material=new Material(Shader.Find("Standard")); material.SetFloat("_Glossiness",.2f); material.SetColor("_Color",new Color(.4f,.5f,.6f,.3f));
    AssetDatabase.CreateAsset(material,folder+"/"+i+"/Material.mat"); materialRenderer.sharedMaterial=material;
+   var expressionCopy=UnityEngine.Object.Instantiate(set.expressions[0].clip);
+   AnimationUtility.SetEditorCurve(expressionCopy,EditorCurveBinding.FloatCurve("NSL material fixture",typeof(MeshRenderer),"material._Glossiness"),AnimationCurve.Constant(0,1,.45f));
+   AssetDatabase.CreateAsset(expressionCopy,folder+"/"+i+"/ExpressionMaterial.anim");set.expressions[0].clip=expressionCopy;
    foreach(var property in new[]{"_Glossiness","_Color.a","_Metallic"}) {
     var clip=new AnimationClip(); var binding=EditorCurveBinding.FloatCurve("NSL material fixture",typeof(MeshRenderer),"material."+property);
     AnimationUtility.SetEditorCurve(clip,binding,AnimationCurve.Constant(0,1,.9f));
@@ -83,11 +86,19 @@ try {
    if(!fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Blink")) throw new Exception("Missing mandatory blink replacement: " + avatarPath);
    if(fx.layers.Any(l=>set.originalGestureLayers.Contains(l.name))) throw new Exception("Original gesture layers were not replaced");
    var materialLayers=fx.layers.Where(l=>l.name.StartsWith("[FacialExpressionEditor] Part")).ToArray();
-   if(materialLayers.Length!=2) throw new Exception("Missing material part layers");
+   if(materialLayers.Length!=3) throw new Exception("Missing material part layers");
    foreach(var layer in materialLayers) {
+    var layerIndex=Array.FindIndex(fx.layers,l=>l.name==layer.name);
+    if(layer.defaultWeight!=0)throw new Exception("Inactive part must have zero weight");
+    if(layerIndex<=Array.FindIndex(fx.layers,l=>l.name=="[FacialExpressionEditor] Expression"))throw new Exception("Part must override expression layer");
+    foreach(var state in layer.stateMachine.states.Select(c=>c.state)) {
+     var controls=state.behaviours.OfType<VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl>().ToArray();
+     if(controls.Length!=1||controls[0].layer!=layerIndex||controls[0].goalWeight!=(state.name=="On"?1:0))throw new Exception("Incorrect part weight or remapped layer target");
+    }
+    if(fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Motion gate "+layer.name))throw new Exception("Resume gate must not enable inactive part");
     var off=(AnimationClip)layer.stateMachine.defaultState.motion;
     var bindings=AnimationUtility.GetCurveBindings(off).Where(b=>b.propertyName.StartsWith("material.")).ToArray();
-    if(bindings.Length!=(layer.name.Contains("Parts ")?2:1)) throw new Exception("Missing material resets");
+    if(bindings.Length!=1) throw new Exception("Missing material resets");
     foreach(var binding in bindings) {
      var expected=binding.propertyName=="material._Glossiness"?.2f:binding.propertyName=="material._Color.a"?.3f:0f;
      if(!Mathf.Approximately(AnimationUtility.GetEditorCurve(off,binding).Evaluate(0),expected)) throw new Exception("Incorrect material initial value");
@@ -96,6 +107,13 @@ try {
      }
     }
    }
+   var materialBinding=EditorCurveBinding.FloatCurve("NSL material fixture",typeof(MeshRenderer),"material._Glossiness");
+   var expressionStates=States(fx.layers.Single(l=>l.name=="[FacialExpressionEditor] Expression").stateMachine).Where(s=>s.name!="Motion suspend").ToArray();
+   foreach(var state in expressionStates.Where(s=>s.motion is AnimationClip)) {
+    var curve=AnimationUtility.GetEditorCurve((AnimationClip)state.motion,materialBinding);
+    if(curve==null)throw new Exception("Expression fallback missing material initial value");
+   }
+   if(!expressionStates.Where(s=>s.motion is AnimationClip).Any(s=>Mathf.Approximately(AnimationUtility.GetEditorCurve((AnimationClip)s.motion,materialBinding).Evaluate(0),.45f)))throw new Exception("Expression material value overwritten by part defaults");
    if(!Mathf.Approximately(material.GetFloat("_Glossiness"),.2f)||!Mathf.Approximately(material.GetColor("_Color").a,.3f))throw new Exception("Source material modified");
    var builtWardrobe=fx.layers.Single(l=>l.name=="NSL Test Wardrobe");
    if(builtWardrobe.stateMachine.states.Length!=2 || builtWardrobe.stateMachine.anyStateTransitions.Length!=0) throw new Exception("Wardrobe was suspended or restructured");

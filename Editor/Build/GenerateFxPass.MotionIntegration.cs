@@ -105,6 +105,14 @@ namespace Samon.FacialExpressionEditor.Editor
                 suspended.Transitions = ImmutableList.Create(Transition(resume, 0, resumeConditions));
                 sm.AnyStateTransitions = request.Value.Select(p => Transition(suspended, 0, Condition(p, AnimatorConditionMode.If, 0))).Concat(sm.AnyStateTransitions).ToImmutableList();
 
+                if (parts.Contains(target))
+                {
+                    // Part states own their weight. A separate resume gate setting weight 1
+                    // would make an OFF part override expressions after a motion ends.
+                    SetPartLayerWeight(suspended, target, 0);
+                    continue;
+                }
+
                 var gate = VirtualLayer.Create(context, LayerPrefix + "Motion gate " + target.Name);
                 var active = gate.StateMachine.AddState("Normal", VirtualClip.Create("Normal"), Vector3.zero);
                 var yielded = gate.StateMachine.AddState("Yield", VirtualClip.Create("Yield"), new Vector3(300, 0, 0));
