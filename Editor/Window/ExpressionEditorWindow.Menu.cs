@@ -77,29 +77,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
             }
 
-            var missing = _libraryClips.Where(c => !InMenu(set, c)).ToList();
-            using (new EditorGUI.DisabledScope(missing.Count == 0))
-            {
-                if (GUILayout.Button($"メニューに無いライブラリの表情を「{ExpressionSetUtility.AddFolderName}」フォルダに追加（{missing.Count} 件）"))
-                {
-                    Modify(set, $"{ExpressionSetUtility.AddFolderName}に追加", () =>
-                    {
-                        var folder = set.menu.Find(n => n.kind == MenuNodeKind.Folder && string.IsNullOrEmpty(n.parentId) && n.name == ExpressionSetUtility.AddFolderName);
-                        if (folder == null)
-                        {
-                            folder = new MenuNode { kind = MenuNodeKind.Folder, name = ExpressionSetUtility.AddFolderName };
-                            set.menu.Add(folder);
-                        }
-                        foreach (var clip in missing)
-                        {
-                            var expression = ExpressionSetUtility.FindOrCreateExpression(set, clip);
-                            set.menu.Add(new MenuNode { kind = MenuNodeKind.Expression, expressionId = expression.id, parentId = folder.id });
-                        }
-                    });
-                    MarkLibraryDirty();
-                }
-            }
-
             DrawGestureSetsOutsideMenu(set);
 
             EditorGUILayout.Space(12);
@@ -390,15 +367,5 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
-        // メニューから選べるか（固定だけの項目として置いてあるか、メニューの表情セットのジェスチャーに割り当ててあって表情選択に並ぶか）。
-        // パーツに使っているクリップは表情ではないので、メニューにあるものとして扱う（「Add」に入れない）。
-        private static bool InMenu(ExpressionSet set, AnimationClip clip)
-        {
-            if (set.parts.Any(p => p.clip == clip)) return true;
-            var expression = ExpressionSetUtility.FindExpressionByClip(set, clip);
-            return expression != null &&
-                   (set.menu.Any(n => n.kind == MenuNodeKind.Expression && n.expressionId == expression.id) ||
-                    ExpressionSetUtility.IsInGestureOfMenu(set, expression.id));
-        }
     }
 }

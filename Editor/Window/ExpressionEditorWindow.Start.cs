@@ -572,7 +572,6 @@ namespace Samon.FacialExpressionEditor.Editor
                     set.faceControlImported = true;
                     set.originalGestureLayers = _startLayerNames.ToList();
                     ExpressionSetUtility.AddMenuFromSets(set);
-                    set.menu.Add(new MenuNode { kind = MenuNodeKind.Folder, name = ExpressionSetUtility.AddFolderName });
                 }
                 if (_startImportFx)
                 {
