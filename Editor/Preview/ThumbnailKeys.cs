@@ -7,19 +7,28 @@ namespace Samon.FacialExpressionEditor.Editor
     /// <summary>
     /// サムネイルのキャッシュのキー。表情エディタとビルド（メニューのアイコン）で同じキーを使い、
     /// 表情エディタで描いたサムネイルをアイコンにも使えるようにする。
-    /// クリップや顔バリアントの内容と、アバターの今の顔（シェイプキーの値）が変わればキーも変わる。
+    /// クリップや顔バリアントの内容と、アバターの外見・表示状態が変わればキーも変わる。
     /// </summary>
     internal static class ThumbnailKeys
     {
         /// <summary>
-        /// アバターの今の顔（全レンダラーのシェイプキーの値）。
+        /// アバターの外見（表示状態、メッシュ、マテリアル、シェイプキーの値）。
         /// </summary>
         public static string FaceHash(GameObject avatar, ExpressionSet set = null)
         {
             var hash = new Hash128();
-            hash.Append("material-preview-v2");
+            hash.Append("appearance-preview-v3");
             foreach (var renderer in avatar.GetComponentsInChildren<Renderer>(true))
+            {
+                hash.Append(AnimationUtility.CalculateTransformPath(renderer.transform, avatar.transform));
+                hash.Append(renderer.gameObject.activeInHierarchy ? 1 : 0);
+                hash.Append(renderer.enabled ? 1 : 0);
+                hash.Append(renderer.forceRenderingOff ? 1 : 0);
+                var mesh = renderer is SkinnedMeshRenderer skinned
+                    ? skinned.sharedMesh : renderer.GetComponent<MeshFilter>()?.sharedMesh;
+                hash.Append(AssetKey(mesh));
                 foreach (var material in renderer.sharedMaterials) hash.Append(AssetKey(material));
+            }
             hash.Append(set != null ? set.previewHeight : 0.03f);
             hash.Append(set != null ? set.previewZoom : 1f);
             foreach (var renderer in avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true))
