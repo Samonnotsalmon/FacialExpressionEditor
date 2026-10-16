@@ -79,10 +79,7 @@ namespace Samon.FacialExpressionEditor.Editor
             plan.MotionParameters = MotionIntegration.Parameters(descriptor);
             plan.MotionParameterDefaults = MotionIntegration.Controllers(descriptor).SelectMany(s => s.controller.parameters).GroupBy(p => p.name).ToDictionary(g => g.Key, g => g.First());
             plan.ApplyBaseFaceToAfk = set.applyBaseFaceToAfk;
-            var ruleErrors = MotionIntegration.Validate(set, descriptor, plan.MotionRules);
-            foreach (var rule in plan.MotionRules.Where(r => r.sourcePlayable == "FX" && !string.IsNullOrEmpty(r.sourceLayer)))
-                if (rule.sourceLayer == defaults.BlinkLayer || defaults.MouthCancelerLayers.Contains(rule.sourceLayer))
-                    ruleErrors.Add(rule.name + "：連携元が自動置換する瞬き・口制御レイヤーです。保持されるモーションのステートを選んでください。");
+            var ruleErrors = MotionSetupWarnings(set, descriptor, defaults);
             if (ruleErrors.Count > 0) throw new System.InvalidOperationException("既存モーション連携の設定を確認してください：\n" + string.Join("\n", ruleErrors));
             var expressions = buildPlan.Modes.SelectMany(m => m.Emotes)
                 .Concat(buildPlan.EmoteValues.Keys.Select(set.FindExpression))
@@ -90,24 +87,11 @@ namespace Samon.FacialExpressionEditor.Editor
                 .Distinct()
                 .ToList();
 
-            // まばたきは指定／既存クリップ、または生成アニメーションで必ず置き換える。
-            var blinkShapes = set.customBlink ? set.blinkShapes : AvatarFaceDefaults.DescriptorBlinkShapes(descriptor);
-            if (set.UsesExistingBlink && set.blinkAnimation == null)
-                throw new System.InvalidOperationException("「まばたき・口」で既存の瞬きアニメーションを指定してください。");
-            if (set.UsesExistingBlink)
-            {
-                plan.BlinkClip = set.blinkAnimation;
-                blinkShapes = AnimationUtility.GetCurveBindings(set.blinkAnimation)
-                    .Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape."))
-                    .Select(b => new BlinkShape { path = b.path, blendShape = b.propertyName.Substring(11), closedValue = 100 }).ToList();
-            }
-            else if (set.blinkPose != null) blinkShapes = BlinkPoseUtility.Shapes(set.blinkPose, avatarRoot, set);
-            plan.BlinkShapes = blinkShapes
-                .Select(s => (Binding(s), s.closedValue))
-                .Where(s => AnimationUtility.GetFloatValue(avatarRoot, s.Item1, out _))
-                .ToList();
-            if (!plan.ReplacesBlink)
-                throw new System.InvalidOperationException("瞬きの置き換え対象がありません。「まばたき・口」でクリップを指定するか、シェイプキーを選択してください。");
+            // The editor warning and build validation use the same target resolution.
+            var blinkIssue = BlinkSetupWarning(set, avatarRoot);
+            if (blinkIssue != null) throw new System.InvalidOperationException(blinkIssue);
+            if (set.UsesExistingBlink) plan.BlinkClip = set.blinkAnimation;
+            plan.BlinkShapes = ResolveBlinkShapes(set, avatarRoot);
             if (plan.ReplacesBlink)
             {
                 if (defaults.BlinkLayer != null) plan.BlinkLayersToReplace.Add(defaults.BlinkLayer);
@@ -148,6 +132,37 @@ namespace Samon.FacialExpressionEditor.Editor
                 else if (setting.mode == OriginalLayerMode.Disable) plan.DisabledLayers.Add(setting.layerName);
             }
             return plan;
+        }
+
+        internal static List<string> MotionSetupWarnings(ExpressionSet set, VRCAvatarDescriptor descriptor, AvatarFaceDefaults defaults)
+        {
+            var rules = MotionIntegration.Rules(set, descriptor).Where(r => r.enabled).ToList();
+            var errors = MotionIntegration.Validate(set, descriptor, rules);
+            foreach (var rule in rules.Where(r => r.sourcePlayable == "FX" && !string.IsNullOrEmpty(r.sourceLayer)))
+                if (rule.sourceLayer == defaults.BlinkLayer || defaults.MouthCancelerLayers.Contains(rule.sourceLayer))
+                    errors.Add(rule.name + "：連携元が自動置換する瞬き・口制御レイヤーです。保持されるモーションのステートを選んでください。");
+            return errors;
+        }
+
+        internal static string BlinkSetupWarning(ExpressionSet set, GameObject root)
+        {
+            if (set == null || root == null) return null;
+            if (set.UsesExistingBlink)
+                return set.blinkAnimation != null ? null : "瞬きのクリップが未指定です。「まばたき・口」でクリップを指定するか、専用の瞬きを新規作成してください。このままではビルドできません。";
+            if (ResolveBlinkShapes(set, root).Count > 0) return null;
+            return "瞬きが未設定、または対象のシェイプキーがアバターに見つかりません。「まばたき・口」でクリップを指定するか、専用の瞬きを作成して目閉じに使うシェイプキーを追加してください。このままではビルドできません。";
+        }
+
+        private static List<(EditorCurveBinding binding, float closedValue)> ResolveBlinkShapes(ExpressionSet set, GameObject root)
+        {
+            var shapes = set.customBlink ? set.blinkShapes : AvatarFaceDefaults.DescriptorBlinkShapes(root.GetComponent<VRCAvatarDescriptor>());
+            if (set.UsesExistingBlink && set.blinkAnimation != null)
+                shapes = AnimationUtility.GetCurveBindings(set.blinkAnimation)
+                    .Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape."))
+                    .Select(b => new BlinkShape { path = b.path, blendShape = b.propertyName.Substring(11), closedValue = 100 }).ToList();
+            else if (set.blinkPose != null) shapes = BlinkPoseUtility.Shapes(set.blinkPose, root, set);
+            return shapes.Select(s => (Binding(s), s.closedValue))
+                .Where(s => AnimationUtility.GetFloatValue(root, s.Item1, out _)).ToList();
         }
 
         public bool IsFaceCurve(EditorCurveBinding binding)

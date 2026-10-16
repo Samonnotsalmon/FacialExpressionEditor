@@ -1,0 +1,24 @@
+// Run through isuzu-unity-cli execute_code. No avatar assets required.
+var assembly=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var type=assembly.GetType("Samon.FacialExpressionEditor.Editor.MotionIntegration");
+var flags=System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic;
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool ok,string message){if(!ok)throw new Exception(message);checks.Add(message);}
+System.Collections.Generic.List<Samon.FacialExpressionEditor.MotionIntegrationRule> Rules() =>
+ (System.Collections.Generic.List<Samon.FacialExpressionEditor.MotionIntegrationRule>)type.GetMethod("Rules",flags).Invoke(null,new object[]{set,null});
+void Initialize()=>type.GetMethod("Initialize",flags).Invoke(null,new object[]{set,null});
+try {
+ var rules=Rules();
+ Check(set.motionRules.Count==0,"Building defaults does not mutate the saved configuration");
+ Check(rules.Count==1&&rules[0].conditions.Single().parameter=="AFK"&&rules[0].conditions[0].mode==Samon.FacialExpressionEditor.MotionConditionMode.IsTrue,"Default AFK uses AFK=true");
+ Check(rules[0].pauseExpressions&&rules[0].pauseBlink&&rules[0].pauseMouthCancel&&rules[0].pauseParts,"Default AFK yields all generated face controls");
+ Check(rules[0].sourceClips.Count==0&&!rules[0].applyBaseFace,"Default AFK does not override the global clip correction setting");
+ Initialize();Initialize();Check(set.motionRules.Count==1&&set.motionRulesConfigured,"Opening the UI repeatedly does not duplicate AFK");
+ set.motionRules[0].enabled=false;Initialize();Check(Rules().Count==1&&!Rules()[0].enabled,"Explicitly disabled AFK remains disabled");
+ set.motionRules[0].conditions.Add(new Samon.FacialExpressionEditor.MotionCondition{parameter="Custom"});
+ set.motionRules[0].pauseBlink=false;Initialize();Check(Rules().Count==1&&!Rules()[0].pauseBlink&&Rules()[0].conditions.Count==2,"Existing custom AFK conditions and targets are preserved");
+ set.motionRules.Clear();set.motionRules.Add(new Samon.FacialExpressionEditor.MotionIntegrationRule{name="Other",conditions=new System.Collections.Generic.List<Samon.FacialExpressionEditor.MotionCondition>{new Samon.FacialExpressionEditor.MotionCondition{parameter="Custom"}}});
+ Initialize();Check(set.motionRules.Count==2&&set.motionRules[0].name=="Other","Configured motion setups gain default AFK without replacing other motions");
+ return new{passed=checks.Count,checks};
+} finally {UnityEngine.Object.DestroyImmediate(set);}

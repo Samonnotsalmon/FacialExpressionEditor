@@ -29,7 +29,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
             else if (off.Count > 0)
             {
-                throw new InvalidOperationException("MMDの衣装維持方式にはFXのWrite Defaults ON統一が必要です。「モーション連携」でWD統一を有効にするか、予備方式を選んでください。WD OFF：\n" +
+                throw new InvalidOperationException("MMDの衣装維持方式にはFXのWrite Defaults ON統一が必要です。「モーション連携」で「Write Defaultsを一括ONにする」を有効にしてください。WD OFF：\n" +
                     string.Join("\n", off.Take(20).Select(s => s.layer + " / " + s.state.Name)));
             }
         }

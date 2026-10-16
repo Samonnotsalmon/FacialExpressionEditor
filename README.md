@@ -4,10 +4,14 @@ VRChatアバターの表情・ジェスチャー設定を行うUnityエディタ
 
 - ベース顔ごとに独立した表情設定と編集用クリップを作成できる
 - ジェスチャー・固定メニュー・顔パーツ・既存モーションとの連携を設定できる
-- 「反応」タブで、元FXの条件・遷移を残したままコンタクト・PhysBoneのクリップを編集・差し替えできる
+- AFKや付属モーションへ表情制御を譲り、必要に応じてベース顔の補正を反映できる
 - Modular Avatar / NDMFで、ビルド時に非破壊で適用する
 
-現在のバージョンは **0.5.0**。変更内容は [CHANGELOG.md](CHANGELOG.md)、仕様は [docs/spec.md](docs/spec.md) を参照。
+現在のバージョンは **0.6.0**。
+
+操作手順は **[操作説明書](docs/manual.md)** を参照してください。初期設定、表情・パーツの編集、瞬き・口キャンセル、AFK・ダンスの連携条件と詳細解析、警告の対処をまとめています。変更内容は [CHANGELOG.md](CHANGELOG.md)、開発向け仕様は [docs/spec.md](docs/spec.md) にあります。
+
+現行画面では「反応」タブを非表示にしています。元のコンタクト・PhysBone動作を残す場合は、関連するFXレイヤーを置き換え対象から外してください。
 
 ## VCC で入れる
 1. VCC の Settings → Packages → Add Repository に次の URL を入れる（各PCで1回だけ）。
@@ -30,10 +34,10 @@ VRChatアバターの表情・ジェスチャー設定を行うUnityエディタ
 
 ## リリースの手順
 1. `package.json` の `version` を上げてコミットする。
-2. 同じバージョンのタグ（`v0.5.0` など）を付けて送る。
+2. 同じバージョンのタグ（`v0.6.0` など）を付けて送る。
    ```
-   git tag v0.5.0
-   git push origin main v0.5.0
+   git tag v0.6.0
+   git push origin main v0.6.0
    ```
 3. GitHub Actions が、リリース（zip）と VCC 用の一覧（GitHub Pages）を作り直す。
 

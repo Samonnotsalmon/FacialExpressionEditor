@@ -16,13 +16,13 @@ namespace Samon.FacialExpressionEditor.Editor
         private const float LibraryWidth = 300f;
         private const float DetailWidth = 280f;
 
-        private enum Tab { Menu, Parts, Face, AfkContacts, Setup, Reactions }
+        private enum Tab { Menu, Parts, Face, AfkContacts, Setup }
 
         // Fist：表情セットの表で、握り具合を使う手のFistのマスを選んだとき（握り込みの設定とプレビュー）。
         // OriginalClip：元FXの、コンタクト・PhysBoneなどで顔を動かすレイヤーのクリップ（_selectedId はレイヤー名）。
         private enum SelectionKind { None, Expression, Clip, Part, Fist, OriginalClip }
 
-        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口", "モーション連携", "アバター設定", "反応" };
+        private static readonly string[] TabLabels = { "メニュー・ジェスチャー", "パーツ", "まばたき・口", "モーション連携", "アバター設定" };
 
         // 編集している表情設定（プロジェクトのプレハブか、シーンのアバターの中にあるもの）。
         [SerializeField] private FacialExpressionAvatar _avatar;
@@ -233,6 +233,16 @@ namespace Samon.FacialExpressionEditor.Editor
                 _filteredClips = FilteredClips();
             }
 
+            DrawBuildSetupWarnings(set);
+            var blinkWarning = FaceControlPlan.BlinkSetupWarning(set, AvatarRoot);
+            if (blinkWarning != null)
+            {
+                EditorGUILayout.HelpBox(blinkWarning, MessageType.Warning);
+                if (_tab != Tab.Face && GUILayout.Button("まばたきの設定を開く", GUILayout.Width(190)))
+                {
+                    _tab = Tab.Face; _showBlinkSettings = true; _centerScroll = Vector2.zero;
+                }
+            }
             _tab = (Tab)GUILayout.Toolbar((int)_tab, TabLabels, GUILayout.Height(24));
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -252,7 +262,6 @@ namespace Samon.FacialExpressionEditor.Editor
                         case Tab.Face: DrawFaceTab(set); break;
                         case Tab.AfkContacts: DrawAfkContactsTab(set); break;
                         case Tab.Setup: DrawSetupTab(set); break;
-                        case Tab.Reactions: DrawReactionsTab(set); break;
                     }
                     EditorGUILayout.EndScrollView();
                 }

@@ -26,13 +26,21 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawFaceTab(ExpressionSet set)
         {
+            var missingBlink = FaceControlPlan.BlinkSetupWarning(set, AvatarRoot) != null;
+            if (missingBlink)
+            {
+                EditorGUILayout.LabelField("まばたきの設定（設定が必要です）", EditorStyles.boldLabel);
+                DrawBlinkSettings(set);
+                EditorGUILayout.Space(12);
+            }
             DrawExpressionFlags(set);
             EditorGUILayout.Space(12);
             EditorGUILayout.LabelField("共通の動作設定", EditorStyles.boldLabel);
-            var missingBlink = set.UsesExistingBlink ? set.blinkAnimation == null : BlinkShapesInUse(set).Count == 0;
-            _showBlinkSettings = EditorGUILayout.Foldout(_showBlinkSettings || missingBlink,
-                missingBlink ? "まばたきの設定（対象を指定してください）" : "まばたきの設定", true);
-            if (_showBlinkSettings) DrawBlinkSettings(set);
+            if (!missingBlink)
+            {
+                _showBlinkSettings = EditorGUILayout.Foldout(_showBlinkSettings, "まばたきの設定", true);
+                if (_showBlinkSettings) DrawBlinkSettings(set);
+            }
             _showMouthSettings = EditorGUILayout.Foldout(_showMouthSettings, "口キャンセルの設定", true);
             if (_showMouthSettings) DrawMouthCanceler(set);
         }

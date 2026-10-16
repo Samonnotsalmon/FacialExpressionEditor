@@ -1,0 +1,28 @@
+// Run through isuzu-unity-cli execute_code. No avatar assets required.
+var asm = typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+var defaults = Activator.CreateInstance(asm.GetType("Samon.FacialExpressionEditor.Editor.AvatarFaceDefaults"));
+var method = asm.GetType("Samon.FacialExpressionEditor.Editor.FaceControlPlan").GetMethod("MotionSetupWarnings", flags);
+var set = ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+var checks = new System.Collections.Generic.List<string>();
+void Check(bool ok, string name) { if (!ok) throw new Exception(name); checks.Add(name); }
+System.Collections.Generic.List<string> Warnings() => (System.Collections.Generic.List<string>)method.Invoke(null, new object[] { set, null, defaults });
+try {
+ Check(Warnings().Count == 0, "Default AFK is valid without custom motion configuration");
+ var rule = new Samon.FacialExpressionEditor.MotionIntegrationRule { name = "Test" };
+ set.motionRules.Add(rule);
+ Check(Warnings().Any(s => s.Contains("有効条件")), "Missing activation conditions are reported");
+ rule.conditions.Add(new Samon.FacialExpressionEditor.MotionCondition { parameter = "Missing" });
+ Check(Warnings().Any(s => s.Contains("パラメータが見つかりません")), "Missing parameter is reported");
+ rule.conditions[0].parameter = "AFK";
+ rule.applyBaseFace = true;
+ Check(Warnings().Any(s => s.Contains("補正する元ステート")), "Missing correction clip is reported");
+ rule.applyBaseFace = false;
+ rule.sourceLayer = "MissingLayer";
+ Check(Warnings().Any(s => s.Contains("参照元レイヤー")), "Missing source layer is reported");
+ defaults.GetType().GetField("BlinkLayer").SetValue(defaults, "MissingLayer");
+ Check(Warnings().Any(s => s.Contains("自動置換")), "Automatically replaced source layer is reported");
+ rule.enabled = false;
+ Check(Warnings().Count == 0, "Disabled invalid rules do not block builds");
+ return new { passed = checks.Count, checks };
+} finally { UnityEngine.Object.DestroyImmediate(set); }

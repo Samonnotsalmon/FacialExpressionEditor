@@ -14,9 +14,9 @@ try{
  Debug.unityLogger.filterLogType=LogType.Warning;
  var descriptor=avatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
  var legacy=(System.Collections.IEnumerable)Call("MotionIntegration","Rules",set,descriptor);
- Check(legacy.Cast<object>().Count()==1,"Old dance setting becomes one generic rule");
+ Check(legacy.Cast<object>().Count()==2,"Old dance setting and default AFK coexist");
  Call("MotionIntegration","Initialize",set,descriptor); Call("MotionIntegration","Initialize",set,descriptor);
- Check(set.motionRules.Count==1&&set.motionRulesConfigured,"Migration is idempotent");
+ Check(set.motionRules.Count==2&&set.motionRulesConfigured,"Migration is idempotent");
  var candidates=(System.Collections.IEnumerable)Call("MotionIntegration","Candidates",descriptor);
  Check(candidates.Cast<object>().Any(c=>((string)c.GetType().GetField("playable").GetValue(c))=="Action"),"Source candidates include Action as well as FX");
  var holiday=Selection.objects.OfType<AnimationClip>().FirstOrDefault();

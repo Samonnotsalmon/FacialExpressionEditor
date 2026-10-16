@@ -34,18 +34,14 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawAfkContactsTab(ExpressionSet set)
         {
             DrawMotionIntegration(set);
-            EditorGUILayout.Space(12);
-            DrawAfk();
-            EditorGUILayout.Space(12);
-            DrawOriginalFaceLayers(set);
         }
 
         private void DrawAfk()
         {
-            EditorGUILayout.LabelField("AFK", EditorStyles.boldLabel);
-            var apply = EditorGUILayout.ToggleLeft("AFKクリップにベース顔の補正を反映する（既定）", Set.applyBaseFaceToAfk);
+            var apply = EditorGUILayout.ToggleLeft("ベース顔の変更をAFKの表情に反映する", Set.applyBaseFaceToAfk);
             if (apply != Set.applyBaseFaceToAfk) Modify(Set, "AFKのベース補正", () => Set.applyBaseFaceToAfk = apply);
-            EditorGUILayout.LabelField("連携ルールで選んだクリップは、そのルールの補正指定を優先します。", EditorStyles.wordWrappedMiniLabel);
+            if (Set.motionRules.Any(r => r.enabled && r.sourceClips.Count > 0 && r.sourceClips.Any(c => FxAnalysis.AfkClips.Contains(c))))
+                EditorGUILayout.LabelField("連携条件側で補正を指定したクリップは、そちらの設定を優先します。", EditorStyles.wordWrappedMiniLabel);
             var analysis = FxAnalysis;
             if (analysis.AfkLayers.Count == 0)
             {
@@ -53,9 +49,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 return;
             }
 
-            EditorGUILayout.LabelField($"元FXの「{string.Join("」「", analysis.AfkLayers)}」レイヤーのAFKの顔を確認・調整できます。" +
-                                       "「AFKの顔を編集」で、時間ごとにキーを打って、この顔だけの動きにできます（目を閉じている間はベース顔を0にする、など）。",
-                EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.LabelField("補正対象：" + string.Join("、", analysis.AfkLayers), EditorStyles.wordWrappedMiniLabel);
 
             var variant = Variant;
             if (variant == null)
@@ -68,7 +62,7 @@ namespace Samon.FacialExpressionEditor.Editor
             using (new EditorGUILayout.HorizontalScope())
             {
                 EditorGUILayout.LabelField(count > 0 ? $"この顔だけの動き：シェイプキー {count} 件" : "この顔だけの動き：なし", EditorStyles.miniLabel);
-                if (GUILayout.Button("AFKの顔を編集", GUILayout.Width(120)))
+                if (GUILayout.Button("AFKの表情を編集", GUILayout.Width(140)))
                 {
                     ExpressionClipEditorWindow.OpenAfk(_avatar);
                 }
@@ -190,7 +184,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 return;
             }
 
-            EditorGUILayout.LabelField("コンタクトやPhysBone、メニューで出る元のアバターの表情です。サムネイルを選ぶと、右のプレビューで確かめられます。" +
+            EditorGUILayout.LabelField("残している元FXの表情を確認し、ビルド時の扱いを設定します。サムネイルを選ぶと右のプレビューで確認できます。" +
                                        "表情とぶつかるときは、顔のカーブだけ取り除くか（ほかの演出は残ります）、レイヤーごと使わないようにできます。",
                 EditorStyles.wordWrappedMiniLabel);
             var analysis = FxAnalysis;

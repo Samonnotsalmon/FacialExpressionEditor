@@ -12,29 +12,60 @@ namespace Samon.FacialExpressionEditor.Editor
         private readonly HashSet<string> _openMotionRules = new HashSet<string>();
         private readonly Dictionary<string, string> _motionSearch = new Dictionary<string, string>();
 
+        private bool _showAfkDetails;
+        private readonly HashSet<string> _openMotionDetails = new HashSet<string>();
+
+        private static bool IsAfkRule(MotionIntegrationRule rule) => rule.conditions.Any(c => c.parameter == "AFK");
+
         private void DrawMotionIntegration(ExpressionSet set)
         {
-            EditorGUILayout.LabelField("MMDワールド対応", EditorStyles.boldLabel);
-            var entire = EditorGUILayout.Popup("動作方式", set.mmdStopEntireFx ? 1 : 0,
-                new[] { "衣装・ギミックを維持（標準）", "FX全体を停止（予備）" }) == 1;
-            if (entire != set.mmdStopEntireFx) Modify(set, "MMD対応方式を変更", () => set.mmdStopEntireFx = entire);
-            if (!entire)
-            {
-                var unify = EditorGUILayout.ToggleLeft("ビルド時にFX全体のWrite DefaultsをONに揃える", set.mmdUnifyFxWriteDefaults);
-                if (unify != set.mmdUnifyFxWriteDefaults) Modify(set, "MMDのWrite Defaults設定", () => set.mmdUnifyFxWriteDefaults = unify);
-                EditorGUILayout.HelpBox("MMD中はこのエディタの表情・瞬き・口キャンセル・顔パーツだけを停止し、衣装などのFXレイヤーを維持します。WD統一はビルド用データだけに適用します。WD OFFの値保持を前提とするギミックは動作が変わる場合があります。統一を外した場合、FXにWD OFFが残ればビルド時に対象を表示して停止します。", MessageType.Info);
-            }
-            else EditorGUILayout.HelpBox("MMD中はFX全体を停止します。衣装なども初期状態へ戻る場合があります。WDの強制統一は行いません。", MessageType.Info);
-            EditorGUILayout.LabelField("ゲーム内の「表情 → 設定 → ダンスギミック有効（MMD対応）」がONかつステーション利用中に動作します。付属ダンスは下の連携ルールで設定します。", EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.LabelField("元の表情を優先する場面", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("ダンスやAFK中に、このエディタの制御を一時停止して元アバターの表情を使います。終了後は、保持していた固定表情・パーツの選択、または現在のジェスチャーへ戻ります。", MessageType.None);
             MotionIntegration.Initialize(set, Descriptor);
-            EditorGUILayout.LabelField("既存モーションとの連携", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("条件を満たす間、元アバターへ表情制御を譲ります。ルール内の条件はすべて一致（AND）。複数ルールが有効なら、停止対象を合わせて扱います。固定表情・パーツの選択は保持し、解除後は現在の選択へ戻ります。", MessageType.Info);
+            DrawMmdIntegration(set);
+            EditorGUILayout.Space(12);
+            EditorGUILayout.LabelField("AFKの表情", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("元アバターのAFKモーションを使います。ベース顔を反映して崩れる部分は、AFKの表情を編集して調整できます。", EditorStyles.wordWrappedMiniLabel);
+            DrawAfk();
+            var afkRules = set.motionRules.Where(IsAfkRule).ToList();
+            EditorGUILayout.LabelField(afkRules.Any(r => r.enabled && r.pauseExpressions)
+                ? "AFKの優先条件が設定されています。条件の詳細は下で確認できます。"
+                : "現在、AFK中に通常・固定表情を停止する設定は無効です。", EditorStyles.wordWrappedMiniLabel);
+            _showAfkDetails = EditorGUILayout.Foldout(_showAfkDetails, "詳細：AFKの優先条件・停止する機能", true);
+            if (_showAfkDetails) DrawMotionRules(set, true);
+            EditorGUILayout.Space(12);
+            EditorGUILayout.LabelField("その他モーションの表情", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("付属ダンスなどの再生中は、そのアニメーションの表情を優先します。終了後は固定表情・パーツの選択、または現在のジェスチャーへ戻ります。", EditorStyles.wordWrappedMiniLabel);
+            DrawMotionRules(set, false);
+            EditorGUILayout.LabelField("同時に複数の場面に該当するときは、どれかで停止指定されている制御を停止します。", EditorStyles.wordWrappedMiniLabel);
+            foreach (var error in MotionIntegration.Validate(set, Descriptor, set.motionRules)) EditorGUILayout.HelpBox(error, MessageType.Error);
+        }
+
+        private void DrawMmdIntegration(ExpressionSet set)
+        {
+            EditorGUILayout.LabelField("MMD対応", EditorStyles.boldLabel);
+            var unify = EditorGUILayout.ToggleLeft(new GUIContent(
+                "ビルド時にFX全体のWrite Defaultsを一括ONにする",
+                "ビルド用データに適用します。元アセットは変更しません。OFFの場合、標準方式ではWD OFFが残るとビルド時に対象を表示して停止します。"), set.mmdUnifyFxWriteDefaults);
+            if (unify != set.mmdUnifyFxWriteDefaults)
+                Modify(set, "MMDのWrite Defaults設定", () =>
+                {
+                    set.mmdUnifyFxWriteDefaults = unify;
+                    set.mmdStopEntireFx = false;
+                });
+        }
+
+        private void DrawMotionRules(ExpressionSet set, bool afk)
+        {
             if (_motionCandidates == null || _motionSourceRoot != AvatarRoot)
             { _motionCandidates = MotionIntegration.Candidates(Descriptor); _motionSourceRoot = AvatarRoot; }
             var parameters = MotionIntegration.Parameters(Descriptor);
             Undo.RecordObject(set, "既存モーションとの連携を変更");
             EditorGUI.BeginChangeCheck();
-            foreach (var rule in set.motionRules.ToList())
+            var rules = set.motionRules.Where(r => IsAfkRule(r) == afk).ToList();
+            if (rules.Count == 0)
+                EditorGUILayout.LabelField(afk ? "未設定：AFK中に制御を譲るには、下のボタンで設定を追加します。" : "元の表情を優先したいモーションを追加してください。", EditorStyles.wordWrappedMiniLabel);
+            foreach (var rule in rules)
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
                 using (new EditorGUILayout.HorizontalScope())
@@ -42,16 +73,17 @@ namespace Samon.FacialExpressionEditor.Editor
                     rule.enabled = EditorGUILayout.Toggle(rule.enabled, GUILayout.Width(18));
                     var open = EditorGUILayout.Foldout(_openMotionRules.Contains(rule.id), rule.name, true);
                     if (open) _openMotionRules.Add(rule.id); else _openMotionRules.Remove(rule.id);
-                    if (GUILayout.Button("削除", GUILayout.Width(44))) { set.motionRules.Remove(rule); GUI.changed = true; }
+                    using (new EditorGUI.DisabledScope(afk && rules.Count == 1))
+                    if (GUILayout.Button(new GUIContent("削除", afk && rules.Count == 1 ? "AFKの優先を止める場合は、左のチェックを外してください。" : "この設定を削除"), GUILayout.Width(44)))
+                    { set.motionRules.Remove(rule); GUI.changed = true; }
                 }
                 if (!_openMotionRules.Contains(rule.id))
                 {
                     EditorGUILayout.LabelField(string.Join(" ＆ ", rule.conditions.Select(c => $"{c.parameter} {new[] { "オン", "オフ", "＝", "≠", "＞", "＜" }[(int)c.mode]} {((int)c.mode < 2 ? "" : c.value.ToString())}")), EditorStyles.wordWrappedMiniLabel);
                     continue;
                 }
-                rule.name = EditorGUILayout.TextField("ルール名", rule.name);
-                DrawMotionSource(rule);
-                EditorGUILayout.LabelField("有効になる条件（すべて一致）", EditorStyles.boldLabel);
+                rule.name = EditorGUILayout.TextField("モーション名", rule.name);
+                EditorGUILayout.LabelField("元の表情を使う条件（すべて一致）", EditorStyles.boldLabel);
                 foreach (var condition in rule.conditions.ToList())
                 using (new EditorGUILayout.HorizontalScope())
                 {
@@ -70,28 +102,31 @@ namespace Samon.FacialExpressionEditor.Editor
                         condition.value = parameters.TryGetValue(condition.parameter, out var type) && type == AnimatorControllerParameterType.Int ? EditorGUILayout.IntField((int)condition.value, GUILayout.Width(65)) : EditorGUILayout.FloatField(condition.value, GUILayout.Width(65));
                     if (GUILayout.Button("×", GUILayout.Width(22))) { rule.conditions.Remove(condition); GUI.changed = true; }
                 }
-                if (GUILayout.Button("＋ 条件を追加")) { rule.conditions.Add(new MotionCondition()); GUI.changed = true; }
-                EditorGUILayout.LabelField("その間に停止する制御", EditorStyles.boldLabel);
+                if (GUILayout.Button("＋ 条件を追加")) { rule.conditions.Add(new MotionCondition { parameter = afk ? "AFK" : "" }); GUI.changed = true; }
+                EditorGUILayout.LabelField("その間、停止するエディタの機能", EditorStyles.boldLabel);
                 rule.pauseExpressions = EditorGUILayout.ToggleLeft("通常ジェスチャー・固定表情", rule.pauseExpressions);
                 rule.pauseBlink = EditorGUILayout.ToggleLeft("まばたき", rule.pauseBlink);
                 rule.pauseMouthCancel = EditorGUILayout.ToggleLeft("口変形キャンセル", rule.pauseMouthCancel);
                 rule.pauseParts = EditorGUILayout.ToggleLeft("重ねるパーツ", rule.pauseParts);
-                using (new EditorGUI.DisabledScope(rule.sourceClips.Count == 0))
-                    rule.applyBaseFace = EditorGUILayout.ToggleLeft("連携元クリップにベース顔の補正を反映する", rule.applyBaseFace);
-                EditorGUILayout.LabelField(rule.applyBaseFace ? "選択した元クリップに補正を適用します。元アセットは変更しません。" : "連携元の表情をそのまま使います。", EditorStyles.wordWrappedMiniLabel);
-            }
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                if (GUILayout.Button("＋ 連携ルール"))
-                { var rule = new MotionIntegrationRule(); set.motionRules.Add(rule); _openMotionRules.Add(rule.id); GUI.changed = true; }
-                if (GUILayout.Button("＋ AFKのルール"))
+                var details = EditorGUILayout.Foldout(_openMotionDetails.Contains(rule.id), "詳細：元ステートの解析・ベース顔補正", true);
+                if (details) _openMotionDetails.Add(rule.id); else _openMotionDetails.Remove(rule.id);
+                if (details)
                 {
-                    var rule = new MotionIntegrationRule { name = "AFK", conditions = new List<MotionCondition> { new MotionCondition() }, sourceClips = FxAnalysis.AfkClips.ToList(), applyBaseFace = set.applyBaseFaceToAfk && FxAnalysis.AfkClips.Count > 0 };
-                    set.motionRules.Add(rule); _openMotionRules.Add(rule.id); GUI.changed = true;
+                    EditorGUILayout.HelpBox("元ステートの選択は条件を調べるための補助です。選ぶだけでは再生中の自動判定になりません。", MessageType.None);
+                    DrawMotionSource(rule);
+                    using (new EditorGUI.DisabledScope(rule.sourceClips.Count == 0))
+                        rule.applyBaseFace = EditorGUILayout.ToggleLeft("参照元クリップにベース顔の補正を反映する", rule.applyBaseFace);
+                    EditorGUILayout.LabelField(rule.applyBaseFace ? "補正はビルド用クリップに適用します。元アセットは変更しません。" : "参照元の表情をそのまま使います。", EditorStyles.wordWrappedMiniLabel);
                 }
             }
+            if (GUILayout.Button(afk ? "＋ AFKの優先条件を追加" : "＋ 元の表情を優先するモーションを追加"))
+            {
+                var rule = afk
+                    ? new MotionIntegrationRule { name = "AFK", conditions = new List<MotionCondition> { new MotionCondition() }, sourceClips = FxAnalysis.AfkClips.ToList(), applyBaseFace = set.applyBaseFaceToAfk && FxAnalysis.AfkClips.Count > 0 }
+                    : new MotionIntegrationRule();
+                set.motionRules.Add(rule); _openMotionRules.Add(rule.id); GUI.changed = true;
+            }
             if (EditorGUI.EndChangeCheck()) { EditorUtility.SetDirty(set); _faceDefaults = null; InvalidateDetailPreview(); }
-            foreach (var error in MotionIntegration.Validate(set, Descriptor, set.motionRules)) EditorGUILayout.HelpBox(error, MessageType.Error);
         }
 
         private void DrawMotionSource(MotionIntegrationRule rule)

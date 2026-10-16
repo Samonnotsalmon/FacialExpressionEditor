@@ -96,10 +96,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 Modify(set, "アバターの編集対象", () => { set.faceMeshPaths = meshes; set.linkedObjectPaths = objects; });
             EditorGUILayout.Space();
             DrawReplacementLayers(set);
+            _showOriginalFaceLayers = EditorGUILayout.Foldout(_showOriginalFaceLayers, "残す元FXの顔制御（詳細）", true);
+            if (_showOriginalFaceLayers) DrawOriginalFaceLayers(set);
             EditorGUILayout.LabelField("元メニューの編集はModular Avatarで行ってください。", EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space();
         }
 
+        private bool _showOriginalFaceLayers;
         private bool _showReplacementLayers;
         private void DrawReplacementLayers(ExpressionSet set)
         {

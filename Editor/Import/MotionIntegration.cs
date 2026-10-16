@@ -43,13 +43,18 @@ namespace Samon.FacialExpressionEditor.Editor
             if (!set.motionRulesConfigured && set.protectDance && Parameters(descriptor).TryGetValue(set.danceParameter ?? "", out var type) && type == AnimatorControllerParameterType.Int)
                 rules.Add(new MotionIntegrationRule { id = "legacy_motion", name = "既存モーション（旧設定から移行）", conditions = new List<MotionCondition> {
                     new MotionCondition { parameter = set.danceParameter, mode = MotionConditionMode.NotEqual, value = 0 } } });
+            // AFK uses the original motion by default. Explicit settings, including disabled rules, take precedence.
+            if (!rules.Any(r => r.conditions.Any(c => c.parameter == "AFK")))
+                rules.Add(new MotionIntegrationRule { id = "default_afk", name = "AFKの元の表情を優先",
+                    conditions = new List<MotionCondition> { new MotionCondition() } });
             return rules;
         }
         public static void Initialize(ExpressionSet set, VRCAvatarDescriptor descriptor)
         {
-            if (set.motionRulesConfigured) return;
+            var rules = Rules(set, descriptor);
+            if (set.motionRulesConfigured && rules.Count == set.motionRules.Count) return;
             Undo.RecordObject(set, "既存モーション連携を移行");
-            set.motionRules = Rules(set, descriptor); set.motionRulesConfigured = true;
+            set.motionRules = rules; set.motionRulesConfigured = true;
             EditorUtility.SetDirty(set);
         }
         public static IEnumerable<AnimationClip> Clips(Motion motion)
