@@ -39,29 +39,35 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawBlinkSettings(ExpressionSet set)
         {
-            var existing = set.UsesExistingBlink;
-            EditorGUI.BeginChangeCheck();
-            var selected = EditorGUILayout.Popup("瞬きの作り方", existing ? 0 : 1,
-                new[] { "既存アニメーションを使う", "新しく作成する" });
-            if (EditorGUI.EndChangeCheck())
+            if (Event.current.type == EventType.Layout && set.blinkSource == BlinkSourceMode.Existing && set.blinkAnimation == null)
+                Modify(set, "未指定の瞬き設定を更新", () => set.blinkSource = BlinkSourceMode.Generated);
+            var current = set.UsesExistingBlink ? set.blinkAnimation : null;
+            var animation = (AnimationClip)EditorGUILayout.ObjectField("アニメーションクリップ", current, typeof(AnimationClip), false);
+            if (animation != current)
+                Modify(set, "瞬きアニメーションを指定", () =>
+                {
+                    set.blinkAnimation = animation;
+                    set.blinkSource = animation != null ? BlinkSourceMode.Existing : BlinkSourceMode.Generated;
+                });
+            if (animation != null)
             {
-                Modify(set, "瞬きの作り方を変更", () => set.blinkSource = selected == 0 ? BlinkSourceMode.Existing : BlinkSourceMode.Generated);
-                existing = selected == 0;
-            }
-            if (existing)
-            {
-                var animation = (AnimationClip)EditorGUILayout.ObjectField("アニメーション", set.blinkAnimation, typeof(AnimationClip), false);
-                if (animation != set.blinkAnimation) Modify(set, "瞬きアニメーションを指定", () => set.blinkAnimation = animation);
-                if (animation == null)
-                    EditorGUILayout.HelpBox("使用する瞬きアニメーションを指定してください。", MessageType.Info);
-                else if (GUILayout.Button("この瞬きをプレビュー")) Select(SelectionKind.Clip, null, animation);
+                EditorGUILayout.LabelField("指定したアニメーションをそのまま使います。", EditorStyles.wordWrappedMiniLabel);
+                if (GUILayout.Button("この瞬きをプレビュー")) Select(SelectionKind.Clip, null, animation);
                 return;
             }
-            EditorGUILayout.LabelField("目を閉じた形を編集すると、ループする瞬きを自動生成します。", EditorStyles.wordWrappedMiniLabel);
             if (set.blinkPose == null)
-                EditorGUILayout.LabelField(BlinkShapesInUse(set).Count > 0 ? "アバターの設定から初期値を用意します。" : "編集画面で目閉じに使うシェイプキーを選択してください。", EditorStyles.wordWrappedMiniLabel);
-            if (GUILayout.Button(set.blinkPose == null ? "目閉じを作成・プレビュー" : "目閉じを編集・プレビュー"))
-                BlinkPoseEditorWindow.Open(_avatar);
+            {
+                EditorGUILayout.LabelField("クリップ未指定。既存クリップを指定するか、新規作成してください。", EditorStyles.wordWrappedMiniLabel);
+                if (GUILayout.Button("専用の瞬きを新規作成"))
+                {
+                    BlinkPoseUtility.Editable(set, AvatarRoot);
+                    Modify(set, "専用の瞬きを使用", () => set.blinkSource = BlinkSourceMode.Generated);
+                    BlinkPoseEditorWindow.Open(_avatar);
+                }
+                return;
+            }
+            EditorGUILayout.LabelField("作成した目閉じから、ループする瞬きを自動生成します。", EditorStyles.wordWrappedMiniLabel);
+            if (GUILayout.Button("目閉じを編集・プレビュー")) BlinkPoseEditorWindow.Open(_avatar);
         }
 
         private void DrawExpressionFlags(ExpressionSet set)
