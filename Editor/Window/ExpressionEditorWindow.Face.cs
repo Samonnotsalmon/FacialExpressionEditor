@@ -271,26 +271,15 @@ namespace Samon.FacialExpressionEditor.Editor
             var manual = (AnimationClip)EditorGUILayout.ObjectField("対象クリップ（D&D）", set.mouthCancelAnimation, typeof(AnimationClip), false);
             if (manual != set.mouthCancelAnimation)
                 Modify(set, "口キャンセルの指定", () => set.mouthCancelAnimation = manual);
-            EditorGUILayout.LabelField(manual != null
-                    ? "話している間、指定クリップの0秒時点の値へ戻します。値を調整するときは「口キャンセルを編集」を押してください。元のクリップは複製してから編集します。"
-                    : "新規作成後は、戻したい口のシェイプキーを選び、値を調整できます。",
-                EditorStyles.wordWrappedMiniLabel);
-
-            if (manual != null)
+            EditorGUILayout.LabelField("話している間は、クリップの0秒時点の値を使います。行を選び、Shiftで範囲選択・Ctrlで個別追加できます。編集時は専用コピーに記録します。", EditorStyles.wordWrappedMiniLabel);
+            if (manual == null)
             {
-                EditorGUILayout.LabelField($"指定クリップから {MouthMorphsInUse(set).Count} 個のシェイプキーを使用", EditorStyles.miniLabel);
-                if (GUILayout.Button("口キャンセルを編集")) MouthCancelEditorWindow.Open(_avatar);
-                return;
+                EditorGUILayout.HelpBox("クリップ未指定。既存クリップを指定するか、専用クリップを作成してください。", MessageType.Info);
+                if (MouthMorphsInUse(set).Count > 0)
+                    EditorGUILayout.LabelField("未指定の間は従来の自動設定／保存済み設定を使用します。", EditorStyles.wordWrappedMiniLabel);
+                if (GUILayout.Button("専用クリップを新規作成")) ExpressionSetUtility.CreateMouthCancelClip(set);
             }
-
-            EditorGUILayout.HelpBox("クリップ未指定\n既存のクリップを上の欄へ指定するか、専用クリップを新規作成してください。", MessageType.Info);
-            if (MouthMorphsInUse(set).Count > 0)
-                EditorGUILayout.LabelField("未指定の間は、従来の自動設定／保存済み設定で口キャンセルを行います。", EditorStyles.wordWrappedMiniLabel);
-            if (GUILayout.Button("専用クリップを新規作成"))
-            {
-                ExpressionSetUtility.CreateMouthCancelClip(set);
-                MouthCancelEditorWindow.Open(_avatar);
-            }
+            DrawMouthCancelRows(set);
         }
 
         /// <summary>

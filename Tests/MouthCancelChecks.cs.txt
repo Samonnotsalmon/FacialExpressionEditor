@@ -25,13 +25,13 @@ try{
  var copy=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.MakeMouthCancelEditable(set);
  Check(copy!=source && set.mouthCancelAnimation==copy && AssetDatabase.GetAssetPath(copy).StartsWith(folder+"/MouthCancel/"),"Editing creates and assigns dedicated copy");
  Check(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.MakeMouthCancelEditable(set)==copy,"Reopening reuses owned copy");
- Call("MouthCancelEditorWindow","SetValue",copy,smile,12f);
+ Call("MouthCancelEditing","SetValue",copy,smile,12f);
  Check(AnimationUtility.GetEditorCurve(copy,smile).Evaluate(0)==12 && AnimationUtility.GetEditorCurve(copy,smile).Evaluate(1)==70,"Editing updates time zero and preserves later keys");
  Check(AnimationUtility.GetEditorCurve(source,smile).Evaluate(0)==0 && AnimationUtility.GetCurveBindings(copy).Length==2,"Source and binding scope are preserved");
  AssetDatabase.CreateFolder(folder,"Duplicate");
  var duplicate=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.Duplicate(set,folder+"/Duplicate/Settings.asset");
  Check(duplicate.mouthCancelAnimation!=copy && duplicate.editableMouthCancelAnimation==duplicate.mouthCancelAnimation,"Duplicated settings own independent mouth clip");
- Call("MouthCancelEditorWindow","SetValue",duplicate.mouthCancelAnimation,smile,24f);
+ Call("MouthCancelEditing","SetValue",duplicate.mouthCancelAnimation,smile,24f);
  Check(AnimationUtility.GetEditorCurve(copy,smile).Evaluate(0)==12,"Duplicate edit does not affect original setup");
  set.mouthCancelAnimation=source;
  Check(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.MakeMouthCancelEditable(set)!=source,"Reassigned source is copied again before editing");
@@ -39,19 +39,27 @@ try{
  var empty=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateMouthCancelClip(set);
  Check(empty==set.mouthCancelAnimation && empty==set.editableMouthCancelAnimation && AnimationUtility.GetCurveBindings(empty).Length==0,"New dedicated clip starts empty without unwanted base-face curves");
  Check(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateMouthCancelClip(set)==empty,"Creating again reuses current dedicated clip");
- Call("MouthCancelEditorWindow","SetShapeSelected",set,root,smile,true);
+ Call("MouthCancelEditing","SetShapeSelected",set,root,smile,true);
  Check(AnimationUtility.GetCurveBindings(empty).Length==1 && AnimationUtility.GetEditorCurve(empty,smile).Evaluate(0)==0,"Selecting a shape adds only its explicit zero");
- Call("MouthCancelEditorWindow","SetShapeSelected",set,root,viseme,true);
+ Call("MouthCancelEditing","SetShapeSelected",set,root,viseme,true);
  Check(AnimationUtility.GetEditorCurve(empty,viseme)==null,"Picker rejects protected lip-sync shapes");
- Call("MouthCancelEditorWindow","SetShapeSelected",set,root,smile,false);
+ Call("MouthCancelEditing","SetShapeSelected",set,root,smile,false);
  Check(AnimationUtility.GetCurveBindings(empty).Length==0,"Deselecting removes the curve instead of writing zero");
  var variant=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.FaceVariant>();
  try {
   variant.baseFace.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path="Face",blendShape="Smile",referenceValue=30,variantValue=0});
-  Check(Call("MouthCancelEditorWindow","BaseFaceHighlight",variant,"Face","Smile")!=null,"Base-face change to explicit zero is highlighted");
-  Check(Call("MouthCancelEditorWindow","BaseFaceHighlight",variant,"Other","Smile")==null,"Highlight matches mesh path as well as name");
+  Check(Call("MouthCancelEditing","BaseFaceHighlight",variant,"Face","Smile")!=null,"Base-face change to explicit zero is highlighted");
+  Check(Call("MouthCancelEditing","BaseFaceHighlight",variant,"Other","Smile")==null,"Highlight matches mesh path as well as name");
   variant.baseFace[0].enabled=false;
-  Check(Call("MouthCancelEditorWindow","BaseFaceHighlight",variant,"Face","Smile")==null,"Disabled base-face correction is not highlighted");
+  Check(Call("MouthCancelEditing","BaseFaceHighlight",variant,"Face","Smile")==null,"Disabled base-face correction is not highlighted");
  }finally{UnityEngine.Object.DestroyImmediate(variant);}
+ var selectMethod=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow").GetMethod("SelectMouthRange",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
+ var selection=new System.Collections.Generic.HashSet<int>(); int anchor=-1;
+ void Select(int index,bool shift,bool additive){var args=new object[]{selection,anchor,index,shift,additive}; selectMethod.Invoke(null,args); anchor=(int)args[1];}
+ Select(2,false,false); Select(5,true,false);
+ Check(selection.SetEquals(new[]{2,3,4,5}) && anchor==2,"Shift selects contiguous displayed rows and keeps anchor");
+ Select(4,false,true); Check(selection.SetEquals(new[]{2,3,5}),"Ctrl toggles an individual row without losing others");
+ Select(1,true,false); Check(selection.SetEquals(new[]{1,2,3,4}),"Reverse Shift range uses most recent click anchor");
+ Select(7,false,false); Check(selection.SetEquals(new[]{7}),"Plain click replaces selection");
  return new{passed=checks.Count,checks};
 }finally{UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(mesh);AssetDatabase.DeleteAsset(folder);}
