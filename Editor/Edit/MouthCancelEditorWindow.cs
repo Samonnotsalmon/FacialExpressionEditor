@@ -54,11 +54,11 @@ namespace Samon.FacialExpressionEditor.Editor
                 return;
             }
             var clip = Set.mouthCancelAnimation;
-            EditorGUILayout.HelpBox("この表情設定専用の口キャンセルを編集します。話している間に使う0秒時点の値を変更します。追加した項目の初期値は0です。リップシンク用シェイプキーは対象外です。", MessageType.Info);
+            EditorGUILayout.HelpBox("この表情設定専用の口キャンセルを編集します。話している間に使う0秒時点の値を変更します。複数の項目をチェックすると、それぞれ0で追加されます。既存項目の調整値は保持します。リップシンク用シェイプキーは対象外です。", MessageType.Info);
             using (new EditorGUI.DisabledScope(true)) EditorGUILayout.ObjectField("クリップ", clip, typeof(AnimationClip), false);
             if (GUILayout.Button("表示を更新")) Refresh();
-            var pickerRect = GUILayoutUtility.GetRect(new GUIContent("シェイプキーを選ぶ…"), GUI.skin.button);
-            if (GUI.Button(pickerRect, "シェイプキーを選ぶ…"))
+            var pickerRect = GUILayoutUtility.GetRect(new GUIContent("0にするシェイプキーを選ぶ…"), GUI.skin.button);
+            if (GUI.Button(pickerRect, "0にするシェイプキーを選ぶ…"))
             {
                 PopupWindow.Show(pickerRect, new BlendShapePicker(Root,
                     (path, name) => Set != null && Set.mouthCancelAnimation != null &&
@@ -69,7 +69,8 @@ namespace Samon.FacialExpressionEditor.Editor
                         SetShapeSelected(Set, Root, ClipEditing.BlendShape(path, name), on);
                         Refresh();
                     },
-                    (path, name) => Root != null && !LipSyncProtection.IsProtected(ClipEditing.BlendShape(path, name), Root, Set)));
+                    (path, name) => Root != null && !LipSyncProtection.IsProtected(ClipEditing.BlendShape(path, name), Root, Set),
+                    (path, name) => BaseFaceHighlight(_avatar != null ? _avatar.faceVariant : null, path, name)));
             }
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -98,7 +99,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     _scroll = scroll.scrollPosition;
                     var bindings = Bindings(clip);
-                    if (bindings.Length == 0) EditorGUILayout.HelpBox("シェイプキー未選択です。「シェイプキーを選ぶ…」から戻したい口の項目を追加してください。", MessageType.Info);
+                    if (bindings.Length == 0) EditorGUILayout.HelpBox("シェイプキー未選択です。「0にするシェイプキーを選ぶ…」から戻したい口の項目を追加してください。", MessageType.Info);
                     foreach (var binding in bindings)
                     {
                         var curve = AnimationUtility.GetEditorCurve(clip, binding);
@@ -113,6 +114,13 @@ namespace Samon.FacialExpressionEditor.Editor
                     }
                 }
             }
+        }
+
+        internal static string BaseFaceHighlight(FaceVariant variant, string path, string name)
+        {
+            var key = variant != null ? variant.baseFace.Find(k => k.enabled && k.path == path && k.blendShape == name) : null;
+            if (key == null || Mathf.Abs(key.variantValue - key.referenceValue) < 0.01f) return null;
+            return $"ベース顔で変更：{key.referenceValue:0.##} → {key.variantValue:0.##}\n{path}";
         }
 
         internal static void SetShapeSelected(ExpressionSet set, GameObject root, EditorCurveBinding binding, bool selected)

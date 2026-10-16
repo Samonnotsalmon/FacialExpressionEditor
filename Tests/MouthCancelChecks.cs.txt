@@ -45,5 +45,13 @@ try{
  Check(AnimationUtility.GetEditorCurve(empty,viseme)==null,"Picker rejects protected lip-sync shapes");
  Call("MouthCancelEditorWindow","SetShapeSelected",set,root,smile,false);
  Check(AnimationUtility.GetCurveBindings(empty).Length==0,"Deselecting removes the curve instead of writing zero");
+ var variant=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.FaceVariant>();
+ try {
+  variant.baseFace.Add(new Samon.FacialExpressionEditor.BaseFaceKey{path="Face",blendShape="Smile",referenceValue=30,variantValue=0});
+  Check(Call("MouthCancelEditorWindow","BaseFaceHighlight",variant,"Face","Smile")!=null,"Base-face change to explicit zero is highlighted");
+  Check(Call("MouthCancelEditorWindow","BaseFaceHighlight",variant,"Other","Smile")==null,"Highlight matches mesh path as well as name");
+  variant.baseFace[0].enabled=false;
+  Check(Call("MouthCancelEditorWindow","BaseFaceHighlight",variant,"Face","Smile")==null,"Disabled base-face correction is not highlighted");
+ }finally{UnityEngine.Object.DestroyImmediate(variant);}
  return new{passed=checks.Count,checks};
 }finally{UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(mesh);AssetDatabase.DeleteAsset(folder);}

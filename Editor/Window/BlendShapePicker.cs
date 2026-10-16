@@ -19,6 +19,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private readonly Func<string, string, bool> _isOn;
         private readonly Action<string, string, bool> _set;
         private readonly Func<string, string, bool> _canSelect;
+        private readonly Func<string, string, string> _highlight;
         private readonly List<SkinnedMeshRenderer> _meshes;
 
         private int _meshIndex;
@@ -30,12 +31,13 @@ namespace Samon.FacialExpressionEditor.Editor
 
         /// <param name="isOn">シェイプキー（メッシュのパスと名前）を選んでいるか。</param>
         /// <param name="set">チェックを付けた（true）・外した（false）ときに呼ぶ。</param>
-        public BlendShapePicker(GameObject avatarRoot, Func<string, string, bool> isOn, Action<string, string, bool> set, Func<string, string, bool> canSelect = null)
+        public BlendShapePicker(GameObject avatarRoot, Func<string, string, bool> isOn, Action<string, string, bool> set, Func<string, string, bool> canSelect = null, Func<string, string, string> highlight = null)
         {
             _avatarRoot = avatarRoot;
             _isOn = isOn;
             _set = set;
             _canSelect = canSelect;
+            _highlight = highlight;
             _meshes = avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true)
                 .Where(r => r.sharedMesh != null && r.sharedMesh.blendShapeCount > 0)
                 .ToList();
@@ -69,6 +71,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 EditorGUI.FocusTextInControl(SearchControl);
             }
 
+            if (_highlight != null)
+                EditorGUILayout.LabelField("青い行・●：ベース顔で変更した項目（複数選択可）", EditorStyles.wordWrappedMiniLabel);
             var rows = Rows();
             var area = GUILayoutUtility.GetRect(0, 100000, 0, 100000, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
             var content = new Rect(0, 0, area.width - 16, rows.Count * RowHeight);
@@ -87,8 +91,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
 
                 var name = _shapes.Names[shape];
+                var hint = _highlight?.Invoke(_shapes.Path, name);
+                var highlighted = !string.IsNullOrEmpty(hint);
+                if (highlighted && Event.current.type == EventType.Repaint)
+                    EditorGUI.DrawRect(row, new Color(0.3f, 0.6f, 1f, 0.22f));
                 var on = _isOn(_shapes.Path, name);
-                var next = GUI.Toggle(new Rect(row.x + 6, row.y, row.width - 6, row.height), on, name);
+                var label = new GUIContent(highlighted ? "● " + name : name, hint ?? _shapes.Path);
+                var next = GUI.Toggle(new Rect(row.x + 6, row.y, row.width - 6, row.height), on, label);
                 if (next != on)
                 {
                     _set(_shapes.Path, name, next);
