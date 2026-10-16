@@ -35,5 +35,15 @@ try{
  Check(AnimationUtility.GetEditorCurve(copy,smile).Evaluate(0)==12,"Duplicate edit does not affect original setup");
  set.mouthCancelAnimation=source;
  Check(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.MakeMouthCancelEditable(set)!=source,"Reassigned source is copied again before editing");
+ set.mouthCancelAnimation=null;
+ var empty=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateMouthCancelClip(set);
+ Check(empty==set.mouthCancelAnimation && empty==set.editableMouthCancelAnimation && AnimationUtility.GetCurveBindings(empty).Length==0,"New dedicated clip starts empty without unwanted base-face curves");
+ Check(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateMouthCancelClip(set)==empty,"Creating again reuses current dedicated clip");
+ Call("MouthCancelEditorWindow","SetShapeSelected",set,root,smile,true);
+ Check(AnimationUtility.GetCurveBindings(empty).Length==1 && AnimationUtility.GetEditorCurve(empty,smile).Evaluate(0)==0,"Selecting a shape adds only its explicit zero");
+ Call("MouthCancelEditorWindow","SetShapeSelected",set,root,viseme,true);
+ Check(AnimationUtility.GetEditorCurve(empty,viseme)==null,"Picker rejects protected lip-sync shapes");
+ Call("MouthCancelEditorWindow","SetShapeSelected",set,root,smile,false);
+ Check(AnimationUtility.GetCurveBindings(empty).Length==0,"Deselecting removes the curve instead of writing zero");
  return new{passed=checks.Count,checks};
 }finally{UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(mesh);AssetDatabase.DeleteAsset(folder);}

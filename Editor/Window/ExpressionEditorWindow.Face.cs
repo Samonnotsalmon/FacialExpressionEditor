@@ -18,7 +18,6 @@ namespace Samon.FacialExpressionEditor.Editor
         [SerializeField] private bool _showBlinkShapes;
         [SerializeField] private bool _showBlinkSettings;
         [SerializeField] private bool _showMouthSettings;
-        [SerializeField] private bool _showMouthMorphs;
 
         private List<BlinkShape> BlinkShapesInUse(ExpressionSet set) => set.customBlink ? set.blinkShapes : FaceDefaults.BlinkShapes;
         private List<BlendShapeRef> MouthMorphsInUse(ExpressionSet set) => set.mouthCancelAnimation != null
@@ -274,7 +273,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 Modify(set, "口キャンセルの指定", () => set.mouthCancelAnimation = manual);
             EditorGUILayout.LabelField(manual != null
                     ? "話している間、指定クリップの0秒時点の値へ戻します。値を調整するときは「口キャンセルを編集」を押してください。元のクリップは複製してから編集します。"
-                    : "クリップ未指定時は、対象の口シェイプキーをベース顔の値に戻します。クリップを指定すると、その0秒時点の値を使います。",
+                    : "新規作成後は、戻したい口のシェイプキーを選び、値を調整できます。",
                 EditorStyles.wordWrappedMiniLabel);
 
             if (manual != null)
@@ -284,57 +283,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 return;
             }
 
-            var defaults = FaceDefaults;
-            EditorGUILayout.LabelField("使うシェイプキー", set.customMouthMorphs ? "自分で編集したもの" : defaults.MouthMorphSource);
-            if (defaults.MouthCancelerLayers.Count > 0)
+            EditorGUILayout.HelpBox("クリップ未指定\n既存のクリップを上の欄へ指定するか、専用クリップを新規作成してください。", MessageType.Info);
+            if (MouthMorphsInUse(set).Count > 0)
+                EditorGUILayout.LabelField("未指定の間は、従来の自動設定／保存済み設定で口キャンセルを行います。", EditorStyles.wordWrappedMiniLabel);
+            if (GUILayout.Button("専用クリップを新規作成"))
             {
-                EditorGUILayout.LabelField($"元FXの「{string.Join("」「", defaults.MouthCancelerLayers)}」レイヤーは、生成した口モーフキャンセラーに置き換えます。",
-                    EditorStyles.wordWrappedMiniLabel);
-            }
-
-            DrawCustomToggle(set, set.customMouthMorphs, "口モーフキャンセラーを編集", on =>
-            {
-                set.customMouthMorphs = on;
-                if (on && set.mouthMorphs.Count == 0)
-                {
-                    set.mouthMorphs = defaults.MouthMorphs.Select(m => new BlendShapeRef { path = m.path, blendShape = m.blendShape }).ToList();
-                }
-            });
-
-            var morphs = MouthMorphsInUse(set);
-            if (morphs.Count == 0)
-            {
-                EditorGUILayout.LabelField(set.customMouthMorphs
-                    ? "シェイプキーが無いので、口モーフキャンセラーは作りません。"
-                    : "元アバターに口モーフキャンセラーが無いので作りません。使うときは「自分で編集する」をオンにして追加してください。",
-                    EditorStyles.wordWrappedMiniLabel);
-            }
-
-            _showMouthMorphs = EditorGUILayout.Foldout(_showMouthMorphs, $"戻すシェイプキー（{morphs.Count} 件）", true);
-            if (_showMouthMorphs)
-            {
-                foreach (var morph in morphs.ToList())
-                {
-                    using (new EditorGUILayout.HorizontalScope())
-                    {
-                        EditorGUILayout.LabelField(new GUIContent(morph.blendShape, morph.path));
-                        if (set.customMouthMorphs && GUILayout.Button(new GUIContent("×", "外す"), EditorStyles.miniButton, GUILayout.Width(24)))
-                        {
-                            Modify(set, "口モーフキャンセラーのシェイプキーを外す", () => set.mouthMorphs.Remove(morph));
-                            GUIUtility.ExitGUI();
-                        }
-                    }
-                }
-            }
-
-            if (set.customMouthMorphs)
-            {
-                DrawShapePickerButton((path, name) => set.mouthMorphs.Any(m => m.path == path && m.blendShape == name),
-                    (path, name, on) => Modify(set, on ? "口モーフキャンセラーのシェイプキーを追加" : "口モーフキャンセラーのシェイプキーを外す", () =>
-                    {
-                        if (on) set.mouthMorphs.Add(new BlendShapeRef { path = path, blendShape = name });
-                        else set.mouthMorphs.RemoveAll(m => m.path == path && m.blendShape == name);
-                    }));
+                ExpressionSetUtility.CreateMouthCancelClip(set);
+                MouthCancelEditorWindow.Open(_avatar);
             }
         }
 

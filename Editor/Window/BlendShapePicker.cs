@@ -18,6 +18,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private readonly GameObject _avatarRoot;
         private readonly Func<string, string, bool> _isOn;
         private readonly Action<string, string, bool> _set;
+        private readonly Func<string, string, bool> _canSelect;
         private readonly List<SkinnedMeshRenderer> _meshes;
 
         private int _meshIndex;
@@ -29,11 +30,12 @@ namespace Samon.FacialExpressionEditor.Editor
 
         /// <param name="isOn">シェイプキー（メッシュのパスと名前）を選んでいるか。</param>
         /// <param name="set">チェックを付けた（true）・外した（false）ときに呼ぶ。</param>
-        public BlendShapePicker(GameObject avatarRoot, Func<string, string, bool> isOn, Action<string, string, bool> set)
+        public BlendShapePicker(GameObject avatarRoot, Func<string, string, bool> isOn, Action<string, string, bool> set, Func<string, string, bool> canSelect = null)
         {
             _avatarRoot = avatarRoot;
             _isOn = isOn;
             _set = set;
+            _canSelect = canSelect;
             _meshes = avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true)
                 .Where(r => r.sharedMesh != null && r.sharedMesh.blendShapeCount > 0)
                 .ToList();
@@ -95,7 +97,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
             GUI.EndScrollView();
 
-            var count = _shapes.Names.Count(n => _isOn(_shapes.Path, n));
+            var count = _shapes.Names.Count(n => (_canSelect == null || _canSelect(_shapes.Path, n)) && _isOn(_shapes.Path, n));
             EditorGUILayout.LabelField($"このメッシュで選んでいるもの：{count} 件", EditorStyles.miniLabel);
         }
 
@@ -107,6 +109,7 @@ namespace Samon.FacialExpressionEditor.Editor
             for (var g = 0; g < _shapes.Groups.Count; g++)
             {
                 var members = _shapes.Groups[g].Indices
+                    .Where(i => _canSelect == null || _canSelect(_shapes.Path, _shapes.Names[i]))
                     .Where(i => search.Length == 0 || _shapes.Names[i].IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
                     .Where(i => !_selectedOnly || _isOn(_shapes.Path, _shapes.Names[i]))
                     .ToList();

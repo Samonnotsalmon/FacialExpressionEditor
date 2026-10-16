@@ -425,6 +425,21 @@ namespace Samon.FacialExpressionEditor.Editor
             if (index < 0) set.menu.Add(node);
             else set.menu.Insert(index, node);
         }
+        public static AnimationClip CreateMouthCancelClip(ExpressionSet set)
+        {
+            if (set.mouthCancelAnimation != null) return MakeMouthCancelEditable(set);
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "MouthCancel");
+            var path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/MouthCancel.anim");
+            var clip = new AnimationClip { name = System.IO.Path.GetFileNameWithoutExtension(path) };
+            AssetDatabase.CreateAsset(clip, path);
+            Undo.RecordObject(set, "口キャンセルを新規作成");
+            set.mouthCancelAnimation = clip;
+            set.editableMouthCancelAnimation = clip;
+            EditorUtility.SetDirty(set);
+            AssetDatabase.SaveAssets();
+            return clip;
+        }
+
         public static AnimationClip MakeMouthCancelEditable(ExpressionSet set)
         {
             var source = set.mouthCancelAnimation;
