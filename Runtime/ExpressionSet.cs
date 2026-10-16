@@ -7,6 +7,8 @@ namespace Samon.FacialExpressionEditor
     /// 素体ごとに1つ作る共有の表情データ（UI上の名前）。全バリアントから参照される。
     /// ジェスチャーの組（UI上の「表情セット」）は GestureSet、表情メニューの項目は MenuNode。
     /// </summary>
+    public enum BlinkSourceMode { Legacy, Existing, Generated }
+
     [CreateAssetMenu(menuName = "NotSalmon/NSL_Facial Expression Editor/表情データ", fileName = "表情データ")]
     public class ExpressionSet : ScriptableObject
     {
@@ -22,6 +24,9 @@ namespace Samon.FacialExpressionEditor
         public List<string> importLayerNames = new List<string>();
         public bool explicitMenuSelection;
         public List<OriginalMenuSelection> replacedMenuItems = new List<OriginalMenuSelection>();
+        public BlinkSourceMode blinkSource;
+        public bool UsesExistingBlink => blinkSource == BlinkSourceMode.Existing ||
+            (blinkSource == BlinkSourceMode.Legacy && blinkAnimation != null);
         public AnimationClip blinkAnimation; // 指定時は元の瞬きアニメーションをそのまま使用。
         public AnimationClip blinkPose;
         [HideInInspector] public AnimationClip editableBlinkPose;

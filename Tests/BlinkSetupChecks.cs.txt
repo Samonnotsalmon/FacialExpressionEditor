@@ -64,5 +64,13 @@ try{
  Check(duplicate.blinkPose!=pose && duplicate.blinkPose==duplicate.editableBlinkPose,"Duplicated setup owns independent closed pose");
  Call("MouthCancelEditing","SetValue",duplicate.blinkPose,close,75f);
  Check(AnimationUtility.GetEditorCurve(pose,close).Evaluate(0)==42,"Editing duplicate leaves original eye-closed pose unchanged");
+ set.blinkSource=Samon.FacialExpressionEditor.BlinkSourceMode.Generated;
+ Check(!set.UsesExistingBlink && Plan().GetType().GetProperty("BlinkClip").GetValue(Plan())==null,"Generated mode ignores retained existing animation");
+ Check(set.blinkAnimation==blink && set.blinkPose==pose,"Switching modes preserves both authored sources");
+ set.blinkSource=Samon.FacialExpressionEditor.BlinkSourceMode.Existing;
+ Check(set.UsesExistingBlink && Plan().GetType().GetProperty("BlinkClip").GetValue(Plan())==blink,"Switching back restores existing animation");
+ set.blinkAnimation=null; bool missingRejected=false;
+ try{Plan();}catch(System.Reflection.TargetInvocationException ex){missingRejected=ex.InnerException is InvalidOperationException;}
+ Check(missingRejected,"Explicit existing mode requires a clip instead of silently generating");
  return new{passed=checks.Count,checks};
 }finally{UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(mesh);AssetDatabase.DeleteAsset(folder);UnityEngine.Object.DestroyImmediate(blink);UnityEngine.Object.DestroyImmediate(targetClip);}

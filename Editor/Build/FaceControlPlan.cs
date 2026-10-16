@@ -92,7 +92,9 @@ namespace Samon.FacialExpressionEditor.Editor
 
             // まばたきは指定／既存クリップ、または生成アニメーションで必ず置き換える。
             var blinkShapes = set.customBlink ? set.blinkShapes : AvatarFaceDefaults.DescriptorBlinkShapes(descriptor);
-            if (set.blinkAnimation != null)
+            if (set.UsesExistingBlink && set.blinkAnimation == null)
+                throw new System.InvalidOperationException("「まばたき・口」で既存の瞬きアニメーションを指定してください。");
+            if (set.UsesExistingBlink)
             {
                 plan.BlinkClip = set.blinkAnimation;
                 blinkShapes = AnimationUtility.GetCurveBindings(set.blinkAnimation)
