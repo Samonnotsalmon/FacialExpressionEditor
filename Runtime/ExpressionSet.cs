@@ -22,7 +22,9 @@ namespace Samon.FacialExpressionEditor
         public List<string> importLayerNames = new List<string>();
         public bool explicitMenuSelection;
         public List<OriginalMenuSelection> replacedMenuItems = new List<OriginalMenuSelection>();
-        public AnimationClip blinkAnimation;
+        public AnimationClip blinkAnimation; // 指定時は元の瞬きアニメーションをそのまま使用。
+        public AnimationClip blinkPose;
+        [HideInInspector] public AnimationClip editableBlinkPose;
         public AnimationClip mouthCancelAnimation;
         [HideInInspector] public bool mouthCancelUseClipValues; // Legacy serialized field; assigned clips always supply values.
         [HideInInspector] public AnimationClip editableMouthCancelAnimation;

@@ -9,6 +9,7 @@ var mesh=new Mesh();mesh.vertices=new[]{Vector3.zero};mesh.AddBlendShapeFrame("C
 var renderer=face.AddComponent<SkinnedMeshRenderer>();renderer.sharedMesh=mesh;
 var eye=descriptor.customEyeLookSettings;eye.eyelidType=VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.EyelidType.Blendshapes;eye.eyelidsSkinnedMesh=renderer;eye.eyelidsBlendshapes=new[]{0,-1,-1};descriptor.customEyeLookSettings=eye;
 var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.motionRulesConfigured=true;
+var folder="Assets/__FEE_BlinkPose_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));AssetDatabase.CreateAsset(set,folder+"/Set.asset");
 var blink=new AnimationClip();var targetClip=new AnimationClip();
 var close=EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.Close");var smile=EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.Smile");
 AnimationUtility.SetEditorCurve(targetClip,close,AnimationCurve.Constant(0,1,10));AnimationUtility.SetEditorCurve(targetClip,smile,AnimationCurve.Constant(0,1,30));
@@ -46,5 +47,22 @@ try{
  Check(BlinkValue(entry)==0 && BlinkValue(settled)==1,"Transition suspends normal blinking and restores it on completion");
  Check(!settled.Transitions.Any(t=>t.DestinationState==entry) && !layer.StateMachine.AnyStateTransitions.Any(t=>t.DestinationState==entry),"Settled fixed expression does not restart its blink transition");
  Check(states.Any(st=>st!=entry && st!=settled && st.Transitions.Any(t=>t.DestinationState==entry)),"Other states can enter the common blink transition");
+ var pose=(AnimationClip)Call("BlinkPoseUtility","Editable",set,root);
+ Check(pose==set.blinkPose && pose==set.editableBlinkPose && AnimationUtility.GetCurveBindings(pose).Length==1,"Dedicated eye-closed pose records only selected shapes");
+ Check(Call("BlinkPoseUtility","Editable",set,root)==pose,"Reopening reuses editable pose");
+ Call("MouthCancelEditing","SetValue",pose,close,42f);
+ var loop=(AnimationClip)Call("BlinkPoseUtility","Loop",pose,root,set);
+ try {
+  var curve=AnimationUtility.GetEditorCurve(loop,close);
+  Check(curve.Evaluate(0)==0 && Mathf.Approximately(curve.Evaluate(2.46f),42) && curve.Evaluate(10)==0,"Generated preview loops between avatar open value and edited closed pose");
+  built=Build(Plan());Check(Curve(built,close).Evaluate(0)==42,"Fixed transition shares the edited closed pose");
+ }finally{UnityEngine.Object.DestroyImmediate(loop);}
+ set.blinkAnimation=blink;
+ Check(Plan().GetType().GetProperty("BlinkClip").GetValue(Plan())==blink,"Imported full animation keeps priority without pose conversion");
+ AssetDatabase.CreateFolder(folder,"Duplicate");
+ var duplicate=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.Duplicate(set,folder+"/Duplicate/Set.asset");
+ Check(duplicate.blinkPose!=pose && duplicate.blinkPose==duplicate.editableBlinkPose,"Duplicated setup owns independent closed pose");
+ Call("MouthCancelEditing","SetValue",duplicate.blinkPose,close,75f);
+ Check(AnimationUtility.GetEditorCurve(pose,close).Evaluate(0)==42,"Editing duplicate leaves original eye-closed pose unchanged");
  return new{passed=checks.Count,checks};
-}finally{UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(mesh);UnityEngine.Object.DestroyImmediate(set);UnityEngine.Object.DestroyImmediate(blink);UnityEngine.Object.DestroyImmediate(targetClip);}
+}finally{UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(mesh);AssetDatabase.DeleteAsset(folder);UnityEngine.Object.DestroyImmediate(blink);UnityEngine.Object.DestroyImmediate(targetClip);}

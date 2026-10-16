@@ -551,7 +551,7 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// まばたきのカーブ。毎回同じ間隔だと機械的に見えるので、10秒の中で間隔を変えて3回まばたきする。
         /// </summary>
-        private static AnimationCurve BlinkCurve(float open, float closed)
+        internal static AnimationCurve BlinkCurve(float open, float closed)
         {
             var keys = new List<Keyframe> { new Keyframe(0, open) };
             foreach (var start in new[] { 2.4f, 5.9f, 8.6f })

@@ -99,6 +99,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     .Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape."))
                     .Select(b => new BlinkShape { path = b.path, blendShape = b.propertyName.Substring(11), closedValue = 100 }).ToList();
             }
+            else if (set.blinkPose != null) blinkShapes = BlinkPoseUtility.Shapes(set.blinkPose, avatarRoot, set);
             plan.BlinkShapes = blinkShapes
                 .Select(s => (Binding(s), s.closedValue))
                 .Where(s => AnimationUtility.GetFloatValue(avatarRoot, s.Item1, out _))

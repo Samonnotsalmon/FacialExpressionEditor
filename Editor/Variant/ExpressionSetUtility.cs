@@ -468,11 +468,12 @@ namespace Samon.FacialExpressionEditor.Editor
             copy.independentClips = true;
             foreach (var expression in copy.expressions) MakeClipEditable(copy, expression);
             foreach (var part in copy.parts) MakePartClipEditable(copy, part);
-            foreach (var auxiliary in new[] { copy.blinkAnimation, copy.mouthCancelAnimation }.Where(c => c != null).Distinct().ToList())
+            foreach (var auxiliary in new[] { copy.blinkAnimation, copy.blinkPose, copy.mouthCancelAnimation }.Where(c => c != null).Distinct().ToList())
             {
                 var clone = Object.Instantiate(auxiliary);
                 AssetDatabase.CreateAsset(clone, AssetDatabase.GenerateUniqueAssetPath($"{AssetPathUtility.FolderOf(copy)}/{AssetPathUtility.SafeFileName(auxiliary.name)}.anim"));
                 if (copy.blinkAnimation == auxiliary) copy.blinkAnimation = clone;
+                if (copy.blinkPose == auxiliary) { copy.blinkPose = clone; copy.editableBlinkPose = clone; }
                 if (copy.mouthCancelAnimation == auxiliary)
                 {
                     copy.mouthCancelAnimation = clone;
