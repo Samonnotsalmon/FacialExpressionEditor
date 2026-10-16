@@ -15,11 +15,10 @@ namespace Samon.FacialExpressionEditor.Editor
     {
         private const float FlagColumnWidth = 64f;
 
-        [SerializeField] private bool _showBlinkShapes;
         [SerializeField] private bool _showBlinkSettings;
         [SerializeField] private bool _showMouthSettings;
 
-        private List<BlinkShape> BlinkShapesInUse(ExpressionSet set) => set.customBlink ? set.blinkShapes : FaceDefaults.BlinkShapes;
+        private List<BlinkShape> BlinkShapesInUse(ExpressionSet set) => set.customBlink ? set.blinkShapes : AvatarFaceDefaults.DescriptorBlinkShapes(Descriptor);
         private List<BlendShapeRef> MouthMorphsInUse(ExpressionSet set) => set.mouthCancelAnimation != null
             ? AnimationUtility.GetCurveBindings(set.mouthCancelAnimation).Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape."))
                 .Select(b => new BlendShapeRef { path = b.path, blendShape = b.propertyName.Substring(11) }).ToList()
@@ -30,7 +29,7 @@ namespace Samon.FacialExpressionEditor.Editor
             DrawExpressionFlags(set);
             EditorGUILayout.Space(12);
             EditorGUILayout.LabelField("共通の動作設定", EditorStyles.boldLabel);
-            var missingBlink = set.blinkAnimation == null && BlinkShapesInUse(set).Count == 0 && (set.customBlink || FaceDefaults.BlinkClip == null);
+            var missingBlink = set.blinkAnimation == null && BlinkShapesInUse(set).Count == 0;
             _showBlinkSettings = EditorGUILayout.Foldout(_showBlinkSettings || missingBlink,
                 missingBlink ? "まばたきの設定（対象を指定してください）" : "まばたきの設定", true);
             if (_showBlinkSettings) DrawBlinkSettings(set);
@@ -40,91 +39,51 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawBlinkSettings(ExpressionSet set)
         {
-            EditorGUILayout.LabelField("まばたき", EditorStyles.boldLabel);
-            var manual = (AnimationClip)EditorGUILayout.ObjectField("指定クリップ（D&D）", set.blinkAnimation, typeof(AnimationClip), false);
+            var manual = (AnimationClip)EditorGUILayout.ObjectField("クリップ（任意）", set.blinkAnimation, typeof(AnimationClip), false);
             if (manual != set.blinkAnimation) Modify(set, "まばたきクリップを指定", () => set.blinkAnimation = manual);
             if (manual != null)
             {
-                EditorGUILayout.HelpBox("指定クリップを繰り返し再生します。下の自動検出・シェイプキー設定より優先します。", MessageType.Info);
+                EditorGUILayout.LabelField("指定クリップを使います。未指定にすると自動生成します。", EditorStyles.wordWrappedMiniLabel);
                 if (GUILayout.Button("この瞬きをプレビュー")) Select(SelectionKind.Clip, null, manual);
                 return;
             }
-            EditorGUILayout.LabelField("ビルド時にVRChatのまばたきを止め、下のまばたきのアニメーションに置き換えます（まばたきを止める表情でも、視線は動かせます）。",
-                EditorStyles.wordWrappedMiniLabel);
-
-            var defaults = FaceDefaults;
-            EditorGUILayout.LabelField("使うまばたき", manual != null ? manual.name : set.customBlink ? "シェイプキーから生成" : defaults.BlinkSource);
-            if (defaults.BlinkLayer != null)
-            {
-                EditorGUILayout.LabelField($"元FXの「{defaults.BlinkLayer}」レイヤーは、生成したまばたきに置き換えます。", EditorStyles.wordWrappedMiniLabel);
-            }
-
-            if (manual == null && !set.customBlink && defaults.BlinkClip != null)
-            {
-                using (new EditorGUI.DisabledScope(true)) EditorGUILayout.ObjectField("自動検出したクリップ", defaults.BlinkClip, typeof(AnimationClip), false);
-            }
-            EditorGUILayout.LabelField("クリップがない場合はシェイプキーから瞬きを生成して置き換えます。対象も見つからない場合は指定が必要です。", EditorStyles.wordWrappedMiniLabel);
-            DrawCustomToggle(set, set.customBlink, "まばたきを編集", on =>
-            {
-                set.customBlink = on;
-                if (on && set.blinkShapes.Count == 0)
-                {
-                    set.blinkShapes = defaults.BlinkShapes
-                        .Select(s => new BlinkShape { path = s.path, blendShape = s.blendShape, closedValue = s.closedValue })
-                        .ToList();
-                }
-            });
-            if (set.customBlink && defaults.BlinkClip != null)
-            {
-                EditorGUILayout.LabelField("編集すると、元FXのアニメーションではなく、シェイプキーごとに作ったまばたきのアニメーションを使います。",
-                    EditorStyles.wordWrappedMiniLabel);
-            }
-
             var shapes = BlinkShapesInUse(set);
-            if (manual == null && shapes.Count == 0)
+            EditorGUILayout.LabelField("瞬きアニメーションをビルド時に自動生成します。", EditorStyles.wordWrappedMiniLabel);
+            if (shapes.Count == 0)
+                EditorGUILayout.HelpBox("アバターのEye Look設定から取得できません。目を閉じるシェイプキーを選んでください。", MessageType.Info);
+            else
+                EditorGUILayout.LabelField(set.customBlink ? "使用するシェイプキー（手動）" : "使用するシェイプキー（アバターのEye Look設定）", EditorStyles.miniLabel);
+            foreach (var shape in shapes.ToList())
+            using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.HelpBox(set.customBlink
-                    ? "まばたきで動かすシェイプキーがありません。下の「シェイプキーを選ぶ…」で追加してください。"
-                    : "元アバターにまばたきが見つかりません。「自分で編集する」をオンにして、シェイプキーを追加してください。", MessageType.Error);
-            }
-
-            _showBlinkShapes = EditorGUILayout.Foldout(_showBlinkShapes, $"動かすシェイプキー（{shapes.Count} 件）", true);
-            if (_showBlinkShapes)
-            {
-                foreach (var shape in shapes.ToList())
+                EditorGUILayout.LabelField(new GUIContent(shape.blendShape, shape.path));
+                EditorGUI.BeginChangeCheck();
+                var closed = EditorGUILayout.FloatField(new GUIContent("目閉じの値"), shape.closedValue, GUILayout.Width(160));
+                if (EditorGUI.EndChangeCheck()) Modify(set, "目閉じの値を変更", () =>
                 {
-                    using (new EditorGUILayout.HorizontalScope())
-                    {
-                        EditorGUILayout.LabelField(new GUIContent(shape.blendShape, shape.path));
-                        using (new EditorGUI.DisabledScope(!set.customBlink))
-                        {
-                            EditorGUI.BeginChangeCheck();
-                            var closed = EditorGUILayout.FloatField(new GUIContent("閉じたとき", "目を閉じたときの値"), shape.closedValue, GUILayout.Width(150));
-                            if (EditorGUI.EndChangeCheck()) Modify(set, "まばたきを変更", () => shape.closedValue = closed);
-                        }
-                        if (set.customBlink && GUILayout.Button(new GUIContent("×", "外す"), EditorStyles.miniButton, GUILayout.Width(24)))
-                        {
-                            Modify(set, "まばたきのシェイプキーを外す", () => set.blinkShapes.Remove(shape));
-                            GUIUtility.ExitGUI();
-                        }
-                    }
-                }
+                    CopyBlinkShapesForEditing(set, shapes);
+                    set.blinkShapes.Find(s => s.path == shape.path && s.blendShape == shape.blendShape).closedValue = closed;
+                });
             }
-
-            if (set.customBlink)
-            {
-                DrawShapePickerButton((path, name) => set.blinkShapes.Any(s => s.path == path && s.blendShape == name),
-                    (path, name, on) => Modify(set, on ? "まばたきのシェイプキーを追加" : "まばたきのシェイプキーを外す", () =>
-                    {
-                        if (on) set.blinkShapes.Add(new BlinkShape { path = path, blendShape = name });
-                        else set.blinkShapes.RemoveAll(s => s.path == path && s.blendShape == name);
-                    }));
-            }
+            DrawShapePickerButton((path, name) => BlinkShapesInUse(set).Any(s => s.path == path && s.blendShape == name),
+                (path, name, on) => Modify(set, "瞬きのシェイプキーを変更", () =>
+                {
+                    CopyBlinkShapesForEditing(set, BlinkShapesInUse(set));
+                    if (on && !set.blinkShapes.Any(s => s.path == path && s.blendShape == name))
+                        set.blinkShapes.Add(new BlinkShape { path = path, blendShape = name });
+                    else if (!on) set.blinkShapes.RemoveAll(s => s.path == path && s.blendShape == name);
+                }));
+            if (set.customBlink && AvatarFaceDefaults.DescriptorBlinkShapes(Descriptor).Count > 0 && GUILayout.Button("アバターのEye Look設定を使う"))
+                Modify(set, "瞬きの自動取得に戻す", () => set.customBlink = false);
         }
 
-        /// <summary>
-        /// 表情ごとのまばたき・視線・リップシンク・口モーフキャンセラーを一覧で切り替える。
-        /// </summary>
+        private static void CopyBlinkShapesForEditing(ExpressionSet set, List<BlinkShape> shapes)
+        {
+            if (set.customBlink) return;
+            set.blinkShapes = shapes.Select(s => new BlinkShape { path = s.path, blendShape = s.blendShape, closedValue = s.closedValue }).ToList();
+            set.customBlink = true;
+        }
+
         private void DrawExpressionFlags(ExpressionSet set)
         {
             EditorGUILayout.LabelField("表情ごとの設定", EditorStyles.boldLabel);
@@ -359,20 +318,6 @@ namespace Samon.FacialExpressionEditor.Editor
                     if (GUI.Button(addRect, new GUIContent("＋", "シェイプキーを複数選択して追加")))
                         MouthCancelSelectionWindow.Open(_avatar, addRect);
                 }
-            }
-        }
-
-        /// <summary>
-        /// 「自分で編集する」のオン・オフ。オフにすると元アバターのものに戻る（編集した内容は残しておき、またオンにすると使う）。
-        /// </summary>
-        private void DrawCustomToggle(ExpressionSet set, bool custom, string undoName, Action<bool> apply)
-        {
-            EditorGUI.BeginChangeCheck();
-            var next = EditorGUILayout.ToggleLeft("自分で編集する（オフなら元アバターのものを使う）", custom);
-            if (EditorGUI.EndChangeCheck())
-            {
-                Modify(set, undoName, () => apply(next));
-                GUIUtility.ExitGUI();
             }
         }
 

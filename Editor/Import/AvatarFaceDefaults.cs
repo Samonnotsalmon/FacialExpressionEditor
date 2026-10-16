@@ -46,6 +46,17 @@ namespace Samon.FacialExpressionEditor.Editor
             return result;
         }
 
+        public static List<BlinkShape> DescriptorBlinkShapes(VRCAvatarDescriptor descriptor)
+        {
+            var binding = FaceControlPlan.FindBlink(descriptor);
+            return binding.HasValue ? new List<BlinkShape> { new BlinkShape
+            {
+                path = binding.Value.path,
+                blendShape = binding.Value.propertyName.Substring(BlendShapePrefix.Length),
+                closedValue = 100,
+            } } : new List<BlinkShape>();
+        }
+
         private void FindBlink(VRCAvatarDescriptor descriptor, List<AnimatorControllerLayer> layers)
         {
             foreach (var layer in layers)

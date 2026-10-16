@@ -272,6 +272,7 @@ namespace Samon.FacialExpressionEditor.Editor
             // 固定用のステートは表情ごとに1つ（表情選択の値が違っても同じ表情なら共有する）。
             // 切り替え演出があればクリップの頭に挟む表情を入れる（ステートや遷移は増やさない）。
             var fixedStates = new Dictionary<string, VirtualState>();
+            var blinkSwitchStates = new Dictionary<VirtualState, VirtualState>();
             VirtualState FixedState(Expression expression)
             {
                 if (fixedStates.TryGetValue(expression.id, out var state)) return state;
@@ -280,9 +281,21 @@ namespace Samon.FacialExpressionEditor.Editor
                 // 静止ポーズを経由する旧切り替え演出は、時間で動く表情を潰さないよう静止表情だけに適用する。
                 if (!expression.freezeAnimation && PreviewClips.IsTimeVarying(expression.clip)) effect = null;
                 var clip = effect != null
-                    ? builder.BuildSwitch(expression, set.FindExpression(effect.betweenExpressionId), effect)
+                    ? (effect.useCommonBlink ? builder.BuildBlinkSwitch(expression, face, effect) : builder.BuildSwitch(expression, set.FindExpression(effect.betweenExpressionId), effect))
                     : builder.Build(expression);
-                return fixedStates[expression.id] = AddState(fixedMachine, builder.NameOf(expression), clip, fixedStates.Count, expression);
+                state = AddState(fixedMachine, builder.NameOf(expression), clip, fixedStates.Count, expression);
+                if (effect != null && effect.useCommonBlink)
+                {
+                    // Let the transition pose control the eyelids until it finishes.
+                    foreach (var driver in state.Behaviours.OfType<VRCAvatarParameterDriver>())
+                        foreach (var parameter in driver.parameters.Where(p => p.name == FaceControlPlan.BlinkParameter)) parameter.value = 0;
+                    var settled = AddState(fixedMachine, builder.NameOf(expression) + " (Settled)", builder.Build(expression), fixedStates.Count + 1, expression);
+                    var finish = Transition(settled, 0);
+                    finish.ExitTime = 1;
+                    state.Transitions = ImmutableList.Create(finish);
+                    blinkSwitchStates[state] = settled;
+                }
+                return fixedStates[expression.id] = state;
             }
 
             // 「表情選択」で選んだ表情（FEE/Emote）を優先し、選んでいない（0）ときだけモードの遷移が働く。
@@ -344,7 +357,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 conditions.AddRange(triggers.Select(ContactOff));
                 transitions.Add(Transition(neutral, set.defaultTransitionDuration, conditions.ToArray()));
             }
-            root.AnyStateTransitions = transitions.ToImmutableList();
+            // Common-blink entry transitions must not restart from their own settled state.
+            var blinkEntries = transitions.Where(t => blinkSwitchStates.ContainsKey(t.DestinationState)).ToList();
+            root.AnyStateTransitions = transitions.Except(blinkEntries).ToImmutableList();
+            if (blinkEntries.Count > 0)
+                foreach (var source in root.AllReachableNodes().OfType<VirtualState>().ToList())
+                    source.Transitions = source.Transitions.AddRange(blinkEntries.Where(t =>
+                        source != t.DestinationState && source != blinkSwitchStates[t.DestinationState]));
 
             // まばたきと口モーフキャンセラーのレイヤーが止まっている間は、この表情レイヤーの値が見えるようにする。
             if (!writeDefaults)

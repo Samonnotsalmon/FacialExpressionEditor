@@ -91,7 +91,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 .ToList();
 
             // まばたきは指定／既存クリップ、または生成アニメーションで必ず置き換える。
-            var blinkShapes = set.customBlink ? set.blinkShapes : defaults.BlinkShapes;
+            var blinkShapes = set.customBlink ? set.blinkShapes : AvatarFaceDefaults.DescriptorBlinkShapes(descriptor);
             if (set.blinkAnimation != null)
             {
                 plan.BlinkClip = set.blinkAnimation;
@@ -103,9 +103,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 .Select(s => (Binding(s), s.closedValue))
                 .Where(s => AnimationUtility.GetFloatValue(avatarRoot, s.Item1, out _))
                 .ToList();
-            if (set.blinkAnimation == null && !set.customBlink) plan.BlinkClip = defaults.BlinkClip;
             if (!plan.ReplacesBlink)
-                throw new System.InvalidOperationException("瞬きの置き換え対象がありません。「まばたき・口」で瞬きクリップを指定するか、「まばたきを編集」で目閉じのシェイプキーを追加してください。");
+                throw new System.InvalidOperationException("瞬きの置き換え対象がありません。「まばたき・口」でクリップを指定するか、シェイプキーを選択してください。");
             if (plan.ReplacesBlink)
             {
                 if (defaults.BlinkLayer != null) plan.BlinkLayersToReplace.Add(defaults.BlinkLayer);

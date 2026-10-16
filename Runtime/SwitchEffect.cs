@@ -10,6 +10,7 @@ namespace Samon.FacialExpressionEditor
     public class SwitchEffect
     {
         public bool enabled;
+        public bool useCommonBlink;
 
         // 間に挟む表情（Expression.id）。
         public string betweenExpressionId;

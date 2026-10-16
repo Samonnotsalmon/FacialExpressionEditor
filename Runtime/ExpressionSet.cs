@@ -118,7 +118,7 @@ namespace Samon.FacialExpressionEditor
                 case SwitchEffectMode.Custom: effect = expression.fixedSwitchEffect; break;
                 default: effect = fixedSwitchEffect; break;
             }
-            return effect != null && effect.enabled && FindExpression(effect.betweenExpressionId) != null ? effect : null;
+            return effect != null && effect.enabled && (effect.useCommonBlink || FindExpression(effect.betweenExpressionId) != null) ? effect : null;
         }
 
         private void OnValidate()

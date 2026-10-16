@@ -267,7 +267,7 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 EditorGUILayout.Space();
                 EditorGUILayout.LabelField("固定したときの切り替え演出", EditorStyles.boldLabel);
-                var standard = set.fixedSwitchEffect.enabled && set.FindExpression(set.fixedSwitchEffect.betweenExpressionId) != null
+                var standard = set.fixedSwitchEffect.enabled && set.fixedSwitchEffect.useCommonBlink ? "標準（共通の瞬き）" : set.fixedSwitchEffect.enabled && set.FindExpression(set.fixedSwitchEffect.betweenExpressionId) != null
                     ? $"標準（{set.FindExpression(set.fixedSwitchEffect.betweenExpressionId).name}を挟む）"
                     : "標準（なし）";
                 EditorGUI.BeginChangeCheck();

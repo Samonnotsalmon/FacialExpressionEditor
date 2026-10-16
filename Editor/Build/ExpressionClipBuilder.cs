@@ -78,6 +78,34 @@ namespace Samon.FacialExpressionEditor.Editor
         /// 切り替え演出つきのクリップを作る。頭で挟む表情（目閉じなど）を holdTime の間見せ、fadeTime かけて目的の表情に移る。
         /// 挟む表情が動かさないプロパティは目的の表情の値のまま、目的の表情が動かさないプロパティはアバターの今の値に戻す。
         /// </summary>
+        public VirtualClip BuildBlinkSwitch(Expression target, FaceControlPlan face, SwitchEffect effect)
+        {
+            var pose = new AnimationClip();
+            try
+            {
+                // Sample a single shared closing pose, excluding idle time in looping blink clips.
+                var peakTime = 0f;
+                var largestChange = -1f;
+                if (face.BlinkClip != null)
+                    foreach (var (binding, _) in face.BlinkShapes)
+                    {
+                        var curve = AnimationUtility.GetEditorCurve(face.BlinkClip, binding);
+                        if (curve == null) continue;
+                        var open = curve.Evaluate(0);
+                        foreach (var key in curve.keys)
+                            if (Mathf.Abs(key.value - open) > largestChange)
+                            { largestChange = Mathf.Abs(key.value - open); peakTime = key.time; }
+                    }
+                foreach (var (binding, closed) in face.BlinkShapes)
+                {
+                    var curve = face.BlinkClip != null ? AnimationUtility.GetEditorCurve(face.BlinkClip, binding) : null;
+                    AnimationUtility.SetEditorCurve(pose, binding, AnimationCurve.Constant(0, 0, curve != null ? curve.Evaluate(peakTime) : closed));
+                }
+                return BuildSwitch(target, new Expression { name = "共通の瞬き", clip = pose, baseFaceBaked = true }, effect);
+            }
+            finally { Object.DestroyImmediate(pose); }
+        }
+
         public VirtualClip BuildSwitch(Expression target, Expression between, SwitchEffect effect)
         {
             var targetClip = Build(target);

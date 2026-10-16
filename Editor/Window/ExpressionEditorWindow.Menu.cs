@@ -24,13 +24,13 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var width = CenterWidth;
 
-            _showSwitchEffect = EditorGUILayout.Foldout(_showSwitchEffect, "固定の表情の切り替え演出", true);
+            _showSwitchEffect = EditorGUILayout.Foldout(_showSwitchEffect, "固定表情への切り替え（瞬き・演出）", true);
             if (_showSwitchEffect)
             {
                 using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
                 {
                     DrawSwitchEffect(set, set.fixedSwitchEffect, "切り替え演出を変更");
-                    EditorGUILayout.LabelField("固定の表情に切り替えるとき、間に別の表情（目閉じなど）を挟めます。表情ごとの設定は右の設定欄で変えられます。",
+                    EditorGUILayout.LabelField("固定メニューから表情を選ぶときの演出です。通常のジェスチャー切り替え・動く表情には適用しません。",
                         EditorStyles.wordWrappedMiniLabel);
                 }
             }
@@ -340,28 +340,32 @@ namespace Samon.FacialExpressionEditor.Editor
             var names = set.expressions.Select(e => e.name).ToArray();
 
             EditorGUI.BeginChangeCheck();
-            var enabled = EditorGUILayout.ToggleLeft("間に表情を挟む", effect.enabled);
+            var enabled = EditorGUILayout.ToggleLeft("切り替え演出を使う", effect.enabled);
+            var useCommon = effect.useCommonBlink || (!effect.enabled && string.IsNullOrEmpty(effect.betweenExpressionId));
             var index = ids.IndexOf(effect.betweenExpressionId);
             int nextIndex;
             float hold, fade;
             using (new EditorGUI.DisabledScope(!enabled))
             {
-                nextIndex = EditorGUILayout.Popup("挟む表情", index, names);
-                hold = EditorGUILayout.Slider("挟む時間（秒）", effect.holdTime, 0f, 1f);
-                fade = EditorGUILayout.Slider("戻る時間（秒）", effect.fadeTime, 0f, 1f);
+                useCommon = EditorGUILayout.Popup("演出", useCommon ? 0 : 1, new[] { "共通の瞬き", "別の表情を挟む" }) == 0;
+                nextIndex = useCommon ? index : EditorGUILayout.Popup("挟む表情", index, names);
+                if (useCommon) EditorGUILayout.LabelField("「まばたき・口」で設定した目閉じを使います。", EditorStyles.wordWrappedMiniLabel);
+                hold = EditorGUILayout.Slider(useCommon ? "目を閉じている時間（秒）" : "挟む時間（秒）", effect.holdTime, 0f, 1f);
+                fade = EditorGUILayout.Slider("次の表情へ移る時間（秒）", effect.fadeTime, 0f, 1f);
             }
             if (EditorGUI.EndChangeCheck())
             {
                 Modify(set, undoName, () =>
                 {
                     effect.enabled = enabled;
+                    effect.useCommonBlink = useCommon;
                     if (nextIndex >= 0) effect.betweenExpressionId = ids[nextIndex];
                     effect.holdTime = hold;
                     effect.fadeTime = fade;
                 });
             }
 
-            if (enabled && index < 0)
+            if (enabled && !useCommon && index < 0)
             {
                 EditorGUILayout.HelpBox("挟む表情を選んでください。選ぶまでは演出なしで切り替わります。", MessageType.Info);
             }

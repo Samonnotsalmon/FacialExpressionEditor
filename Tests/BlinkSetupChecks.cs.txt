@@ -1,0 +1,50 @@
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+object Call(string type,string method,params object[] args)=>asm.GetType("Samon.FacialExpressionEditor.Editor."+type).GetMethod(method,System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static).Invoke(null,args);
+var root=new GameObject("Blink fixture"); var descriptor=root.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+descriptor.baseAnimationLayers=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomAnimLayer[0];descriptor.specialAnimationLayers=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomAnimLayer[0];
+var face=new GameObject("Face");face.transform.SetParent(root.transform,false);
+var mesh=new Mesh();mesh.vertices=new[]{Vector3.zero};mesh.AddBlendShapeFrame("Close",100,new[]{Vector3.up},null,null);mesh.AddBlendShapeFrame("Smile",100,new[]{Vector3.right},null,null);
+var renderer=face.AddComponent<SkinnedMeshRenderer>();renderer.sharedMesh=mesh;
+var eye=descriptor.customEyeLookSettings;eye.eyelidType=VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.EyelidType.Blendshapes;eye.eyelidsSkinnedMesh=renderer;eye.eyelidsBlendshapes=new[]{0,-1,-1};descriptor.customEyeLookSettings=eye;
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.motionRulesConfigured=true;
+var blink=new AnimationClip();var targetClip=new AnimationClip();
+var close=EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.Close");var smile=EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.Smile");
+AnimationUtility.SetEditorCurve(targetClip,close,AnimationCurve.Constant(0,1,10));AnimationUtility.SetEditorCurve(targetClip,smile,AnimationCurve.Constant(0,1,30));
+var target=new Samon.FacialExpressionEditor.Expression{name="Target",clip=targetClip,baseFaceBaked=true};set.expressions.Add(target);
+object Plan()=>Call("FaceControlPlan","Create",set,Call("BuildPlan","Create",set),root);
+try{
+ var shapes=(System.Collections.Generic.List<Samon.FacialExpressionEditor.BlinkShape>)Call("AvatarFaceDefaults","DescriptorBlinkShapes",descriptor);
+ Check(shapes.Count==1 && shapes[0].blendShape=="Close","Descriptor eyelid index resolves to the correct shape");
+ var plan=Plan();Check(plan.GetType().GetProperty("BlinkClip").GetValue(plan)==null,"No assigned clip uses generated blink");
+ var effect=new Samon.FacialExpressionEditor.SwitchEffect{enabled=true,useCommonBlink=true,holdTime=.1f,fadeTime=.1f};set.fixedSwitchEffect=effect;
+ Check(set.GetFixedSwitchEffect(target)==effect,"Common blink needs no expression-library entry");
+ var builderType=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionClipBuilder");
+ object Build(object facePlan){var builder=Activator.CreateInstance(builderType,new object[]{set,null,root});return builderType.GetMethod("BuildBlinkSwitch").Invoke(builder,new object[]{target,facePlan,effect});}
+ AnimationCurve Curve(object clip,EditorCurveBinding binding)=>(AnimationCurve)clip.GetType().GetMethod("GetFloatCurve", new[]{typeof(EditorCurveBinding)}).Invoke(clip,new object[]{binding});
+ var built=Build(plan);
+ Check(Curve(built,close).Evaluate(0)==100 && Mathf.Approximately(Curve(built,close).Evaluate(.2f),10),"Generated blink closes eyes then returns to target expression");
+ Check(Curve(built,smile).Evaluate(0)==30,"Blink transition preserves target mouth");
+ AnimationUtility.SetEditorCurve(blink,close,new AnimationCurve(new Keyframe(0,0),new Keyframe(3,80),new Keyframe(4,0)));set.blinkAnimation=blink;plan=Plan();
+ Check(plan.GetType().GetProperty("BlinkClip").GetValue(plan)==blink,"Explicit blink clip has priority");
+ built=Build(plan);Check(Curve(built,close).Evaluate(0)==80,"Common blink uses the assigned clip's closing pose without idle wait");
+ set.blinkAnimation=null;eye.eyelidsBlendshapes=new[]{-1,-1,-1};descriptor.customEyeLookSettings=eye;
+ Check(((System.Collections.Generic.List<Samon.FacialExpressionEditor.BlinkShape>)Call("AvatarFaceDefaults","DescriptorBlinkShapes",descriptor)).Count==0,"Unconfigured eyelids require manual selection");
+ set.customBlink=true;set.blinkShapes.Add(new Samon.FacialExpressionEditor.BlinkShape{path="Face",blendShape="Close",closedValue=65});
+ built=Build(Plan());Check(Curve(built,close).Evaluate(0)==65,"Manual closed value is shared by generated blink and transition");
+ Check(AnimationUtility.GetEditorCurve(targetClip,close).Evaluate(0)==10 && AnimationUtility.GetEditorCurve(blink,close).Evaluate(3)==80,"Source clips remain unchanged");
+ set.menu.Add(new Samon.FacialExpressionEditor.MenuNode{kind=Samon.FacialExpressionEditor.MenuNodeKind.Expression,expressionId=target.id});
+ var buildPlan=Call("BuildPlan","Create",set); var facePlan=Plan();
+ var context=new nadena.dev.ndmf.animator.CloneContext(nadena.dev.ndmf.animator.VRChatPlatformAnimatorBindings.Instance);
+ var graphBuilder=Activator.CreateInstance(builderType,new object[]{set,null,root});
+ var layer=(nadena.dev.ndmf.animator.VirtualLayer)Call("GenerateFxPass","BuildExpressionLayer",context,set,buildPlan,facePlan,graphBuilder,true);
+ var states=layer.AllReachableNodes().OfType<nadena.dev.ndmf.animator.VirtualState>().ToList();
+ var entry=states.Single(st=>st.Transitions.Any(t=>t.ExitTime==1));
+ var settled=entry.Transitions.Single(t=>t.ExitTime==1).DestinationState;
+ float BlinkValue(nadena.dev.ndmf.animator.VirtualState st)=>st.Behaviours.OfType<VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver>().SelectMany(d=>d.parameters).Single(p=>p.name=="FEE/Blink").value;
+ Check(BlinkValue(entry)==0 && BlinkValue(settled)==1,"Transition suspends normal blinking and restores it on completion");
+ Check(!settled.Transitions.Any(t=>t.DestinationState==entry) && !layer.StateMachine.AnyStateTransitions.Any(t=>t.DestinationState==entry),"Settled fixed expression does not restart its blink transition");
+ Check(states.Any(st=>st!=entry && st!=settled && st.Transitions.Any(t=>t.DestinationState==entry)),"Other states can enter the common blink transition");
+ return new{passed=checks.Count,checks};
+}finally{UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(mesh);UnityEngine.Object.DestroyImmediate(set);UnityEngine.Object.DestroyImmediate(blink);UnityEngine.Object.DestroyImmediate(targetClip);}
