@@ -270,16 +270,17 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             EditorGUILayout.LabelField("口モーフキャンセラー", EditorStyles.boldLabel);
             var manual = (AnimationClip)EditorGUILayout.ObjectField("対象クリップ（D&D）", set.mouthCancelAnimation, typeof(AnimationClip), false);
-            var useValues = manual != null ? EditorGUILayout.ToggleLeft("クリップの先頭の値に戻す（オフならベース顔）", set.mouthCancelUseClipValues) : set.mouthCancelUseClipValues;
-            if (manual != set.mouthCancelAnimation || useValues != set.mouthCancelUseClipValues)
-                Modify(set, "口キャンセルの指定", () => { set.mouthCancelAnimation = manual; set.mouthCancelUseClipValues = useValues; });
-            EditorGUILayout.LabelField("話している間、口のシェイプキーをベース顔の値に戻し、表情の口とリップシンクの口が重ならないようにします。" +
-                                       "表情ごとに止められます（上の一覧）。",
+            if (manual != set.mouthCancelAnimation)
+                Modify(set, "口キャンセルの指定", () => set.mouthCancelAnimation = manual);
+            EditorGUILayout.LabelField(manual != null
+                    ? "話している間、指定クリップの0秒時点の値へ戻します。値を調整するときは「口キャンセルを編集」を押してください。元のクリップは複製してから編集します。"
+                    : "クリップ未指定時は、対象の口シェイプキーをベース顔の値に戻します。クリップを指定すると、その0秒時点の値を使います。",
                 EditorStyles.wordWrappedMiniLabel);
 
             if (manual != null)
             {
                 EditorGUILayout.LabelField($"指定クリップから {MouthMorphsInUse(set).Count} 個のシェイプキーを使用", EditorStyles.miniLabel);
+                if (GUILayout.Button("口キャンセルを編集")) MouthCancelEditorWindow.Open(_avatar);
                 return;
             }
 

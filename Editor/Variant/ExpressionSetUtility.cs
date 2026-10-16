@@ -425,6 +425,23 @@ namespace Samon.FacialExpressionEditor.Editor
             if (index < 0) set.menu.Add(node);
             else set.menu.Insert(index, node);
         }
+        public static AnimationClip MakeMouthCancelEditable(ExpressionSet set)
+        {
+            var source = set.mouthCancelAnimation;
+            if (source == null) return null;
+            if (source == set.editableMouthCancelAnimation) return source;
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "MouthCancel");
+            var clip = Object.Instantiate(source);
+            clip.name = source.name;
+            AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(clip.name)}.anim"));
+            Undo.RecordObject(set, "口キャンセルを専用クリップに複製");
+            set.mouthCancelAnimation = clip;
+            set.editableMouthCancelAnimation = clip;
+            EditorUtility.SetDirty(set);
+            AssetDatabase.SaveAssets();
+            return clip;
+        }
+
         /// <summary>
         /// 表情データを複製する。表情・表情セット・パーツの設定を引き継ぎ、表情のIDも同じものを使うので、
         /// 顔バリアントの差し替えは複製した表情データでもそのまま使える。
@@ -441,7 +458,11 @@ namespace Samon.FacialExpressionEditor.Editor
                 var clone = Object.Instantiate(auxiliary);
                 AssetDatabase.CreateAsset(clone, AssetDatabase.GenerateUniqueAssetPath($"{AssetPathUtility.FolderOf(copy)}/{AssetPathUtility.SafeFileName(auxiliary.name)}.anim"));
                 if (copy.blinkAnimation == auxiliary) copy.blinkAnimation = clone;
-                if (copy.mouthCancelAnimation == auxiliary) copy.mouthCancelAnimation = clone;
+                if (copy.mouthCancelAnimation == auxiliary)
+                {
+                    copy.mouthCancelAnimation = clone;
+                    copy.editableMouthCancelAnimation = clone;
+                }
             }
             EditorUtility.SetDirty(copy);
             AssetDatabase.SaveAssets();

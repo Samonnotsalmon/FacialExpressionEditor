@@ -124,7 +124,7 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 plan.MouthMorphs = AnimationUtility.GetCurveBindings(set.mouthCancelAnimation)
                     .Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape.") && AnimationUtility.GetFloatValue(avatarRoot, b, out _)).ToList();
-                if (set.mouthCancelUseClipValues) plan.MouthCancelClip = set.mouthCancelAnimation;
+                plan.MouthCancelClip = set.mouthCancelAnimation;
             }
             plan.MouthMorphs.RemoveAll(b => LipSyncProtection.IsProtected(b, avatarRoot, set));
             plan.UsesMouthCancelParameter = plan.HasMouthCanceler && expressions.Any(e => !plan.CancelsMouth(e));

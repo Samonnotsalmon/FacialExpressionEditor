@@ -1,0 +1,39 @@
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool ok,string name){if(!ok)throw new Exception(name); checks.Add(name);}
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+object Call(string type,string method,params object[] args)=>asm.GetType("Samon.FacialExpressionEditor.Editor."+type).GetMethod(method,System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static).Invoke(null,args);
+var folder="Assets/__FEE_MouthCancel_"+Guid.NewGuid().ToString("N"); AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var root=new GameObject("Mouth cancel fixture"); var descriptor=root.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+descriptor.baseAnimationLayers=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomAnimLayer[0]; descriptor.specialAnimationLayers=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomAnimLayer[0];
+var face=new GameObject("Face"); face.transform.SetParent(root.transform,false);
+var mesh=new Mesh(); mesh.vertices=new[]{Vector3.zero};
+mesh.AddBlendShapeFrame("Smile",100,new[]{Vector3.up},null,null); mesh.AddBlendShapeFrame("vrc.v_aa",100,new[]{Vector3.right},null,null);
+var renderer=face.AddComponent<SkinnedMeshRenderer>(); renderer.sharedMesh=mesh; renderer.SetBlendShapeWeight(0,30);
+descriptor.VisemeSkinnedMesh=renderer; descriptor.VisemeBlendShapes=new[]{"vrc.v_aa"};
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.motionRulesConfigured=true;
+AssetDatabase.CreateAsset(set,folder+"/Settings.asset");
+var smile=EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.Smile");
+var viseme=EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.vrc.v_aa");
+var source=new AnimationClip();AnimationUtility.SetEditorCurve(source,smile,AnimationCurve.Linear(0,0,1,70));AnimationUtility.SetEditorCurve(source,viseme,AnimationCurve.Constant(0,1,90));AssetDatabase.CreateAsset(source,folder+"/Source.anim");
+set.blinkAnimation=source; set.mouthCancelAnimation=source;set.mouthCancelUseClipValues=false;
+try{
+ var plan=Call("BuildPlan","Create",set);
+ var facePlan=Call("FaceControlPlan","Create",set,plan,root);
+ Check((AnimationClip)facePlan.GetType().GetProperty("MouthCancelClip").GetValue(facePlan)==source,"Assigned clip is used even for legacy false setting");
+ var morphs=(System.Collections.Generic.List<EditorCurveBinding>)facePlan.GetType().GetProperty("MouthMorphs").GetValue(facePlan);
+ Check(morphs.Count==1 && morphs[0].Equals(smile),"Lip sync shapes are excluded");
+ var copy=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.MakeMouthCancelEditable(set);
+ Check(copy!=source && set.mouthCancelAnimation==copy && AssetDatabase.GetAssetPath(copy).StartsWith(folder+"/MouthCancel/"),"Editing creates and assigns dedicated copy");
+ Check(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.MakeMouthCancelEditable(set)==copy,"Reopening reuses owned copy");
+ Call("MouthCancelEditorWindow","SetValue",copy,smile,12f);
+ Check(AnimationUtility.GetEditorCurve(copy,smile).Evaluate(0)==12 && AnimationUtility.GetEditorCurve(copy,smile).Evaluate(1)==70,"Editing updates time zero and preserves later keys");
+ Check(AnimationUtility.GetEditorCurve(source,smile).Evaluate(0)==0 && AnimationUtility.GetCurveBindings(copy).Length==2,"Source and binding scope are preserved");
+ AssetDatabase.CreateFolder(folder,"Duplicate");
+ var duplicate=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.Duplicate(set,folder+"/Duplicate/Settings.asset");
+ Check(duplicate.mouthCancelAnimation!=copy && duplicate.editableMouthCancelAnimation==duplicate.mouthCancelAnimation,"Duplicated settings own independent mouth clip");
+ Call("MouthCancelEditorWindow","SetValue",duplicate.mouthCancelAnimation,smile,24f);
+ Check(AnimationUtility.GetEditorCurve(copy,smile).Evaluate(0)==12,"Duplicate edit does not affect original setup");
+ set.mouthCancelAnimation=source;
+ Check(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.MakeMouthCancelEditable(set)!=source,"Reassigned source is copied again before editing");
+ return new{passed=checks.Count,checks};
+}finally{UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(mesh);AssetDatabase.DeleteAsset(folder);}

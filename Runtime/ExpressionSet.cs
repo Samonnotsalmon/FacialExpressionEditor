@@ -24,7 +24,8 @@ namespace Samon.FacialExpressionEditor
         public List<OriginalMenuSelection> replacedMenuItems = new List<OriginalMenuSelection>();
         public AnimationClip blinkAnimation;
         public AnimationClip mouthCancelAnimation;
-        public bool mouthCancelUseClipValues;
+        [HideInInspector] public bool mouthCancelUseClipValues; // Legacy serialized field; assigned clips always supply values.
+        [HideInInspector] public AnimationClip editableMouthCancelAnimation;
         [HideInInspector] public bool protectDance = true;
         [HideInInspector] public string danceParameter = "VRCEmoteFXConect";
         public List<MotionIntegrationRule> motionRules = new List<MotionIntegrationRule>();
