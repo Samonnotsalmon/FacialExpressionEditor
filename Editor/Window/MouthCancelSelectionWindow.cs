@@ -11,14 +11,13 @@ namespace Samon.FacialExpressionEditor.Editor
         private GameObject AvatarRoot => AvatarSetup.AvatarRootOf(_avatar);
         private FaceVariant Variant => _avatar != null ? _avatar.faceVariant : null;
 
-        public static void Open(FacialExpressionAvatar avatar)
+        public static void Open(FacialExpressionAvatar avatar, Rect buttonRect)
         {
-            var window = GetWindow<MouthCancelSelectionWindow>();
+            var window = CreateInstance<MouthCancelSelectionWindow>();
             window._avatar = avatar;
             window.ClearMouthSelection();
             window.titleContent = new GUIContent("口キャンセルのシェイプキー");
-            window.minSize = new Vector2(480, 360);
-            window.Show();
+            window.ShowAsDropDown(GUIUtility.GUIToScreenRect(buttonRect), new Vector2(420, 440));
         }
 
         private void OnEnable() => Undo.undoRedoPerformed += Repaint;
@@ -45,10 +44,11 @@ namespace Samon.FacialExpressionEditor.Editor
         private Vector2 _mouthScroll;
         private readonly HashSet<int> _mouthSelection = new HashSet<int>();
         private int _mouthAnchor = -1;
+        private int _mouthFocus = -1;
 
         private void ClearMouthSelection()
         {
-            _mouthSelection.Clear(); _mouthAnchor = -1; _mouthScroll = Vector2.zero;
+            _mouthSelection.Clear(); _mouthAnchor = -1; _mouthFocus = -1; _mouthScroll = Vector2.zero;
         }
 
         private void DrawMouthCancelRows(ExpressionSet set)
@@ -101,18 +101,30 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (e.type == EventType.MouseDown && e.button == 0 && row.Contains(e.mousePosition))
                 {
                     SelectMouthRange(_mouthSelection, ref _mouthAnchor, i, e.shift, e.control || e.command);
+                    _mouthFocus = i;
                     GUI.FocusControl(null); e.Use(); Repaint();
                 }
             }
             GUI.EndScrollView();
             if (names.Length == 0) EditorGUILayout.LabelField("該当するシェイプキーはありません。", EditorStyles.miniLabel);
             EditorGUILayout.LabelField($"選択中：{_mouthSelection.Count} 件", EditorStyles.miniLabel);
-            using (new EditorGUI.DisabledScope(_mouthSelection.Count == 0))
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("選択した項目を0にする")) ApplyMouthSelection(set, root, path, names, false);
-                using (new EditorGUI.DisabledScope(set.mouthCancelAnimation == null))
-                    if (GUILayout.Button("選択した項目を対象から外す")) ApplyMouthSelection(set, root, path, names, true);
+                using (new EditorGUI.DisabledScope(_mouthSelection.Count == 0))
+                    if (GUILayout.Button("追加")) { ApplyMouthSelection(set, root, path, names); Close(); GUIUtility.ExitGUI(); }
+                if (GUILayout.Button("キャンセル")) { Close(); GUIUtility.ExitGUI(); }
+            }
+            var keyboard = Event.current;
+            if (keyboard.type == EventType.KeyDown && keyboard.keyCode == KeyCode.Escape)
+            { keyboard.Use(); Close(); GUIUtility.ExitGUI(); }
+            if (keyboard.type == EventType.KeyDown && !EditorGUIUtility.editingTextField && names.Length > 0 &&
+                (keyboard.keyCode == KeyCode.UpArrow || keyboard.keyCode == KeyCode.DownArrow))
+            {
+                _mouthFocus = Mathf.Clamp(_mouthFocus < 0 ? 0 : _mouthFocus + (keyboard.keyCode == KeyCode.DownArrow ? 1 : -1), 0, names.Length - 1);
+                SelectMouthRange(_mouthSelection, ref _mouthAnchor, _mouthFocus, keyboard.shift, keyboard.control || keyboard.command);
+                if (_mouthFocus * rowHeight < _mouthScroll.y) _mouthScroll.y = _mouthFocus * rowHeight;
+                else if ((_mouthFocus + 1) * rowHeight > _mouthScroll.y + area.height) _mouthScroll.y = (_mouthFocus + 1) * rowHeight - area.height;
+                keyboard.Use(); Repaint();
             }
         }
 
@@ -131,17 +143,17 @@ namespace Samon.FacialExpressionEditor.Editor
             }
         }
 
-        private void ApplyMouthSelection(ExpressionSet set, GameObject root, string path, string[] names, bool remove)
+        private void ApplyMouthSelection(ExpressionSet set, GameObject root, string path, string[] names)
         {
             Undo.IncrementCurrentGroup();
             var group = Undo.GetCurrentGroup();
-            Undo.SetCurrentGroupName(remove ? "口キャンセルの対象を外す" : "口キャンセルを0に設定");
+            Undo.SetCurrentGroupName("口キャンセルの項目を追加");
             var clip = ExpressionSetUtility.CreateMouthCancelClip(set);
             foreach (var i in _mouthSelection.OrderBy(i => i))
             {
                 var binding = ClipEditing.BlendShape(path, names[i]);
-                if (remove) MouthCancelEditing.SetShapeSelected(set, root, binding, false);
-                else MouthCancelEditing.SetValue(clip, binding, 0);
+                // Existing entries keep their authored value; only new entries start at zero.
+                if (AnimationUtility.GetEditorCurve(clip, binding) == null) MouthCancelEditing.SetValue(clip, binding, 0);
             }
             AssetDatabase.SaveAssetIfDirty(clip);
             Undo.CollapseUndoOperations(group);

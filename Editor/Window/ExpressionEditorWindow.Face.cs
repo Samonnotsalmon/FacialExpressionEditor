@@ -265,13 +265,70 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// 口モーフキャンセラーのシェイプキー。標準は元FXの口モーフキャンセラーのもの。自分で編集すると追加・削除できる。
         /// </summary>
+        private Vector2 _mouthRegisteredScroll;
+
+        private void DrawRegisteredMouthShapes(ExpressionSet set)
+        {
+            var clip = set.mouthCancelAnimation;
+            var bindings = clip != null ? AnimationUtility.GetCurveBindings(clip)
+                .Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape.") &&
+                    !LipSyncProtection.IsProtected(b, AvatarRoot, set)).ToArray() : new EditorCurveBinding[0];
+            if (bindings.Length == 0)
+                EditorGUILayout.LabelField("＋からシェイプキーを追加できます。", EditorStyles.centeredGreyMiniLabel);
+            else
+            {
+                using (var scroll = new EditorGUILayout.ScrollViewScope(_mouthRegisteredScroll, GUILayout.Height(Mathf.Min(240, bindings.Length * 24 + 8))))
+                {
+                    _mouthRegisteredScroll = scroll.scrollPosition;
+                    foreach (var binding in bindings)
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        var shape = binding.propertyName.Substring(11);
+                        var hint = MouthCancelEditing.BaseFaceHighlight(Variant, binding.path, shape);
+                        var labelRect = GUILayoutUtility.GetRect(new GUIContent(shape), EditorStyles.label, GUILayout.ExpandWidth(true));
+                        if (hint != null && Event.current.type == EventType.Repaint) EditorGUI.DrawRect(labelRect, new Color(0.3f, 0.6f, 1f, 0.22f));
+                        GUI.Label(labelRect, new GUIContent((hint != null ? "● " : "") + shape, hint ?? binding.path));
+                        var value = AnimationUtility.GetEditorCurve(clip, binding).Evaluate(0);
+                        EditorGUI.BeginChangeCheck();
+                        var next = EditorGUILayout.FloatField(value, GUILayout.Width(65));
+                        if (EditorGUI.EndChangeCheck())
+                        {
+                            clip = ExpressionSetUtility.MakeMouthCancelEditable(set);
+                            MouthCancelEditing.SetValue(clip, binding, next);
+                            AssetDatabase.SaveAssetIfDirty(clip);
+                        }
+                        if (GUILayout.Button("−", GUILayout.Width(25)))
+                        {
+                            RemoveRegisteredMouthShapes(set, new[] { binding });
+                            GUIUtility.ExitGUI();
+                        }
+                    }
+                }
+            }
+            using (new EditorGUI.DisabledScope(bindings.Length == 0))
+                if (GUILayout.Button("すべて削除")) RemoveRegisteredMouthShapes(set, bindings);
+        }
+
+        private static void RemoveRegisteredMouthShapes(ExpressionSet set, EditorCurveBinding[] bindings)
+        {
+            Undo.IncrementCurrentGroup();
+            var group = Undo.GetCurrentGroup();
+            var clip = ExpressionSetUtility.MakeMouthCancelEditable(set);
+            if (clip == null) return;
+            Undo.RecordObject(clip, "口キャンセルの項目を削除");
+            foreach (var binding in bindings) AnimationUtility.SetEditorCurve(clip, binding, null);
+            EditorUtility.SetDirty(clip);
+            AssetDatabase.SaveAssetIfDirty(clip);
+            Undo.CollapseUndoOperations(group);
+        }
+
         private void DrawMouthCanceler(ExpressionSet set)
         {
             EditorGUILayout.LabelField("口モーフキャンセラー", EditorStyles.boldLabel);
             var manual = (AnimationClip)EditorGUILayout.ObjectField("対象クリップ（D&D）", set.mouthCancelAnimation, typeof(AnimationClip), false);
             if (manual != set.mouthCancelAnimation)
                 Modify(set, "口キャンセルの指定", () => set.mouthCancelAnimation = manual);
-            EditorGUILayout.LabelField("話している間は、クリップの0秒時点の値を使います。「シェイプキーを編集」から複数選択できます。編集時は専用コピーに記録します。", EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.LabelField("話している間は、クリップの0秒時点の値を使います。「＋」から複数選択して追加できます。編集時は専用コピーに記録します。", EditorStyles.wordWrappedMiniLabel);
             if (manual == null)
             {
                 EditorGUILayout.HelpBox("クリップ未指定。既存クリップを指定するか、専用クリップを作成してください。", MessageType.Info);
@@ -280,10 +337,12 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (GUILayout.Button("専用クリップを新規作成"))
                 {
                     ExpressionSetUtility.CreateMouthCancelClip(set);
-                    MouthCancelSelectionWindow.Open(_avatar);
+
                 }
             }
-            if (GUILayout.Button("シェイプキーを編集…")) MouthCancelSelectionWindow.Open(_avatar);
+            DrawRegisteredMouthShapes(set);
+            var addRect = GUILayoutUtility.GetRect(new GUIContent("＋ シェイプキーを追加"), GUI.skin.button);
+            if (GUI.Button(addRect, "＋ シェイプキーを追加")) MouthCancelSelectionWindow.Open(_avatar, addRect);
         }
 
         /// <summary>
