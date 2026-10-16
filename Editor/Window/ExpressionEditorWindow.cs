@@ -294,6 +294,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     _setups = null;
                     DisposePreview();
+                    DisposeCameraPreview();
                     _thumbnails.Clear();
                     MarkLibraryDirty();
                 }
