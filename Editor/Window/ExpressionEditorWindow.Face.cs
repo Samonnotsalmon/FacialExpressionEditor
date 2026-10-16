@@ -271,15 +271,19 @@ namespace Samon.FacialExpressionEditor.Editor
             var manual = (AnimationClip)EditorGUILayout.ObjectField("対象クリップ（D&D）", set.mouthCancelAnimation, typeof(AnimationClip), false);
             if (manual != set.mouthCancelAnimation)
                 Modify(set, "口キャンセルの指定", () => set.mouthCancelAnimation = manual);
-            EditorGUILayout.LabelField("話している間は、クリップの0秒時点の値を使います。行を選び、Shiftで範囲選択・Ctrlで個別追加できます。編集時は専用コピーに記録します。", EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.LabelField("話している間は、クリップの0秒時点の値を使います。「シェイプキーを編集」から複数選択できます。編集時は専用コピーに記録します。", EditorStyles.wordWrappedMiniLabel);
             if (manual == null)
             {
                 EditorGUILayout.HelpBox("クリップ未指定。既存クリップを指定するか、専用クリップを作成してください。", MessageType.Info);
                 if (MouthMorphsInUse(set).Count > 0)
                     EditorGUILayout.LabelField("未指定の間は従来の自動設定／保存済み設定を使用します。", EditorStyles.wordWrappedMiniLabel);
-                if (GUILayout.Button("専用クリップを新規作成")) ExpressionSetUtility.CreateMouthCancelClip(set);
+                if (GUILayout.Button("専用クリップを新規作成"))
+                {
+                    ExpressionSetUtility.CreateMouthCancelClip(set);
+                    MouthCancelSelectionWindow.Open(_avatar);
+                }
             }
-            DrawMouthCancelRows(set);
+            if (GUILayout.Button("シェイプキーを編集…")) MouthCancelSelectionWindow.Open(_avatar);
         }
 
         /// <summary>

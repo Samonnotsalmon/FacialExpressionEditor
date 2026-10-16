@@ -5,8 +5,39 @@ using UnityEngine;
 
 namespace Samon.FacialExpressionEditor.Editor
 {
-    internal partial class ExpressionEditorWindow
+    internal sealed class MouthCancelSelectionWindow : EditorWindow
     {
+        [SerializeField] private FacialExpressionAvatar _avatar;
+        private GameObject AvatarRoot => AvatarSetup.AvatarRootOf(_avatar);
+        private FaceVariant Variant => _avatar != null ? _avatar.faceVariant : null;
+
+        public static void Open(FacialExpressionAvatar avatar)
+        {
+            var window = GetWindow<MouthCancelSelectionWindow>();
+            window._avatar = avatar;
+            window.ClearMouthSelection();
+            window.titleContent = new GUIContent("口キャンセルのシェイプキー");
+            window.minSize = new Vector2(480, 360);
+            window.Show();
+        }
+
+        private void OnEnable() => Undo.undoRedoPerformed += Repaint;
+        private void OnDisable() => Undo.undoRedoPerformed -= Repaint;
+
+        private void OnGUI()
+        {
+            var set = _avatar != null ? _avatar.expressionSet : null;
+            if (set == null || AvatarRoot == null)
+            {
+                EditorGUILayout.HelpBox("編集対象のアバターがありません。表情エディタから開き直してください。", MessageType.Info);
+                return;
+            }
+            EditorGUILayout.LabelField("Shift：範囲選択　Ctrl：個別追加・解除", EditorStyles.wordWrappedMiniLabel);
+            using (new EditorGUI.DisabledScope(true))
+                EditorGUILayout.ObjectField("記録先クリップ", set.mouthCancelAnimation, typeof(AnimationClip), false);
+            DrawMouthCancelRows(set);
+        }
+
         private SkinnedMeshRenderer _mouthMesh;
         private GameObject _mouthRoot;
         private ExpressionSet _mouthSet;
@@ -26,7 +57,7 @@ namespace Samon.FacialExpressionEditor.Editor
             if (root == null) return;
             var meshes = root.GetComponentsInChildren<SkinnedMeshRenderer>(true)
                 .Where(r => r.sharedMesh != null && r.sharedMesh.blendShapeCount > 0).ToList();
-            if (meshes.Count == 0) return;
+            if (meshes.Count == 0) { EditorGUILayout.HelpBox("シェイプキーのあるメッシュがありません。", MessageType.Info); return; }
             if (_mouthRoot != root || _mouthSet != set || !meshes.Contains(_mouthMesh))
             {
                 _mouthRoot = root; _mouthSet = set;
@@ -46,7 +77,7 @@ namespace Samon.FacialExpressionEditor.Editor
             _mouthSelection.RemoveWhere(i => i >= names.Length);
             EditorGUILayout.LabelField("青・●：ベース顔で変更　✓：クリップに登録済み", EditorStyles.wordWrappedMiniLabel);
             const float rowHeight = 22;
-            var area = GUILayoutUtility.GetRect(0, 220, GUILayout.ExpandWidth(true));
+            var area = GUILayoutUtility.GetRect(0, 100000, 100, 100000, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
             var content = new Rect(0, 0, Mathf.Max(0, area.width - 16), names.Length * rowHeight);
             _mouthScroll = GUI.BeginScrollView(area, _mouthScroll, content);
             var first = Mathf.Max(0, Mathf.FloorToInt(_mouthScroll.y / rowHeight));

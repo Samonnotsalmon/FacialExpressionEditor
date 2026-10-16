@@ -53,7 +53,7 @@ try{
   variant.baseFace[0].enabled=false;
   Check(Call("MouthCancelEditing","BaseFaceHighlight",variant,"Face","Smile")==null,"Disabled base-face correction is not highlighted");
  }finally{UnityEngine.Object.DestroyImmediate(variant);}
- var selectMethod=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow").GetMethod("SelectMouthRange",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
+ var selectMethod=asm.GetType("Samon.FacialExpressionEditor.Editor.MouthCancelSelectionWindow").GetMethod("SelectMouthRange",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
  var selection=new System.Collections.Generic.HashSet<int>(); int anchor=-1;
  void Select(int index,bool shift,bool additive){var args=new object[]{selection,anchor,index,shift,additive}; selectMethod.Invoke(null,args); anchor=(int)args[1];}
  Select(2,false,false); Select(5,true,false);
