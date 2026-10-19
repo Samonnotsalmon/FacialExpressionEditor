@@ -15,6 +15,8 @@ namespace Samon.FacialExpressionEditor.Editor
         public const string DanceActiveParameter = Prefix + "DanceActive";
         public const string ModeParameter = Prefix + "Mode";
         public const string EmoteParameter = Prefix + "Emote";
+        // ゲーム内メニューの「パーツ → すべてOFF」（押している間だけ1。同期しない）。
+        public const string PartResetParameter = Prefix + "PartReset";
 
         /// <summary>
         /// メニューで選べるモード（表情セット）。FEE/Mode がこの値のとき有効になる。

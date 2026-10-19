@@ -195,10 +195,11 @@ namespace Samon.FacialExpressionEditor.Editor
                 foreach (var binding in floatBindings)
                 {
                     if (clip.GetFloatCurve(binding) != null) continue;
-                    if (AnimationUtility.GetFloatValue(_avatarRoot, binding, out var value))
-                    {
-                        clip.SetFloatCurve(binding, new AnimationCurve(new Keyframe(0, value)));
-                    }
+                    // マテリアルの値は、メッシュの先頭のマテリアルの値ではなく、戻すべき値を選ぶ（下の TryGetMaterialRestValue）。
+                    var found = IsMaterialBinding(binding)
+                        ? TryGetMaterialRestValue(binding, out var value)
+                        : AnimationUtility.GetFloatValue(_avatarRoot, binding, out value);
+                    if (found) clip.SetFloatCurve(binding, new AnimationCurve(new Keyframe(0, value)));
                 }
 
                 foreach (var binding in objectBindings)
@@ -233,31 +234,70 @@ namespace Samon.FacialExpressionEditor.Editor
         public void FillMissingMaterialDefaults(IEnumerable<VirtualClip> clips)
         {
             var list = clips.ToList();
-            var bindings = list.SelectMany(c => c.GetFloatCurveBindings())
-                .Where(b => typeof(Renderer).IsAssignableFrom(b.type) && b.propertyName.StartsWith("material.")).Distinct().ToList();
-            var materialValues = new Dictionary<Material, Dictionary<string, float>>();
+            var bindings = list.SelectMany(c => c.GetFloatCurveBindings()).Where(IsMaterialBinding).Distinct().ToList();
             foreach (var binding in bindings)
             {
-                var transform = string.IsNullOrEmpty(binding.path) ? _avatarRoot.transform : _avatarRoot.transform.Find(binding.path);
-                var renderer = transform != null ? transform.GetComponent(binding.type) as Renderer : null;
-                if (renderer == null) continue;
-                var property = binding.propertyName.Substring("material.".Length);
-                float value = 0;
-                var found = false;
-                foreach (var material in renderer.sharedMaterials)
-                {
-                    if (material == null) continue;
-                    if (!materialValues.TryGetValue(material, out var values))
-                        materialValues[material] = values = MaterialAnimationValues.Read(material);
-                    if (!values.TryGetValue(property, out value)) continue;
-                    found = true;
-                    break;
-                }
-                if (_materialDefaults.TryGetValue(binding, out var initial)) { value = initial; found = true; }
-                if (!found) continue;
+                if (!TryGetMaterialRestValue(binding, out var value)) continue;
                 foreach (var clip in list.Where(c => c.GetFloatCurve(binding) == null))
                     clip.SetFloatCurve(binding, AnimationCurve.Constant(0, 1, value));
             }
+        }
+
+        private static bool IsMaterialBinding(EditorCurveBinding binding) =>
+            typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName.StartsWith("material.");
+
+        private readonly Dictionary<Material, Dictionary<string, float>> _materialValues = new Dictionary<Material, Dictionary<string, float>>();
+
+        // マテリアルごとに初期値が違い、戻す値を決められなかったパラメータ（ビルドの警告に出す）。
+        public readonly HashSet<string> AmbiguousMaterialProperties = new HashSet<string>();
+
+        /// <summary>
+        /// 表情やパーツが記録していないときに戻すマテリアルの値。アニメーションのマテリアルの値はメッシュの全マテリアルに
+        /// 同じ値で入るので（Write Defaults で戻る値も先頭のマテリアルのもの）、マテリアルごとに初期値が違うと、
+        /// 先頭のマテリアルの値を使うと別のマテリアル（顔のほほ染めなど）が変わってしまう。次の順に決める。
+        /// 1. 元FXの待機中のステートが書いている値（作者が決めた「戻す値」）
+        /// 2. そのパラメータを持つマテリアルがすべて同じ値なら、その値
+        /// 3. 表情の編集で記録したときに選んでいたマテリアルの値
+        /// 4. 決まらなければ先頭のマテリアルの値（Unity と同じ）。ビルドの警告に出す
+        /// </summary>
+        private bool TryGetMaterialRestValue(EditorCurveBinding binding, out float value)
+        {
+            if (_materialDefaults.TryGetValue(binding, out value)) return true;
+
+            value = 0;
+            var transform = string.IsNullOrEmpty(binding.path) ? _avatarRoot.transform : _avatarRoot.transform.Find(binding.path);
+            var renderer = transform != null ? transform.GetComponent(binding.type) as Renderer : null;
+            if (renderer == null) return false;
+
+            var property = binding.propertyName.Substring("material.".Length);
+            var candidates = new List<(int slot, float value)>();
+            var materials = renderer.sharedMaterials;
+            for (var slot = 0; slot < materials.Length; slot++)
+            {
+                var material = materials[slot];
+                if (material == null) continue;
+                if (!_materialValues.TryGetValue(material, out var values))
+                    _materialValues[material] = values = MaterialAnimationValues.Read(material);
+                if (values.TryGetValue(property, out var v)) candidates.Add((slot, v));
+            }
+            if (candidates.Count == 0) return false;
+
+            var first = candidates[0].value;
+            value = first;
+            if (candidates.All(c => Mathf.Approximately(c.value, first))) return true;
+
+            var dot = property.LastIndexOf('.');
+            var baseName = dot >= 0 ? property.Substring(0, dot) : property;
+            var source = _set.materialPropertySources.Find(s => s.path == binding.path && s.property == baseName);
+            var chosen = source != null ? candidates.FindIndex(c => c.slot == source.slot) : -1;
+            if (chosen >= 0)
+            {
+                value = candidates[chosen].value;
+                return true;
+            }
+
+            AmbiguousMaterialProperties.Add($"{binding.path}：{property}");
+            return true;
         }
 
         private static void CopyCurves(AnimationClip from, VirtualClip to, HashSet<string> only)

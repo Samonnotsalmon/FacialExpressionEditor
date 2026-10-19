@@ -55,6 +55,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 parameters.parameters.Add(Parameter(parameter.Parameter,
                     parameter.IsGrouped ? ParameterSyncType.Int : ParameterSyncType.Bool, false));
             }
+            if (plan.Parts.Count > 0)
+            {
+                // 「すべてOFF」は押した本人の画面でパーツのパラメータを0にするだけなので、同期しない。
+                var reset = Parameter(BuildPlan.PartResetParameter, ParameterSyncType.Bool, false);
+                reset.localOnly = true;
+                parameters.parameters.Add(reset);
+            }
         }
 
         internal static TextureFormat IconFormat(BuildTarget target) =>
@@ -168,6 +175,10 @@ namespace Samon.FacialExpressionEditor.Editor
                 var partControls = plan.Parts
                     .Select(p => Toggle(p.Part.name, p.Parameter, p.Value))
                     .ToList();
+                // 先頭に「すべてOFF」（押すと、ONにしているパーツをまとめてOFFにする）。
+                var reset = Toggle("すべてOFF", BuildPlan.PartResetParameter, 1);
+                reset.type = Control.ControlType.Button;
+                partControls.Insert(0, reset);
                 rootControls.Add(SubMenu("パーツ", Menu(context, "パーツ", partControls)));
             }
 

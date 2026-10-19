@@ -126,6 +126,27 @@ namespace Samon.FacialExpressionEditor.Editor
                 foreach (var pair in changed)
                     ClipEditing.SetFloat(targetClip, EditorCurveBinding.FloatCurve(_shaderRendererPath, renderer.GetType(), ClipEditing.MaterialPrefix + pair.Key), pair.Value);
             });
+            RememberMaterialSlot(changed.Select(p => BaseProperty(ClipEditing.MaterialPrefix + p.Key)));
+        }
+
+        /// <summary>
+        /// どのマテリアルを見て記録したかを表情データに覚えておく。同じメッシュでマテリアルごとに初期値が違うとき、
+        /// 記録していない表情やパーツOFFで戻す値を、このマテリアルの値にする（ビルド）。
+        /// </summary>
+        private void RememberMaterialSlot(IEnumerable<string> properties)
+        {
+            var set = Set;
+            if (set == null) return;
+            var names = properties.Distinct().ToList();
+            if (names.All(n => set.materialPropertySources.Any(s => s.path == _shaderRendererPath && s.property == n && s.slot == _materialSlot))) return;
+
+            Undo.RecordObject(set, "マテリアルのパラメータを変更");
+            foreach (var name in names)
+            {
+                set.materialPropertySources.RemoveAll(s => s.path == _shaderRendererPath && s.property == name);
+                set.materialPropertySources.Add(new MaterialPropertySource { path = _shaderRendererPath, property = name, slot = _materialSlot });
+            }
+            EditorUtility.SetDirty(set);
         }
 
         /// <summary>

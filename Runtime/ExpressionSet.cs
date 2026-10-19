@@ -85,6 +85,11 @@ namespace Samon.FacialExpressionEditor
         // 顔を動かしている元FXのレイヤーの扱い（指定が無いものはそのまま使う）。
         public List<OriginalLayerSetting> originalLayerSettings = new List<OriginalLayerSetting>();
 
+        // マテリアルのパラメータを記録したときに選んでいたマテリアル（メッシュのパスとパラメータ名 → スロット）。
+        // アニメーションのマテリアルの値はメッシュの全マテリアルに同じ値で入るので、マテリアルごとに初期値が違うとき、
+        // 記録していない表情やパーツOFFで戻す値は、このマテリアルの値にする。
+        public List<MaterialPropertySource> materialPropertySources = new List<MaterialPropertySource>();
+
         // 元FXのジェスチャーレイヤー名。ビルド時に取り除き、その位置に生成した表情レイヤーを入れる。
         public List<string> originalGestureLayers = new List<string>();
 
@@ -132,5 +137,16 @@ namespace Samon.FacialExpressionEditor
         {
             foreach (var gestureSet in gestureSets) gestureSet.mapping.EnsureSize();
         }
+    }
+
+    /// <summary>
+    /// マテリアルのパラメータ（_Color2nd など、成分は含まない）を記録したときに選んでいたマテリアルのスロット。
+    /// </summary>
+    [System.Serializable]
+    public class MaterialPropertySource
+    {
+        public string path;
+        public string property;
+        public int slot;
     }
 }

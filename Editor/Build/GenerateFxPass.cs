@@ -98,6 +98,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 EnsureParameter(fx, entry.Parameter,
                     entry.IsGrouped ? AnimatorControllerParameterType.Int : AnimatorControllerParameterType.Bool);
             }
+            if (plan.Parts.Count > 0) EnsureParameter(fx, BuildPlan.PartResetParameter, AnimatorControllerParameterType.Bool);
             foreach (var trigger in ContactTriggers(set))
             {
                 EnsureParameter(fx, trigger.parameter, trigger.isFloat ? AnimatorControllerParameterType.Float : AnimatorControllerParameterType.Bool);
@@ -121,11 +122,18 @@ namespace Samon.FacialExpressionEditor.Editor
             if (reactionFixedFace != null) fx.Layers = fx.Layers.Concat(new[] { reactionFixedFace }).ToList();
             // Parts are overlays even when their original layers preceded gesture layers.
             fx.Layers = fx.Layers.Where(l => !partLayers.Contains(l)).Concat(partLayers).ToList();
+            if (plan.Parts.Count > 0) fx.Layers = fx.Layers.Concat(new[] { BuildPartResetLayer(cloneContext, plan, writeDefaults) }).ToList();
             var mmdState = context.GetState<MmdBuildState>();
             mmdState.PreserveGimmicks = !set.mmdStopEntireFx;
             mmdState.UnifyWriteDefaults = set.mmdUnifyFxWriteDefaults;
             BuildDanceMenuControl(fx, cloneContext, set.mmdStopEntireFx);
             BuildMotionIntegration(fx, cloneContext, face, expressionLayer, blinkLayer, cancelerLayers, partLayers, reactionFixedFace);
+            if (builder.AmbiguousMaterialProperties.Count > 0)
+            {
+                Debug.LogWarning("[FacialExpressionEditor] 次のマテリアルのパラメータは、同じメッシュのマテリアルごとに初期値が違うため、" +
+                                 "記録していない表情・パーツOFFで戻す値を先頭のマテリアルの値にしました。表情の編集でそのマテリアルを選んで記録し直すか、" +
+                                 "戻したい値を表情に記録してください。\n" + string.Join("\n", builder.AmbiguousMaterialProperties));
+            }
             if (!set.mmdStopEntireFx)
                 foreach (var state in fx.Layers.Where(l => l.Name.StartsWith(LayerPrefix))
                     .SelectMany(l => l.AllReachableNodes().OfType<VirtualState>())) state.WriteDefaultValues = true;
@@ -702,6 +710,44 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             return layers;
+        }
+
+        /// <summary>
+        /// ゲーム内メニューの「パーツ → すべてOFF」。押すと、パーツのパラメータ（単独のBool・排他グループのInt）を
+        /// 押した本人の画面ですべて0にする（同期するパラメータなので、ほかの人にもOFFが伝わる）。
+        /// 何も動かさないので重みは0（ステートのBehaviourは重み0でも動く）。
+        /// </summary>
+        private static VirtualLayer BuildPartResetLayer(CloneContext cloneContext, BuildPlan plan, bool writeDefaults)
+        {
+            var layer = VirtualLayer.Create(cloneContext, LayerPrefix + "Part Reset");
+            layer.DefaultWeight = 0;
+            var root = layer.StateMachine;
+            var emptyClip = VirtualClip.Create("Empty");
+            var idle = root.AddState("Idle", emptyClip, new Vector3(300, 0, 0));
+            var reset = root.AddState("Reset", emptyClip, new Vector3(300, 80, 0));
+            idle.WriteDefaultValues = reset.WriteDefaultValues = writeDefaults;
+            root.DefaultState = idle;
+
+            var driver = ScriptableObject.CreateInstance<VRCAvatarParameterDriver>();
+            driver.localOnly = true;
+            foreach (var parameter in plan.Parts.Select(p => p.Parameter).Distinct())
+            {
+                driver.parameters.Add(new VRC_AvatarParameterDriver.Parameter
+                {
+                    type = VRC_AvatarParameterDriver.ChangeType.Set,
+                    name = parameter,
+                    value = 0,
+                });
+            }
+            reset.Behaviours = ImmutableList.Create<StateMachineBehaviour>(driver);
+
+            var toReset = Transition(reset, 0, Condition(BuildPlan.PartResetParameter, AnimatorConditionMode.If, 0));
+            toReset.Name = "Reset pressed: all parts off";
+            idle.Transitions = ImmutableList.Create(toReset);
+            var back = Transition(idle, 0, Condition(BuildPlan.PartResetParameter, AnimatorConditionMode.IfNot, 0));
+            back.Name = "Reset released";
+            reset.Transitions = ImmutableList.Create(back);
+            return layer;
         }
 
         private static void SetPartLayerWeight(VirtualState state, VirtualLayer layer, float weight)

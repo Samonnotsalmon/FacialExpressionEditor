@@ -20,10 +20,18 @@ namespace Samon.FacialExpressionEditor.Editor
             AssemblyReloadEvents.beforeAssemblyReload += Clear;
             Undo.undoRedoPerformed += Clear;
         }
+        // 取り込みの途中で表情のクリップを複製すると projectChanged が来るが、そのとき取り込み中の処理はまだ
+        // 解析用FXを使っている。その場で壊すと続きが読めなくなる（MissingReferenceException）ので、
+        // キャッシュからは外すだけにして、壊すのは今の処理が終わってからにする。
         private static void Clear()
         {
-            foreach (var controller in Cache.Values) if (controller != null) Object.DestroyImmediate(controller);
+            var old = Cache.Values.Where(c => c != null).ToList();
             Cache.Clear();
+            if (old.Count == 0) return;
+            EditorApplication.delayCall += () =>
+            {
+                foreach (var controller in old) if (controller != null) Object.DestroyImmediate(controller);
+            };
         }
         public static AnimatorController Get(VRCAvatarDescriptor descriptor)
         {
