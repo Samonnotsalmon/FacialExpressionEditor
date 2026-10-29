@@ -42,9 +42,6 @@ namespace Samon.FacialExpressionEditor.Editor
 
         public bool HasMouthCanceler => MouthMorphs.Count > 0;
 
-        // 自動で置き換える元FXのまばたきレイヤー。口キャンセルの置き換えは利用者のレイヤー選択に従う。
-        public List<string> BlinkLayersToReplace { get; private set; } = new List<string>();
-
         // 元FXの、顔を動かしているレイヤーの扱い。AFK は顔にベース顔とこの顔だけのAFKの動きを適用し、
         // それ以外は表情データの指定に従って顔のカーブを取り除くか、レイヤーごと使わない。
         public HashSet<string> FacePaths { get; private set; } = new HashSet<string>();
@@ -73,12 +70,11 @@ namespace Samon.FacialExpressionEditor.Editor
             var plan = new FaceControlPlan();
             var descriptor = avatarRoot.GetComponent<VRCAvatarDescriptor>();
 
-            var defaults = AvatarFaceDefaults.Find(descriptor, set);
             plan.MotionRules = MotionIntegration.Rules(set, descriptor).Where(r => r.enabled).ToList();
             plan.MotionParameters = MotionIntegration.Parameters(descriptor);
             plan.MotionParameterDefaults = MotionIntegration.Controllers(descriptor).SelectMany(s => s.controller.parameters).GroupBy(p => p.name).ToDictionary(g => g.Key, g => g.First());
             plan.ApplyBaseFaceToAfk = set.applyBaseFaceToAfk;
-            var ruleErrors = MotionSetupWarnings(set, descriptor, defaults);
+            var ruleErrors = MotionSetupWarnings(set, descriptor);
             if (ruleErrors.Count > 0) throw new System.InvalidOperationException("既存モーション連携の設定を確認してください：\n" + string.Join("\n", ruleErrors));
             var expressions = buildPlan.Modes.SelectMany(m => m.Emotes)
                 .Concat(buildPlan.EmoteValues.Keys.Select(set.FindExpression))
@@ -91,10 +87,6 @@ namespace Samon.FacialExpressionEditor.Editor
             if (blinkIssue != null) throw new System.InvalidOperationException(blinkIssue);
             if (set.UsesExistingBlink) plan.BlinkClip = set.blinkAnimation;
             plan.BlinkShapes = ResolveBlinkShapes(set, avatarRoot);
-            if (plan.ReplacesBlink)
-            {
-                if (defaults.BlinkLayer != null) plan.BlinkLayersToReplace.Add(defaults.BlinkLayer);
-            }
 
             // MMDから戻ったときも現在の表情の視線・リップシンク設定を復元する。
             plan.ControlsEyes = true;
@@ -105,9 +97,7 @@ namespace Samon.FacialExpressionEditor.Editor
             plan.UsesMouthCancelParameter = plan.HasMouthCanceler && expressions.Any(e => !plan.CancelsMouth(e));
 
             var avatar = avatarRoot.GetComponentInChildren<FacialExpressionAvatar>(true);
-            var handled = new List<string>();
-            if (defaults.BlinkLayer != null) handled.Add(defaults.BlinkLayer);
-            var analysis = OriginalFxAnalysis.Analyze(descriptor, set, avatar != null ? avatar.faceVariant : null, handled);
+            var analysis = OriginalFxAnalysis.Analyze(descriptor, set, avatar != null ? avatar.faceVariant : null, new List<string>());
             plan.FacePaths = analysis.FacePaths;
             plan.FacePaths.UnionWith(set.faceMeshPaths);
             plan.ReactionLayers = new HashSet<string>(ReactionImporter.Scan(descriptor, set, avatar != null ? avatar.faceVariant : null).SelectMany(r => r.Layers));
@@ -120,14 +110,10 @@ namespace Samon.FacialExpressionEditor.Editor
             return plan;
         }
 
-        internal static List<string> MotionSetupWarnings(ExpressionSet set, VRCAvatarDescriptor descriptor, AvatarFaceDefaults defaults)
+        internal static List<string> MotionSetupWarnings(ExpressionSet set, VRCAvatarDescriptor descriptor)
         {
             var rules = MotionIntegration.Rules(set, descriptor).Where(r => r.enabled).ToList();
-            var errors = MotionIntegration.Validate(set, descriptor, rules);
-            foreach (var rule in rules.Where(r => r.sourcePlayable == "FX" && !string.IsNullOrEmpty(r.sourceLayer)))
-                if (rule.sourceLayer == defaults.BlinkLayer)
-                    errors.Add(rule.name + "：連携元が自動置換する瞬きレイヤーです。保持されるモーションのステートを選んでください。");
-            return errors;
+            return MotionIntegration.Validate(set, descriptor, rules);
         }
 
         public static List<EditorCurveBinding> ResolveMouthShapes(ExpressionSet set, GameObject root)

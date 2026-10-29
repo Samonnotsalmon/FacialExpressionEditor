@@ -212,7 +212,12 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(ExpressionSet.originalGestureLayers)),
                 new GUIContent("置き換える元FXレイヤー（ジェスチャー）"), true);
             EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(ExpressionSet.originalPartLayers)),
-                new GUIContent("置き換える元FXレイヤー（パーツ）"), true);            serializedObject.ApplyModifiedProperties();
+                new GUIContent("置き換える元FXレイヤー（パーツ）"), true);
+            if (serializedObject.ApplyModifiedProperties())
+            {
+                FxLayerSelection.SyncImportSelection(set);
+                EditorUtility.SetDirty(set);
+            }
 
             EditorGUILayout.LabelField("ライブラリのフォルダ", EditorStyles.miniBoldLabel);
             foreach (var guid in set.libraryFolderGuids.ToList())

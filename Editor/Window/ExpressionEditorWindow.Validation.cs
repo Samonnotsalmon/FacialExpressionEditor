@@ -16,7 +16,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             if (Event.current.type == EventType.Layout)
             {
-                _motionSetupWarnings = FaceControlPlan.MotionSetupWarnings(set, Descriptor, FaceDefaults);
+                _motionSetupWarnings = FaceControlPlan.MotionSetupWarnings(set, Descriptor);
                 _menuSetupWarning = null;
                 // BuildPlan normalizes gesture arrays. Validate a copy so drawing does not modify user data.
                 var copy = Instantiate(set);
@@ -48,7 +48,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (!set.mmdStopEntireFx && !set.mmdUnifyFxWriteDefaults && fx != null)
                 {
                     var removed = new HashSet<string>(set.originalGestureLayers.Concat(set.originalPartLayers)
-                        .Concat(new[] { FaceDefaults.BlinkLayer })
                         .Concat(set.originalLayerSettings.Where(s => s.mode == OriginalLayerMode.Disable).Select(s => s.layerName)));
                     var off = fx.layers.Where(l => !removed.Contains(l.name)).SelectMany(l => FxImporter.AllStates(l.stateMachine)
                         .Where(s => !s.writeDefaultValues).Select(s => l.name + " / " + s.name)).Take(3).ToList();

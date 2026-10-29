@@ -23,7 +23,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 var face = AvatarSetup.FaceRenderer(_startAvatar);
                 if (face != null) _startMeshPaths.Add(AnimationUtility.CalculateTransformPath(face.transform, _startAvatar.transform));
                 var d = _startAvatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
-                _startLayerNames.AddRange(FxImporter.PeekGestures(d).layers);
+                _startLayerNames.AddRange(AvatarFaceDefaults.SuggestedReplacementLayers(d));
                 _startPreviewHeight = 0.03f; _startPreviewZoom = 1f;
             }
             DrawSetupCamera(_startAvatar, ref _startPreviewHeight, ref _startPreviewZoom);
@@ -39,7 +39,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (next && !_startLayerNames.Contains(layer.name)) _startLayerNames.Add(layer.name);
                 if (!next) _startLayerNames.Remove(layer.name);
             }
-            EditorGUILayout.HelpBox("チェックしたレイヤーを新しい表情制御に置き換えます。衣装・既存ギミック・引き継ぐパーツは残してください。", MessageType.Info);
+            EditorGUILayout.HelpBox("自動検出は初期チェックの候補です。残すレイヤーはチェックを外してください。瞬き・口キャンセルを含め、ビルド時に自動検出で削除することはありません。口キャンセルのクリップは作成後に指定してください。", MessageType.Info);
 
         }
 
@@ -112,16 +112,15 @@ namespace Samon.FacialExpressionEditor.Editor
             if (fx == null) return;
             foreach (var layer in fx.layers)
             {
-                var was = set.originalGestureLayers.Contains(layer.name);
-                var next = EditorGUILayout.ToggleLeft(layer.name, was);
-                if (next != was) Modify(set, "置き換えるFXを選択", () =>
-                {
-                    if (next) set.originalGestureLayers.Add(layer.name); else set.originalGestureLayers.Remove(layer.name);
-                    set.explicitLayerSelection = true;
-                    set.importLayerNames = set.originalGestureLayers.ToList();
-                });
+                var was = FxLayerSelection.IsSelected(set, layer.name);
+                var mode = set.originalLayerSettings.Find(s => s.layerName == layer.name)?.mode;
+                var suffix = mode == OriginalLayerMode.Disable ? "（詳細設定：無効）" :
+                    mode == OriginalLayerMode.StripFace ? "（詳細設定：顔カーブを除去）" :
+                    set.originalPartLayers.Contains(layer.name) ? "（パーツとして置き換え）" : "";
+                var next = EditorGUILayout.ToggleLeft(layer.name + suffix, was);
+                if (next != was) Modify(set, "置き換えるFXを選択", () => FxLayerSelection.SetSelected(set, layer.name, next));
             }
-            EditorGUILayout.HelpBox("口キャンセルなど、置き換える元FXレイヤーをチェックしてください。口キャンセルの内容は「まばたき・口」で指定します。チェックを外した口キャンセルレイヤーはそのまま残ります。", MessageType.Info);
+            EditorGUILayout.HelpBox("チェックした元FXレイヤーを置き換えます。チェックを外すとパーツ取り込み・詳細設定による削除も解除します。顔カーブ除去は「残す元FXの顔制御（詳細）」で変更できます。瞬き・口キャンセルの内容は「まばたき・口」で指定します。", MessageType.Info);
         }
 
         private void DuplicateFaceSetup(ExpressionSet set)

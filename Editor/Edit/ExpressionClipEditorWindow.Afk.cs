@@ -78,9 +78,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 _afkAnalysisFor = _avatar;
                 if (_avatar == null || Set == null) return _afkAnalysis = null;
 
-                var defaults = AvatarFaceDefaults.Find(Descriptor, Set);
                 var handled = new List<string>();
-                if (defaults.BlinkLayer != null) handled.Add(defaults.BlinkLayer);
                 return _afkAnalysis = OriginalFxAnalysis.Analyze(Descriptor, Set, Variant, handled);
             }
         }

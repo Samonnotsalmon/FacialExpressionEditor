@@ -12,7 +12,7 @@ namespace Samon.FacialExpressionEditor.Editor
     /// 元アバターのまばたき。口キャンセルは利用者が指定するクリップと置き換えレイヤーだけを使う。
     /// - まばたき：元FXにまばたきのアニメーション（名前に blink / まばたき / 瞬き を含むレイヤーかクリップ）があればそれ、
     ///   無ければアバターの設定（Eye Look の Eyelids）のまばたきのシェイプキー
-    /// 元FXのまばたきレイヤーは生成したものに置き換える。
+    /// 検出結果は読み取り専用。元FXの削除は保存済みのレイヤー選択だけで決める。
     /// </summary>
     internal class AvatarFaceDefaults
     {
@@ -104,6 +104,23 @@ namespace Samon.FacialExpressionEditor.Editor
         private static bool HasBlinkWord(string name)
         {
             return BlinkWords.Any(w => name.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        // 新規設定画面の初期チェック候補。ビルドや既存設定の再表示からは呼ばない。
+        public static List<string> SuggestedReplacementLayers(VRCAvatarDescriptor descriptor)
+        {
+            var result = FxImporter.PeekGestures(descriptor).layers.ToList();
+            var fx = FxImporter.GetFx(descriptor);
+            if (fx == null) return result;
+            foreach (var layer in fx.layers)
+            {
+                var clips = BlendShapeClips(layer, descriptor.gameObject);
+                var blink = clips.Any(c => (HasBlinkWord(layer.name) || HasBlinkWord(c.name)) && PreviewClips.IsTimeVarying(c));
+                var mouth = clips.Count > 0 && FxImporter.AllTransitions(layer.stateMachine)
+                    .Any(t => t.conditions.Any(c => c.parameter == "Voice" || c.parameter == FaceControlPlan.VisemeParameter));
+                if ((blink || mouth) && !result.Contains(layer.name)) result.Add(layer.name);
+            }
+            return result;
         }
 
         /// <summary>

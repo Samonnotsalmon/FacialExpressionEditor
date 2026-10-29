@@ -115,7 +115,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 (set.originalGestureLayers, expressionLayers),
                 (new List<string>(), cancelerLayers),
                 (set.originalPartLayers, partLayers),
-                (face.BlinkLayersToReplace, new List<VirtualLayer>()),
                 (face.DisabledLayers, new List<VirtualLayer>()),
             });
             var reactionFixedFace = BuildReactionFixedFace(fx, cloneContext, set, plan, face, builder, avatarRoot);

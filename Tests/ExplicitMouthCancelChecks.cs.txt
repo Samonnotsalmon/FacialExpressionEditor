@@ -33,17 +33,33 @@ try {
     fx.AddLayer("Existing "+parameter+" mouth");var sm=fx.layers.Last().stateMachine;var mute=sm.AddState("Mute");var speaking=sm.AddState("Speaking");speaking.motion=clip;
     mute.AddTransition(speaking).AddCondition(UnityEditor.Animations.AnimatorConditionMode.Greater,0,parameter);
    }
+   foreach(var name in new[]{"Original Blink","Second Blink","Imported part","Disabled face"}){
+    fx.AddLayer(name);var sm=fx.layers.Last().stateMachine;sm.AddState("Active").motion=clip;
+   }
    var layers=fx.layers;foreach(var l in layers)l.defaultWeight=1;fx.layers=layers;
    d.customizeAnimationLayers=true;
    var baseLayers=d.baseAnimationLayers;
    for(var i=0;i<baseLayers.Length;i++)if(baseLayers[i].type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX){baseLayers[i].isDefault=false;baseLayers[i].animatorController=fx;}
    d.baseAnimationLayers=baseLayers;
+   var suggested=(System.Collections.Generic.List<string>)Call("AvatarFaceDefaults","SuggestedReplacementLayers",d);
+   Check(new[]{fx.layers[0].name,"Existing Voice mouth","Existing Viseme mouth","Original Blink","Second Blink"}.All(suggested.Contains),"Gesture, Voice, Viseme and multiple blink layers are checkbox suggestions ("+scenario+")");
    var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
    set.independentClips=true;set.motionRulesConfigured=true;set.menuIcons=false;set.faceMeshPaths.Add(path);
    set.explicitLayerSelection=true;set.importLayerNames.Add(fx.layers[0].name);
    if(selected)set.importLayerNames.Add("Existing Voice mouth");
+   if(selected)set.importLayerNames.Add("Original Blink");
    AssetDatabase.CreateAsset(set,folder+"/Settings"+scenario+".asset");
    Samon.FacialExpressionEditor.Editor.FxImporter.ImportGestures(d,set);
+   set.originalPartLayers.Add("Imported part");
+   set.originalLayerSettings.Add(new Samon.FacialExpressionEditor.OriginalLayerSetting{layerName="Disabled face",mode=Samon.FacialExpressionEditor.OriginalLayerMode.Disable});
+   Check((bool)Call("FxLayerSelection","IsSelected",set,"Imported part")&&(bool)Call("FxLayerSelection","IsSelected",set,"Disabled face"),"Part and disabled layer removal is visible as checked ("+scenario+")");
+   Call("FxLayerSelection","SetSelected",set,"Imported part",false);
+   Call("FxLayerSelection","SetSelected",set,"Disabled face",false);
+   // Simulate checking then unchecking a detected layer, followed by reimport.
+   Call("FxLayerSelection","SetSelected",set,"Second Blink",true);
+   Call("FxLayerSelection","SetSelected",set,"Second Blink",false);
+   Samon.FacialExpressionEditor.Editor.FxImporter.ImportGestures(d,set);
+   Check(!set.originalPartLayers.Contains("Imported part")&&!set.originalLayerSettings.Any(s=>s.layerName=="Disabled face")&&!set.originalGestureLayers.Contains("Second Blink"),"Unchecking clears every removal source and survives reimport ("+scenario+")");
    Check(set.originalGestureLayers.Contains("Existing Voice mouth")==selected,"Import preserves explicit non-gesture selection ("+scenario+")");
    set.customMouthMorphs=true;set.mouthMorphs.Add(new Samon.FacialExpressionEditor.BlendShapeRef{path=binding.path,blendShape=binding.propertyName.Substring(11)});
    if(assigned)set.mouthCancelAnimation=clip;
@@ -53,6 +69,13 @@ try {
    var built=(UnityEditor.Animations.AnimatorController)d.baseAnimationLayers.First(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
    Check(built.layers.Any(l=>l.name=="Existing Voice mouth")==!selected,"Only checked Voice layer is removed ("+scenario+")");
    Check(built.layers.Any(l=>l.name=="Existing Viseme mouth"),"Unselected Viseme layer is preserved ("+scenario+")");
+   Check(built.layers.Any(l=>l.name=="Original Blink")==!selected,"Blink removal follows checkbox only ("+scenario+")");
+   foreach(var name in new[]{"Second Blink","Imported part","Disabled face"}){
+    var retained=built.layers.Single(l=>l.name==name);
+    var retainedClip=(AnimationClip)States(retained.stateMachine).Single().motion;
+    var retainedCurve=AnimationUtility.GetEditorCurve(retainedClip,binding);
+    Check(retainedCurve!=null&&Mathf.Approximately(retainedCurve.Evaluate(0),23)&&Mathf.Approximately(retainedCurve.Evaluate(1),81),"Unchecked layer keeps its authored animation: "+name+" ("+scenario+")");
+   }
    var cancel=built.layers.FirstOrDefault(l=>l.name=="[FacialExpressionEditor] Mouth Morph Canceler");
    Check((cancel!=null)==assigned,"Cancellation generation follows explicit clip assignment ("+scenario+")");
    if(assigned){

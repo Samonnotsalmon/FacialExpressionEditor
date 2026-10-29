@@ -41,6 +41,8 @@ try{
  var unselected=((System.Collections.IEnumerable)Call("ReactionImporter","Scan",descriptor,set,variant)).Cast<object>().ToList();
  Check(unselected.Any(c=>((System.Collections.Generic.List<string>)c.GetType().GetField("Layers").GetValue(c)).Contains("Mouth cancellation")),"Unselected Viseme-driven layer is not automatically excluded");
  set.originalGestureLayers.Add("Mouth cancellation");
+ Check(unselected.Any(c=>((System.Collections.Generic.List<string>)c.GetType().GetField("Layers").GetValue(c)).Contains("Blink")),"Unselected blink layer is not automatically excluded");
+ set.originalGestureLayers.Add("Blink");
  var candidates=((System.Collections.IEnumerable)Call("ReactionImporter","Scan",descriptor,set,variant)).Cast<object>().ToList();
  Check(candidates.Count==1,"Contact and PhysBone conditions form one connected reaction");
  var candidateLayers=(System.Collections.Generic.List<string>)candidates[0].GetType().GetField("Layers").GetValue(candidates[0]);Check(candidateLayers.SequenceEqual(new[]{"Reaction"}),"Only direct sensor-driven facial layers are listed; blink, mouth cancellation, driven services and bone-only layers are excluded");

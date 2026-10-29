@@ -65,9 +65,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var layers = fx.layers;
             var sensors = OriginalFxAnalysis.ContactParameters(descriptor);
             var reads = layers.Select(Reads).ToList();
-            var defaults = AvatarFaceDefaults.Find(descriptor, set);
             var excluded = new HashSet<string>(set.originalGestureLayers.Concat(set.originalPartLayers));
-            if (defaults.BlinkLayer != null) excluded.Add(defaults.BlinkLayer);
             var facePaths = OriginalFxAnalysis.FacePathsOf(descriptor, set, variant);
             facePaths.UnionWith(set.faceMeshPaths);
             bool Face(AnimationClip c) => AnimationUtility.GetCurveBindings(c).Any(b => facePaths.Contains(b.path) && typeof(Renderer).IsAssignableFrom(b.type));
