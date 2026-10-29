@@ -48,7 +48,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (!set.mmdStopEntireFx && !set.mmdUnifyFxWriteDefaults && fx != null)
                 {
                     var removed = new HashSet<string>(set.originalGestureLayers.Concat(set.originalPartLayers)
-                        .Concat(FaceDefaults.MouthCancelerLayers).Concat(new[] { FaceDefaults.BlinkLayer })
+                        .Concat(new[] { FaceDefaults.BlinkLayer })
                         .Concat(set.originalLayerSettings.Where(s => s.mode == OriginalLayerMode.Disable).Select(s => s.layerName)));
                     var off = fx.layers.Where(l => !removed.Contains(l.name)).SelectMany(l => FxImporter.AllStates(l.stateMachine)
                         .Where(s => !s.writeDefaultValues).Select(s => l.name + " / " + s.name)).Take(3).ToList();

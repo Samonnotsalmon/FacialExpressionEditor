@@ -9,8 +9,8 @@ namespace Samon.FacialExpressionEditor.Editor
 {
     /// <summary>
     /// 表情ごとのまばたき・視線・リップシンク・口モーフキャンセラーを、ビルドでどう扱うかを決める。
-    /// まばたきと口モーフキャンセラーのシェイプキーは、表情データで「自分で編集」にしていなければ元アバターのもの（AvatarFaceDefaults）。
-    /// 負荷を抑えるため、どの表情も止めないもの（全部オンのもの）は、パラメータもステートの指定も作らない。
+    /// まばたきはアバターの設定を参照し、口キャンセルは利用者が指定したクリップだけを使う。
+    /// 口キャンセルの対象がなければ、専用レイヤーやパラメータは生成しない。
     /// メニュー生成とFX生成の両方のパスが同じ結果を使えるよう、表情データとアバターだけから決める。
     /// </summary>
     internal class FaceControlPlan
@@ -42,9 +42,8 @@ namespace Samon.FacialExpressionEditor.Editor
 
         public bool HasMouthCanceler => MouthMorphs.Count > 0;
 
-        // 生成したものに置き換えるため、ビルドで取り除く元FXのレイヤー（まばたき・口モーフキャンセラー）。
+        // 自動で置き換える元FXのまばたきレイヤー。口キャンセルの置き換えは利用者のレイヤー選択に従う。
         public List<string> BlinkLayersToReplace { get; private set; } = new List<string>();
-        public List<string> MouthCancelerLayersToReplace { get; private set; } = new List<string>();
 
         // 元FXの、顔を動かしているレイヤーの扱い。AFK は顔にベース顔とこの顔だけのAFKの動きを適用し、
         // それ以外は表情データの指定に従って顔のカーブを取り除くか、レイヤーごと使わない。
@@ -101,25 +100,12 @@ namespace Samon.FacialExpressionEditor.Editor
             plan.ControlsEyes = true;
             plan.ControlsMouth = true;
 
-            plan.MouthMorphs = (set.customMouthMorphs ? set.mouthMorphs : defaults.MouthMorphs)
-                .Select(Binding)
-                .Where(b => AnimationUtility.GetFloatValue(avatarRoot, b, out _))
-                .Distinct()
-                .ToList();
-            if (set.mouthCancelAnimation != null)
-            {
-                plan.MouthMorphs = AnimationUtility.GetCurveBindings(set.mouthCancelAnimation)
-                    .Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape.") && AnimationUtility.GetFloatValue(avatarRoot, b, out _)).ToList();
-                plan.MouthCancelClip = set.mouthCancelAnimation;
-            }
-            plan.MouthMorphs.RemoveAll(b => LipSyncProtection.IsProtected(b, avatarRoot, set));
+            plan.MouthMorphs = ResolveMouthShapes(set, avatarRoot);
+            plan.MouthCancelClip = set.mouthCancelAnimation;
             plan.UsesMouthCancelParameter = plan.HasMouthCanceler && expressions.Any(e => !plan.CancelsMouth(e));
 
-            // 元FXの口モーフキャンセラーは、自分で編集して空にしたときも取り除く（生成したものだけで扱う）。
-            plan.MouthCancelerLayersToReplace = defaults.MouthCancelerLayers;
-
             var avatar = avatarRoot.GetComponentInChildren<FacialExpressionAvatar>(true);
-            var handled = defaults.MouthCancelerLayers.ToList();
+            var handled = new List<string>();
             if (defaults.BlinkLayer != null) handled.Add(defaults.BlinkLayer);
             var analysis = OriginalFxAnalysis.Analyze(descriptor, set, avatar != null ? avatar.faceVariant : null, handled);
             plan.FacePaths = analysis.FacePaths;
@@ -139,9 +125,18 @@ namespace Samon.FacialExpressionEditor.Editor
             var rules = MotionIntegration.Rules(set, descriptor).Where(r => r.enabled).ToList();
             var errors = MotionIntegration.Validate(set, descriptor, rules);
             foreach (var rule in rules.Where(r => r.sourcePlayable == "FX" && !string.IsNullOrEmpty(r.sourceLayer)))
-                if (rule.sourceLayer == defaults.BlinkLayer || defaults.MouthCancelerLayers.Contains(rule.sourceLayer))
-                    errors.Add(rule.name + "：連携元が自動置換する瞬き・口制御レイヤーです。保持されるモーションのステートを選んでください。");
+                if (rule.sourceLayer == defaults.BlinkLayer)
+                    errors.Add(rule.name + "：連携元が自動置換する瞬きレイヤーです。保持されるモーションのステートを選んでください。");
             return errors;
+        }
+
+        public static List<EditorCurveBinding> ResolveMouthShapes(ExpressionSet set, GameObject root)
+        {
+            if (set?.mouthCancelAnimation == null || root == null) return new List<EditorCurveBinding>();
+            return AnimationUtility.GetCurveBindings(set.mouthCancelAnimation)
+                .Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape.") &&
+                    AnimationUtility.GetFloatValue(root, b, out _) && !LipSyncProtection.IsProtected(b, root, set))
+                .ToList();
         }
 
         internal static string BlinkSetupWarning(ExpressionSet set, GameObject root)

@@ -1,0 +1,68 @@
+// Uses temporary clones of a loaded humanoid avatar. Author assets and scene settings are not changed.
+var source=McpSnippet.All<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true)
+ .First(d=>d.gameObject.scene.IsValid()&&!EditorSceneManager.IsPreviewSceneObject(d)&&d.GetComponent<Animator>()!=null&&d.GetComponent<Animator>().isHuman).gameObject;
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+object Call(string type,string method,params object[] args)=>asm.GetType("Samon.FacialExpressionEditor.Editor."+type).GetMethod(method).Invoke(null,args);
+var folder="Assets/__FEE_ExplicitMouth_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+System.Collections.Generic.IEnumerable<UnityEditor.Animations.AnimatorState> States(UnityEditor.Animations.AnimatorStateMachine sm){foreach(var c in sm.states)yield return c.state;foreach(var c in sm.stateMachines)foreach(var s in States(c.stateMachine))yield return s;}
+var originalDescriptor=EditorJsonUtility.ToJson(source.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>());
+var oldFilter=Debug.unityLogger.filterLogType;
+try {
+ Debug.unityLogger.filterLogType=LogType.Warning;
+ for(var scenario=0;scenario<4;scenario++){
+  var selected=(scenario&1)!=0;var assigned=(scenario&2)!=0;
+  var avatar=UnityEngine.Object.Instantiate(source);avatar.name="Explicit mouth fixture";
+  try {
+   foreach(var old in avatar.GetComponentsInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true))UnityEngine.Object.DestroyImmediate(old);
+   var d=avatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+   var face=(SkinnedMeshRenderer)Call("AvatarSetup","FaceRenderer",avatar);
+   var path=AnimationUtility.CalculateTransformPath(face.transform,avatar.transform);
+   var binding=Enumerable.Range(0,face.sharedMesh.blendShapeCount)
+    .Select(i=>EditorCurveBinding.FloatCurve(path,typeof(SkinnedMeshRenderer),"blendShape."+face.sharedMesh.GetBlendShapeName(i)))
+    .First(b=>!(bool)Call("LipSyncProtection","IsProtected",b,avatar,null));
+   var clip=new AnimationClip();AnimationUtility.SetEditorCurve(clip,binding,AnimationCurve.Linear(0,23,1,81));
+   AssetDatabase.CreateAsset(clip,folder+"/Mouth"+scenario+".anim");
+   var clipSnapshot=EditorJsonUtility.ToJson(clip);
+   var fx=UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(folder+"/FX"+scenario+".controller");
+   fx.AddParameter("GestureLeft",AnimatorControllerParameterType.Int);fx.AddParameter("Voice",AnimatorControllerParameterType.Float);fx.AddParameter("Viseme",AnimatorControllerParameterType.Int);
+   var gesture=fx.layers[0].stateMachine;var idle=gesture.AddState("Idle");var expression=gesture.AddState("Expression");expression.motion=clip;
+   idle.AddTransition(expression).AddCondition(UnityEditor.Animations.AnimatorConditionMode.Equals,1,"GestureLeft");
+   foreach(var parameter in new[]{"Voice","Viseme"}){
+    fx.AddLayer("Existing "+parameter+" mouth");var sm=fx.layers.Last().stateMachine;var mute=sm.AddState("Mute");var speaking=sm.AddState("Speaking");speaking.motion=clip;
+    mute.AddTransition(speaking).AddCondition(UnityEditor.Animations.AnimatorConditionMode.Greater,0,parameter);
+   }
+   var layers=fx.layers;foreach(var l in layers)l.defaultWeight=1;fx.layers=layers;
+   d.customizeAnimationLayers=true;
+   var baseLayers=d.baseAnimationLayers;
+   for(var i=0;i<baseLayers.Length;i++)if(baseLayers[i].type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX){baseLayers[i].isDefault=false;baseLayers[i].animatorController=fx;}
+   d.baseAnimationLayers=baseLayers;
+   var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+   set.independentClips=true;set.motionRulesConfigured=true;set.menuIcons=false;set.faceMeshPaths.Add(path);
+   set.explicitLayerSelection=true;set.importLayerNames.Add(fx.layers[0].name);
+   if(selected)set.importLayerNames.Add("Existing Voice mouth");
+   AssetDatabase.CreateAsset(set,folder+"/Settings"+scenario+".asset");
+   Samon.FacialExpressionEditor.Editor.FxImporter.ImportGestures(d,set);
+   Check(set.originalGestureLayers.Contains("Existing Voice mouth")==selected,"Import preserves explicit non-gesture selection ("+scenario+")");
+   set.customMouthMorphs=true;set.mouthMorphs.Add(new Samon.FacialExpressionEditor.BlendShapeRef{path=binding.path,blendShape=binding.propertyName.Substring(11)});
+   if(assigned)set.mouthCancelAnimation=clip;
+   Check(((System.Collections.ICollection)Call("FaceControlPlan","ResolveMouthShapes",set,avatar)).Count==(assigned?1:0),"Only assigned clip supplies cancellation targets ("+scenario+")");
+   avatar.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet=set;
+   nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(avatar);
+   var built=(UnityEditor.Animations.AnimatorController)d.baseAnimationLayers.First(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
+   Check(built.layers.Any(l=>l.name=="Existing Voice mouth")==!selected,"Only checked Voice layer is removed ("+scenario+")");
+   Check(built.layers.Any(l=>l.name=="Existing Viseme mouth"),"Unselected Viseme layer is preserved ("+scenario+")");
+   var cancel=built.layers.FirstOrDefault(l=>l.name=="[FacialExpressionEditor] Mouth Morph Canceler");
+   Check((cancel!=null)==assigned,"Cancellation generation follows explicit clip assignment ("+scenario+")");
+   if(assigned){
+    var state=States(cancel.stateMachine).Single(s=>s.name=="Cancel Mouth");
+    var curve=AnimationUtility.GetEditorCurve((AnimationClip)state.motion,binding);
+    Check(curve!=null&&Mathf.Approximately(curve.Evaluate(0),23)&&Mathf.Approximately(curve.Evaluate(1),23),"Uses time-zero authored value rather than scene value or final key ("+scenario+")");
+   }
+   Check(clipSnapshot==EditorJsonUtility.ToJson(clip),"Author clip remains unchanged ("+scenario+")");
+  }finally{UnityEngine.Object.DestroyImmediate(avatar);}
+ }
+ Check(originalDescriptor==EditorJsonUtility.ToJson(source.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>()),"Source scene Descriptor is unchanged");
+ return new{passed=checks.Count,checks};
+}finally{Debug.unityLogger.filterLogType=oldFilter;AssetDatabase.DeleteAsset(folder);}

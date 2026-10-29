@@ -178,7 +178,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 ExpressionSetUtility.RemoveNode(set, node);
             }
 
-            set.originalGestureLayers = new List<string>(result.GestureLayers);
+            // Explicit selections also contain non-gesture layers (e.g. mouth cancellation).
+            // Importing expressions must not silently uncheck them.
+            set.originalGestureLayers = new List<string>(set.explicitLayerSelection ? set.importLayerNames : result.GestureLayers);
 
             // 新しく追加した表情のまばたき・リップシンクは、元FXの指定に合わせる（既存の表情の設定は変えない）。
             ImportFaceControl(descriptor, set, added);

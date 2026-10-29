@@ -38,6 +38,9 @@ try{
  var layers=controller.layers;for(var i=1;i<layers.Length;i++)layers[i].defaultWeight=1;controller.layers=layers;
  descriptor.baseAnimationLayers=new[]{new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomAnimLayer{type=VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX,isDefault=false,animatorController=controller}};
  AssetDatabase.SaveAssets();
+ var unselected=((System.Collections.IEnumerable)Call("ReactionImporter","Scan",descriptor,set,variant)).Cast<object>().ToList();
+ Check(unselected.Any(c=>((System.Collections.Generic.List<string>)c.GetType().GetField("Layers").GetValue(c)).Contains("Mouth cancellation")),"Unselected Viseme-driven layer is not automatically excluded");
+ set.originalGestureLayers.Add("Mouth cancellation");
  var candidates=((System.Collections.IEnumerable)Call("ReactionImporter","Scan",descriptor,set,variant)).Cast<object>().ToList();
  Check(candidates.Count==1,"Contact and PhysBone conditions form one connected reaction");
  var candidateLayers=(System.Collections.Generic.List<string>)candidates[0].GetType().GetField("Layers").GetValue(candidates[0]);Check(candidateLayers.SequenceEqual(new[]{"Reaction"}),"Only direct sensor-driven facial layers are listed; blink, mouth cancellation, driven services and bone-only layers are excluded");

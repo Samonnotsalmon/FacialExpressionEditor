@@ -604,7 +604,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private static OriginalFxAnalysis AnalyzeFx(VRCAvatarDescriptor descriptor, ExpressionSet set)
         {
             var defaults = AvatarFaceDefaults.Find(descriptor, set);
-            var handled = defaults.MouthCancelerLayers.ToList();
+            var handled = new List<string>();
             if (defaults.BlinkLayer != null) handled.Add(defaults.BlinkLayer);
             return OriginalFxAnalysis.Analyze(descriptor, set, null, handled);
         }

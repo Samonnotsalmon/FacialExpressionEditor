@@ -8,7 +8,7 @@ using VRC.SDK3.Avatars.Components;
 namespace Samon.FacialExpressionEditor.Editor
 {
     /// <summary>
-    /// 「まばたき・口」タブ。まばたきと口モーフキャンセラー（標準は元アバターのもの。自分で編集もできる）と、
+    /// 「まばたき・口」タブ。まばたきと利用者が指定した口キャンセル、および
     /// 表情ごとのまばたき・視線・リップシンク・口モーフキャンセラーの一覧。
     /// </summary>
     internal partial class ExpressionEditorWindow
@@ -19,10 +19,8 @@ namespace Samon.FacialExpressionEditor.Editor
         [SerializeField] private bool _showMouthSettings;
 
         private List<BlinkShape> BlinkShapesInUse(ExpressionSet set) => set.blinkPose != null ? BlinkPoseUtility.Shapes(set.blinkPose, AvatarRoot, set) : set.customBlink ? set.blinkShapes : AvatarFaceDefaults.DescriptorBlinkShapes(Descriptor);
-        private List<BlendShapeRef> MouthMorphsInUse(ExpressionSet set) => set.mouthCancelAnimation != null
-            ? AnimationUtility.GetCurveBindings(set.mouthCancelAnimation).Where(b => b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape."))
-                .Select(b => new BlendShapeRef { path = b.path, blendShape = b.propertyName.Substring(11) }).ToList()
-            : set.customMouthMorphs ? set.mouthMorphs : FaceDefaults.MouthMorphs;
+        private List<BlendShapeRef> MouthMorphsInUse(ExpressionSet set) => FaceControlPlan.ResolveMouthShapes(set, AvatarRoot)
+            .Select(b => new BlendShapeRef { path = b.path, blendShape = b.propertyName.Substring(11) }).ToList();
 
         private void DrawFaceTab(ExpressionSet set)
         {
@@ -216,7 +214,7 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// 口モーフキャンセラーのシェイプキー。標準は元FXの口モーフキャンセラーのもの。自分で編集すると追加・削除できる。
+        /// 指定クリップの口キャンセル用シェイプキー。選択した項目だけを記録する。
         /// </summary>
         private Vector2 _mouthRegisteredScroll;
         [SerializeField] private bool _showMouthShapeList = true;
@@ -277,8 +275,15 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void DrawMouthCanceler(ExpressionSet set)
         {
+            EditorGUILayout.LabelField("既存の口キャンセルを置き換える場合は、「アバター設定」で元FXレイヤーをチェックしてください。", EditorStyles.wordWrappedMiniLabel);
+            if (GUILayout.Button("置き換える元FXレイヤーを選ぶ"))
+            {
+                _tab = Tab.Setup;
+                _showReplacementLayers = true;
+                _centerScroll = Vector2.zero;
+            }
             var manual = (AnimationClip)EditorGUILayout.ObjectField(
-                new GUIContent("クリップ", "元アバターのクリップを指定できます。編集時は専用コピーを作成します。"),
+                new GUIContent("クリップ", "指定クリップの0秒時点のシェイプキー値を使います。編集時は専用コピーを作成します。"),
                 set.mouthCancelAnimation, typeof(AnimationClip), false);
             if (manual != set.mouthCancelAnimation)
             {
@@ -287,13 +292,12 @@ namespace Samon.FacialExpressionEditor.Editor
             }
             if (set.mouthCancelAnimation == null)
             {
-                EditorGUILayout.LabelField("クリップ未指定", EditorStyles.miniLabel);
-                if (MouthMorphsInUse(set).Count > 0)
-                    EditorGUILayout.LabelField("現在は元アバターの自動設定／保存済み設定を使用しています。", EditorStyles.wordWrappedMiniLabel);
-                if (GUILayout.Button("専用クリップを新規作成"))
+                EditorGUILayout.LabelField("未設定：ツール側の口キャンセルは無効です。クリップを指定するか、シェイプキーを選んで作成してください。", EditorStyles.wordWrappedMiniLabel);
+                var createRect = GUILayoutUtility.GetRect(new GUIContent("シェイプキーを選んで新規作成"), GUI.skin.button);
+                if (GUI.Button(createRect, "シェイプキーを選んで新規作成"))
                 {
-                    ExpressionSetUtility.CreateMouthCancelClip(set);
                     _showMouthShapeList = true;
+                    MouthCancelSelectionWindow.Open(_avatar, createRect);
                     GUIUtility.ExitGUI();
                 }
                 return;

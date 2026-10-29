@@ -9,11 +9,10 @@ using VRC.SDK3.Avatars.Components;
 namespace Samon.FacialExpressionEditor.Editor
 {
     /// <summary>
-    /// 元アバターのまばたきと口モーフキャンセラー。表情データで「自分で編集」にしていなければ、ビルドでこれを使う。
+    /// 元アバターのまばたき。口キャンセルは利用者が指定するクリップと置き換えレイヤーだけを使う。
     /// - まばたき：元FXにまばたきのアニメーション（名前に blink / まばたき / 瞬き を含むレイヤーかクリップ）があればそれ、
     ///   無ければアバターの設定（Eye Look の Eyelids）のまばたきのシェイプキー
-    /// - 口モーフキャンセラー：元FXの、Viseme を条件にしてシェイプキーだけを動かすレイヤー（しなのの Rip_OFF）
-    /// どちらも、元FXのレイヤーは生成したものに置き換える。
+    /// 元FXのまばたきレイヤーは生成したものに置き換える。
     /// </summary>
     internal class AvatarFaceDefaults
     {
@@ -27,10 +26,6 @@ namespace Samon.FacialExpressionEditor.Editor
         public List<BlinkShape> BlinkShapes = new List<BlinkShape>();
         public string BlinkSource = "（見つかりません）";
 
-        public List<string> MouthCancelerLayers = new List<string>();
-        public List<BlendShapeRef> MouthMorphs = new List<BlendShapeRef>();
-        public string MouthMorphSource = "（見つかりません）";
-
         public static AvatarFaceDefaults Find(VRCAvatarDescriptor descriptor, ExpressionSet set)
         {
             var result = new AvatarFaceDefaults();
@@ -42,7 +37,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 : fx.layers.Where(l => !set.originalGestureLayers.Contains(l.name) && !set.originalPartLayers.Contains(l.name)).ToList();
 
             result.FindBlink(descriptor, candidates);
-            result.FindMouthCanceler(descriptor, candidates);
             return result;
         }
 
@@ -107,35 +101,13 @@ namespace Samon.FacialExpressionEditor.Editor
             BlinkSource = "アバターの設定（Eye Look の Eyelids）";
         }
 
-        private void FindMouthCanceler(VRCAvatarDescriptor descriptor, List<AnimatorControllerLayer> layers)
-        {
-            foreach (var layer in layers)
-            {
-                if (layer.name == BlinkLayer) continue;
-                if (!FxImporter.AllTransitions(layer.stateMachine).Any(t => t.conditions.Any(c => c.parameter == FaceControlPlan.VisemeParameter))) continue;
-
-                var clips = BlendShapeClips(layer, descriptor.gameObject);
-                if (clips.Count == 0) continue;
-
-                MouthCancelerLayers.Add(layer.name);
-                foreach (var binding in clips.SelectMany(AnimationUtility.GetCurveBindings))
-                {
-                    var shape = binding.propertyName.Substring(BlendShapePrefix.Length);
-                    if (MouthMorphs.Any(m => m.path == binding.path && m.blendShape == shape)) continue;
-                    MouthMorphs.Add(new BlendShapeRef { path = binding.path, blendShape = shape });
-                }
-            }
-
-            if (MouthCancelerLayers.Count > 0) MouthMorphSource = $"元FXの「{string.Join("」「", MouthCancelerLayers)}」レイヤー";
-        }
-
         private static bool HasBlinkWord(string name)
         {
             return BlinkWords.Any(w => name.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         /// <summary>
-        /// レイヤーのクリップ（ダミーを除く）。シェイプキー以外も動かすレイヤーなら、まばたきや口モーフキャンセラーではないので空。
+        /// レイヤーのクリップ（ダミーを除く）。シェイプキー以外も動かすレイヤーなら、まばたきではないので空。
         /// </summary>
         private static List<AnimationClip> BlendShapeClips(AnimatorControllerLayer layer, GameObject avatarRoot)
         {

@@ -114,9 +114,14 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 var was = set.originalGestureLayers.Contains(layer.name);
                 var next = EditorGUILayout.ToggleLeft(layer.name, was);
-                if (next != was) Modify(set, "置き換えるFXを選択", () => { if (next) set.originalGestureLayers.Add(layer.name); else set.originalGestureLayers.Remove(layer.name); });
+                if (next != was) Modify(set, "置き換えるFXを選択", () =>
+                {
+                    if (next) set.originalGestureLayers.Add(layer.name); else set.originalGestureLayers.Remove(layer.name);
+                    set.explicitLayerSelection = true;
+                    set.importLayerNames = set.originalGestureLayers.ToList();
+                });
             }
-            EditorGUILayout.HelpBox("選択したレイヤーだけを新しい表情制御に置換します。衣装などの既存ギミックのレイヤーは残します。", MessageType.Info);
+            EditorGUILayout.HelpBox("口キャンセルなど、置き換える元FXレイヤーをチェックしてください。口キャンセルの内容は「まばたき・口」で指定します。チェックを外した口キャンセルレイヤーはそのまま残ります。", MessageType.Info);
         }
 
         private void DuplicateFaceSetup(ExpressionSet set)

@@ -113,7 +113,7 @@ namespace Samon.FacialExpressionEditor.Editor
             ReplaceOriginalLayers(fx, new List<(List<string>, List<VirtualLayer>)>
             {
                 (set.originalGestureLayers, expressionLayers),
-                (face.MouthCancelerLayersToReplace, cancelerLayers),
+                (new List<string>(), cancelerLayers),
                 (set.originalPartLayers, partLayers),
                 (face.BlinkLayersToReplace, new List<VirtualLayer>()),
                 (face.DisabledLayers, new List<VirtualLayer>()),
@@ -595,7 +595,7 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// 口モーフキャンセラー。話している間（Viseme が 0 以外）、口のシェイプキーをアバターの今の値（ベース顔）に戻して、
+        /// 口モーフキャンセラー。話している間（Viseme が 0 以外）、指定クリップの0秒時点の値へ戻して、
         /// 表情の口とリップシンクの口が重ならないようにする。口モーフキャンセラーを止める表情の間は働かない。
         /// </summary>
         private static VirtualLayer BuildMouthCancelerLayer(CloneContext cloneContext, FaceControlPlan face, GameObject avatarRoot, bool writeDefaults)
@@ -606,12 +606,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var cancelClip = VirtualClip.Create("Cancel Mouth");
             foreach (var binding in face.MouthMorphs)
             {
-                AnimationUtility.GetFloatValue(avatarRoot, binding, out var value);
-                if (face.MouthCancelClip != null)
-                {
-                    var curve = AnimationUtility.GetEditorCurve(face.MouthCancelClip, binding);
-                    if (curve != null) value = curve.Evaluate(0);
-                }
+                var value = AnimationUtility.GetEditorCurve(face.MouthCancelClip, binding).Evaluate(0);
                 cancelClip.SetFloatCurve(binding, new AnimationCurve(new Keyframe(0, value)));
             }
 

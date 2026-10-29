@@ -24,7 +24,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 var defaults = FaceDefaults;
                 if (_fxAnalysis != null && _fxAnalysisFor == defaults) return _fxAnalysis;
 
-                var handled = defaults.MouthCancelerLayers.ToList();
+                var handled = new List<string>();
                 if (defaults.BlinkLayer != null) handled.Add(defaults.BlinkLayer);
                 _fxAnalysisFor = defaults;
                 return _fxAnalysis = OriginalFxAnalysis.Analyze(Descriptor, Set, Variant, handled);

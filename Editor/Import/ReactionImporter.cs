@@ -66,7 +66,7 @@ namespace Samon.FacialExpressionEditor.Editor
             var sensors = OriginalFxAnalysis.ContactParameters(descriptor);
             var reads = layers.Select(Reads).ToList();
             var defaults = AvatarFaceDefaults.Find(descriptor, set);
-            var excluded = new HashSet<string>(defaults.MouthCancelerLayers);
+            var excluded = new HashSet<string>(set.originalGestureLayers.Concat(set.originalPartLayers));
             if (defaults.BlinkLayer != null) excluded.Add(defaults.BlinkLayer);
             var facePaths = OriginalFxAnalysis.FacePathsOf(descriptor, set, variant);
             facePaths.UnionWith(set.faceMeshPaths);
