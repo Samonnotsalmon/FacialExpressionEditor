@@ -1,0 +1,52 @@
+// Run with a humanoid avatar in a loaded scene. Only temporary clones/assets are modified.
+var source=McpSnippet.All<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true)
+ .First(d=>d.gameObject.scene.IsValid()&&!EditorSceneManager.IsPreviewSceneObject(d)&&d.GetComponent<Animator>()!=null&&d.GetComponent<Animator>().isHuman).gameObject;
+var snapshot=EditorJsonUtility.ToJson(source.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>());
+var folder="Assets/__FEE_WDCheck_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+System.Collections.Generic.IEnumerable<UnityEditor.Animations.AnimatorState> States(UnityEditor.Animations.AnimatorStateMachine sm){
+ foreach(var child in sm.states)yield return child.state;
+ foreach(var child in sm.stateMachines)foreach(var state in States(child.stateMachine))yield return state;
+}
+var logFilter=Debug.unityLogger.filterLogType;
+try {
+ Debug.unityLogger.filterLogType=LogType.Warning;
+ foreach(var unify in new[]{true,false}){
+  var avatar=UnityEngine.Object.Instantiate(source);avatar.name="FEE WD check";
+  try {
+   foreach(var existing in avatar.GetComponentsInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true))UnityEngine.Object.DestroyImmediate(existing);
+   var descriptor=avatar.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+   var controller=UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(folder+"/FX"+unify+".controller");
+   var off=controller.layers[0].stateMachine.AddState("Author WD OFF");off.writeDefaultValues=false;
+   controller.layers[0].stateMachine.defaultState=off;
+   controller.AddLayer("Author mixed WD");
+   var on=controller.layers[1].stateMachine.AddState("Author WD ON");on.writeDefaultValues=true;
+   var nested=controller.layers[1].stateMachine.AddStateMachine("Nested").AddState("Nested WD OFF");nested.writeDefaultValues=false;
+   var clip=new AnimationClip();AssetDatabase.CreateAsset(clip,folder+"/Clip"+unify+".anim");
+   AnimationUtility.SetEditorCurve(clip,EditorCurveBinding.FloatCurve("",typeof(Animator),"FEE_TestValue"),AnimationCurve.Constant(0,1,0));
+   controller.AddParameter("FEE_TestValue",AnimatorControllerParameterType.Float);
+   off.motion=on.motion=nested.motion=clip;
+   descriptor.customizeAnimationLayers=true;
+   var layers=descriptor.baseAnimationLayers;
+   for(var i=0;i<layers.Length;i++)if(layers[i].type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX){layers[i].isDefault=false;layers[i].animatorController=controller;}
+   descriptor.baseAnimationLayers=layers;
+   var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+   AssetDatabase.CreateAsset(set,folder+"/Settings"+unify+".asset");
+   Check(set.mmdUnifyFxWriteDefaults,"Write Defaults unification defaults to ON ("+unify+")");
+   set.mmdUnifyFxWriteDefaults=unify;set.motionRulesConfigured=true;set.menuIcons=false;
+   avatar.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet=set;
+   nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(avatar);
+   var fx=(UnityEditor.Animations.AnimatorController)descriptor.baseAnimationLayers.First(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
+   var states=fx.layers.SelectMany(l=>States(l.stateMachine)).ToArray();
+   Check(fx.layers.Any(l=>l.name=="[FacialExpressionEditor] Expression"),"Expressions build with unification "+unify);
+   Check(states.Single(s=>s.name=="Author WD OFF").writeDefaultValues==unify,"Original WD OFF follows unification "+unify);
+   Check(states.Single(s=>s.name=="Author WD ON").writeDefaultValues,"Original WD ON remains ON with unification "+unify);
+   Check(states.Single(s=>s.name=="Nested WD OFF").writeDefaultValues==unify,"Nested WD OFF follows unification "+unify);
+   if(unify)Check(states.All(s=>s.writeDefaultValues),"ON applies to the complete built FX");
+   Check(!off.writeDefaultValues&&on.writeDefaultValues&&!nested.writeDefaultValues,"Source controller WD settings are unchanged ("+unify+")");
+  }finally{UnityEngine.Object.DestroyImmediate(avatar);}
+ }
+ Check(snapshot==EditorJsonUtility.ToJson(source.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>()),"Scene Descriptor is unchanged by both builds");
+ return new{passed=checks.Count,checks};
+}finally{Debug.unityLogger.filterLogType=logFilter;AssetDatabase.DeleteAsset(folder);}

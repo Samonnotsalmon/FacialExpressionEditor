@@ -1,0 +1,49 @@
+// Opening/selecting an avatar must not record or change Avatar Descriptor settings.
+var folder="Assets/__FEE_DescriptorCheck_"+Guid.NewGuid().ToString("N");
+AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var activeScene=SceneManager.GetActiveScene();
+var scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Additive);
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var type=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow");
+var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+ScriptableObject window=null;
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool condition,string name){if(!condition)throw new Exception(name);checks.Add(name);}
+try {
+ var source=new GameObject("Avatar");
+ var descriptor=source.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var body=new GameObject("Body");body.transform.SetParent(source.transform,false);
+ var owl=new GameObject("Owl");owl.transform.SetParent(source.transform,false);
+ descriptor.VisemeSkinnedMesh=body.AddComponent<SkinnedMeshRenderer>();
+ owl.AddComponent<SkinnedMeshRenderer>();
+ descriptor.lipSync=VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
+ descriptor.VisemeBlendShapes=new[]{"BodyAA"};
+ descriptor.baseAnimationLayers=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomAnimLayer[0];
+ descriptor.specialAnimationLayers=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomAnimLayer[0];
+ var prefab=PrefabUtility.SaveAsPrefabAsset(source,folder+"/Avatar.prefab");
+ UnityEngine.Object.DestroyImmediate(source);
+ var instance=(GameObject)PrefabUtility.InstantiatePrefab(prefab,scene);
+ descriptor=instance.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ descriptor.VisemeSkinnedMesh=instance.transform.Find("Owl").GetComponent<SkinnedMeshRenderer>();
+ descriptor.VisemeBlendShapes=new[]{"OwlAA","OwlEE"};
+ descriptor.ViewPosition=new Vector3(0,1.7f,.1f);
+ var snapshot=EditorJsonUtility.ToJson(descriptor);
+ Check(!new SerializedObject(descriptor).FindProperty("VisemeSkinnedMesh").prefabOverride,"Fixture has unrecorded Inspector values");
+ window=ScriptableObject.CreateInstance(type);
+ type.GetMethod("SetStartAvatar",flags).Invoke(window,new object[]{instance});
+ for(var i=0;i<3;i++)type.GetMethod("OnEditorUpdate",flags).Invoke(window,null);
+ Check(snapshot==EditorJsonUtility.ToJson(descriptor),"Selecting and updating the editor preserves all Descriptor values");
+ Check(!new SerializedObject(descriptor).FindProperty("VisemeSkinnedMesh").prefabOverride,"Editor does not automatically register Inspector overrides");
+ descriptor.VisemeBlendShapes=new[]{"LaterEdit"};
+ type.GetMethod("OnEditorUpdate",flags).Invoke(window,null);
+ Check(descriptor.VisemeBlendShapes.SequenceEqual(new[]{"LaterEdit"}),"Later Inspector edits remain untouched");
+ Check(!new SerializedObject(descriptor).FindProperty("VisemeBlendShapes").prefabOverride,"Editor does not automatically register later edits");
+ var original=prefab.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ Check(original.VisemeSkinnedMesh.name=="Body"&&original.VisemeBlendShapes.SequenceEqual(new[]{"BodyAA"}),"Source prefab remains unchanged");
+ return new {passed=checks.Count,checks};
+}finally{
+ if(window!=null)UnityEngine.Object.DestroyImmediate(window);
+ SceneManager.SetActiveScene(activeScene);
+ if(scene.IsValid())EditorSceneManager.CloseScene(scene,true);
+ AssetDatabase.DeleteAsset(folder);
+}

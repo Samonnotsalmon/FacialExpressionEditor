@@ -52,7 +52,7 @@ namespace Samon.FacialExpressionEditor.Editor
                         .Concat(set.originalLayerSettings.Where(s => s.mode == OriginalLayerMode.Disable).Select(s => s.layerName)));
                     var off = fx.layers.Where(l => !removed.Contains(l.name)).SelectMany(l => FxImporter.AllStates(l.stateMachine)
                         .Where(s => !s.writeDefaultValues).Select(s => l.name + " / " + s.name)).Take(3).ToList();
-                    if (off.Count > 0) _writeDefaultsWarning = "Write Defaultsの一括ONが無効で、残す元FXにWD OFFがあります。ビルド後も残る場合はビルドが停止します。\n" + string.Join("\n", off);
+                    if (off.Count > 0) _writeDefaultsWarning = "Write Defaultsの一括ONは無効です。次の元FXはWD OFFを保持してビルドします。MMD中に表情の値が残る場合は、この設定を確認してください。\n" + string.Join("\n", off);
                 }
             }
             if (_motionSetupWarnings.Count > 0)

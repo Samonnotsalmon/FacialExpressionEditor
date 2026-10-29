@@ -46,13 +46,11 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorGUILayout.LabelField("MMD対応", EditorStyles.boldLabel);
             var unify = EditorGUILayout.ToggleLeft(new GUIContent(
                 "ビルド時にFX全体のWrite Defaultsを一括ONにする",
-                "ビルド用データに適用します。元アセットは変更しません。OFFの場合、標準方式ではWD OFFが残るとビルド時に対象を表示して停止します。"), set.mmdUnifyFxWriteDefaults);
+                "初期値はON。ビルド用FXを一括ONにします。OFFにすると各ステートの設定を保持します。元アセットは変更しません。"), set.mmdUnifyFxWriteDefaults);
             if (unify != set.mmdUnifyFxWriteDefaults)
-                Modify(set, "MMDのWrite Defaults設定", () =>
-                {
-                    set.mmdUnifyFxWriteDefaults = unify;
-                    set.mmdStopEntireFx = false;
-                });
+                Modify(set, "MMDのWrite Defaults設定", () => set.mmdUnifyFxWriteDefaults = unify);
+            if (!set.mmdUnifyFxWriteDefaults)
+                EditorGUILayout.HelpBox("Write Defaultsの一括変更を行わずにビルドします。MMD中の表情の切り替え・解除は、元FXの設定によって値が残る場合があります。", MessageType.Info);
         }
 
         private void DrawMotionRules(ExpressionSet set, bool afk)
