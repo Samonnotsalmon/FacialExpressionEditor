@@ -94,6 +94,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void SetStartAvatar(GameObject avatar)
         {
+            AvatarDescriptorPersistence.Observe(avatar);
             // アバターを選んでいるときは、そのアバターの表情設定が1つに決まればそのまま開く（中に入っているものを優先）。
             if (_selectingAvatar && avatar != null)
             {

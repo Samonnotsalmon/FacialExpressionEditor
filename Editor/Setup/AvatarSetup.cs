@@ -46,13 +46,15 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         /// <summary>
-        /// 顔のメッシュ（アバターの設定のリップシンクのメッシュ。無ければシェイプキーがいちばん多いメッシュ）。
+        /// 顔のメッシュ。リップシンクは小物など別メッシュを動かす場合もあるため、顔の判定には使わない。
         /// </summary>
         public static SkinnedMeshRenderer FaceRenderer(GameObject avatarRoot)
         {
             if (avatarRoot == null) return null;
             var descriptor = avatarRoot.GetComponent<VRCAvatarDescriptor>();
-            if (descriptor != null && descriptor.VisemeSkinnedMesh != null) return descriptor.VisemeSkinnedMesh;
+            var eyelids = descriptor != null ? descriptor.customEyeLookSettings.eyelidsSkinnedMesh : null;
+            if (eyelids != null && eyelids.transform.IsChildOf(avatarRoot.transform) &&
+                eyelids.sharedMesh != null && eyelids.sharedMesh.blendShapeCount > 0) return eyelids;
             return avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true)
                 .Where(r => r.sharedMesh != null)
                 .OrderByDescending(r => r.sharedMesh.blendShapeCount)

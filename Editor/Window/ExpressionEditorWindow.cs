@@ -148,6 +148,7 @@ namespace Samon.FacialExpressionEditor.Editor
         /// </summary>
         private void OnEditorUpdate()
         {
+            AvatarDescriptorPersistence.Observe(_starting ? _startAvatar : AvatarRoot);
             UpdateAnimationPreview();
             if (_thumbnails == null || !_thumbnails.HasPending || _preview == null) return;
             _thumbnails.ProcessPending(4);
@@ -159,6 +160,7 @@ namespace Samon.FacialExpressionEditor.Editor
             _starting = false;
             if (_avatar == avatar) return;
             _avatar = avatar;
+            AvatarDescriptorPersistence.Observe(AvatarRoot);
             if (Set != null) ExpressionSetUtility.SynchronizeExpressionNames(Set);
             _faceDefaults = null;
             DisposePreview();

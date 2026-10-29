@@ -230,8 +230,9 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             // 顔のメッシュ以外のシェイプキーは、メッシュのパスも出す。
-            var facePath = Descriptor != null && Descriptor.VisemeSkinnedMesh != null
-                ? PathOf(Descriptor.VisemeSkinnedMesh.transform, Root)
+            var face = AvatarSetup.FaceRenderer(Root.gameObject);
+            var facePath = face != null
+                ? PathOf(face.transform, Root)
                 : blue.Select(r => r.Path).FirstOrDefault();
             foreach (var row in blue.Concat(original)) row.Label = row.Path == facePath ? row.BlendShape : $"{row.Path}/{row.BlendShape}";
 

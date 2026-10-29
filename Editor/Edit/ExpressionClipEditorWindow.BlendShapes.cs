@@ -85,12 +85,11 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private SkinnedMeshRenderer DefaultMesh(List<SkinnedMeshRenderer> meshes)
         {
-            var viseme = Descriptor != null ? Descriptor.VisemeSkinnedMesh : null;
-            if (viseme != null && meshes.Contains(viseme)) return viseme;
-
             // クリップでいちばん多く動かしているメッシュ。
             var counts = Values().Keys.GroupBy(b => b.path).ToDictionary(g => g.Key, g => g.Count());
-            return meshes.OrderByDescending(m => counts.TryGetValue(PathOf(m.transform, Root), out var c) ? c : 0).First();
+            var face = AvatarSetup.FaceRenderer(Root.gameObject);
+            return meshes.OrderByDescending(m => counts.TryGetValue(PathOf(m.transform, Root), out var c) ? c : 0)
+                .ThenByDescending(m => m == face).First();
         }
 
         private ShapeState BuildState(Expression expression)

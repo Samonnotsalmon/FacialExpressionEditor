@@ -93,9 +93,10 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var paths = new HashSet<string>(FaceVariantUtility.AnimatedBlendShapes(set).Select(a => a.path));
             if (variant != null) paths.UnionWith(variant.baseFace.Select(k => k.path));
-            if (descriptor != null && descriptor.VisemeSkinnedMesh != null)
+            var face = descriptor != null ? AvatarSetup.FaceRenderer(descriptor.gameObject) : null;
+            if (face != null)
             {
-                paths.Add(AnimationUtility.CalculateTransformPath(descriptor.VisemeSkinnedMesh.transform, descriptor.transform));
+                paths.Add(AnimationUtility.CalculateTransformPath(face.transform, descriptor.transform));
             }
             return paths;
         }

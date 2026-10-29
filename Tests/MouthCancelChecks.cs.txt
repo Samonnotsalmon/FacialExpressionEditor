@@ -9,6 +9,7 @@ var face=new GameObject("Face"); face.transform.SetParent(root.transform,false);
 var mesh=new Mesh(); mesh.vertices=new[]{Vector3.zero};
 mesh.AddBlendShapeFrame("Smile",100,new[]{Vector3.up},null,null); mesh.AddBlendShapeFrame("vrc.v_aa",100,new[]{Vector3.right},null,null);
 var renderer=face.AddComponent<SkinnedMeshRenderer>(); renderer.sharedMesh=mesh; renderer.SetBlendShapeWeight(0,30);
+descriptor.lipSync=VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
 descriptor.VisemeSkinnedMesh=renderer; descriptor.VisemeBlendShapes=new[]{"vrc.v_aa"};
 var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.motionRulesConfigured=true;
 AssetDatabase.CreateAsset(set,folder+"/Settings.asset");

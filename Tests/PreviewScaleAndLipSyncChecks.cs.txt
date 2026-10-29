@@ -1,0 +1,102 @@
+// isuzu-unity-cli call execute_code --file Tests/PreviewScaleAndLipSyncChecks.cs.txt
+// Synthetic geometry: checks world-space skinning, not just another call to BakeMesh.
+var checks = new System.Collections.Generic.List<string>();
+void Check(bool ok, string name) { if (!ok) throw new Exception(name); checks.Add(name); }
+var asm = typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+object Call(string type, string method, params object[] args) => asm.GetType("Samon.FacialExpressionEditor.Editor." + type).GetMethod(method).Invoke(null, args);
+var previewType = asm.GetType("Samon.FacialExpressionEditor.Editor.FacePreview");
+var parent = new GameObject("FEE scale fixture parent");
+var root = new GameObject("Avatar"); root.transform.SetParent(parent.transform, false);
+var descriptor = root.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+descriptor.ViewPosition = Vector3.zero;
+var bone = new GameObject("Bone"); bone.transform.SetParent(root.transform, false);
+var faceObject = new GameObject("Face"); faceObject.transform.SetParent(root.transform, false);
+var accessory = new GameObject("Accessory"); accessory.transform.SetParent(root.transform, false);
+var mesh = new Mesh();
+mesh.vertices = new[] { new Vector3(-.1f,-.1f,0), new Vector3(.1f,-.1f,0), new Vector3(.1f,.1f,0), new Vector3(-.1f,.1f,0) };
+mesh.triangles = new[] { 0,1,2,0,2,3 };
+mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0=0, weight0=1 }, 4).ToArray();
+mesh.bindposes = new[] { Matrix4x4.identity };
+mesh.AddBlendShapeFrame("Smile",100, new[] { Vector3.zero,Vector3.zero,new Vector3(-.1f,.08f,0),Vector3.zero },null,null);
+mesh.RecalculateNormals(); mesh.RecalculateBounds();
+var material = new Material(Shader.Find("Unlit/Color")); material.color = Color.white;
+var face = faceObject.AddComponent<SkinnedMeshRenderer>(); face.sharedMesh=mesh; face.sharedMaterial=material;
+face.bones=new[]{bone.transform}; face.rootBone=bone.transform;
+var mouth=accessory.AddComponent<SkinnedMeshRenderer>(); mouth.sharedMesh=mesh; mouth.sharedMaterial=material;
+mouth.bones=new[]{bone.transform}; mouth.rootBone=bone.transform; mouth.enabled=false;
+descriptor.VisemeSkinnedMesh=mouth; descriptor.VisemeBlendShapes=new[]{"Smile"};
+descriptor.lipSync=VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
+var eye=descriptor.customEyeLookSettings; eye.eyelidsSkinnedMesh=face; descriptor.customEyeLookSettings=eye;
+var clip=new AnimationClip();
+var faceBinding=EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.Smile");
+var mouthBinding=EditorCurveBinding.FloatCurve("Accessory",typeof(SkinnedMeshRenderer),"blendShape.Smile");
+AnimationUtility.SetEditorCurve(clip,faceBinding,AnimationCurve.Constant(0,1,100));
+AnimationUtility.SetEditorCurve(clip,mouthBinding,AnimationCurve.Constant(0,1,100));
+try {
+ Check((SkinnedMeshRenderer)Call("AvatarSetup","FaceRenderer",root)==face,"Face selection is independent of accessory lip sync");
+ Call("LipSyncProtection","Remove",clip,root,null);
+ Check(AnimationUtility.GetEditorCurve(clip,faceBinding)!=null && AnimationUtility.GetEditorCurve(clip,mouthBinding)==null,"Only the configured lip-sync renderer is protected, even with identical shape names");
+ descriptor.lipSync=VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.VisemeParameterOnly;
+ Check(!(bool)Call("LipSyncProtection","IsProtected",mouthBinding,root,null),"Inactive mesh lip-sync settings do not suppress expressions");
+ descriptor.lipSync=VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.JawFlapBlendShape;descriptor.MouthOpenBlendShapeName="Smile";
+ Check((bool)Call("LipSyncProtection","IsProtected",mouthBinding,root,null),"Jaw-flap blendshape is protected on its configured renderer");
+ descriptor.lipSync=VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
+ var initialHash=(string)Call("ThumbnailKeys","FaceHash",root,null);
+ root.transform.SetPositionAndRotation(new Vector3(3,0,5),Quaternion.Euler(0,60,0));
+ Check(initialHash==(string)Call("ThumbnailKeys","FaceHash",root,null),"Root position and rotation do not invalidate normalized build thumbnails");
+ root.transform.SetPositionAndRotation(Vector3.zero,Quaternion.identity);
+ var sourceDescriptor=EditorJsonUtility.ToJson(descriptor);
+ foreach(var scale in new[]{Vector3.one,Vector3.one*1.1f,new Vector3(.7f,1.3f,.9f)}) {
+  root.transform.localScale=scale; parent.transform.localScale=new Vector3(1.2f,.8f,1.1f);
+  face.transform.localScale=new Vector3(.9f,1.15f,1.2f);
+  var preview=Activator.CreateInstance(previewType,new object[]{root,null});
+  try {
+   var clone=(GameObject)previewType.GetField("_clone",flags).GetValue(preview);
+   var clonedFace=clone.transform.Find("Face").GetComponent<SkinnedMeshRenderer>();
+   var texture=(Texture2D)previewType.GetMethod("RenderStatic").Invoke(preview,new object[]{64});
+   UnityEngine.Object.DestroyImmediate(texture);
+   var baked=clonedFace.GetComponentInChildren<MeshFilter>();
+   var vertices=baked.sharedMesh.vertices;
+   Check(vertices.Length==mesh.vertexCount,"Baked vertices exist at scale "+scale);
+   for(var i=0;i<vertices.Length;i++) {
+    var expected=bone.transform.TransformPoint(mesh.vertices[i]);
+    var actual=baked.transform.TransformPoint(vertices[i]);
+    if(Vector3.Distance(expected,actual)>.0001f) throw new Exception("Double/lost scale: "+scale+" vertex "+i+": "+actual+" != "+expected);
+   }
+   Check(true,"World geometry matches bone skinning with avatar, parent and renderer scale "+scale);
+  }finally{((IDisposable)preview).Dispose();}
+ }
+ Check(initialHash!=(string)Call("ThumbnailKeys","FaceHash",root,null),"Transform scale invalidates thumbnails");
+ var scaleHash=(string)Call("ThumbnailKeys","FaceHash",root,null);
+ bone.transform.localPosition=Vector3.up*.02f;
+ Check(scaleHash!=(string)Call("ThumbnailKeys","FaceHash",root,null),"Bone pose invalidates thumbnails");
+ root.transform.localScale=parent.transform.localScale=face.transform.localScale=Vector3.one;
+ bone.transform.localPosition=Vector3.zero;
+ var renderPreview=Activator.CreateInstance(previewType,new object[]{root,null});
+ try {
+  var hashes=new System.Collections.Generic.List<string>();
+  foreach(var c in new[]{(AnimationClip)null,clip,null}) {
+   previewType.GetMethod("Apply").Invoke(renderPreview,new object[]{c,1f});
+   var texture=(Texture2D)previewType.GetMethod("RenderStatic").Invoke(renderPreview,new object[]{128});
+   hashes.Add(Hash128.Compute(texture.EncodeToPNG()).ToString());UnityEngine.Object.DestroyImmediate(texture);
+  }
+  Check(hashes[0]!=hashes[1]&&hashes[0]==hashes[2],"Expression pixels change and neutral pixels restore exactly");
+ }finally{((IDisposable)renderPreview).Dispose();}
+ var scaleImages=new System.Collections.Generic.List<string>();
+ foreach(var scale in new[]{.5f,1f,2f}) {
+  root.transform.localScale=Vector3.one*scale;
+  var scaledPreview=Activator.CreateInstance(previewType,new object[]{root,null});
+  try {
+   var texture=(Texture2D)previewType.GetMethod("RenderStatic").Invoke(scaledPreview,new object[]{128});
+   scaleImages.Add(Hash128.Compute(texture.EncodeToPNG()).ToString());UnityEngine.Object.DestroyImmediate(texture);
+  }finally{((IDisposable)scaledPreview).Dispose();}
+ }
+ Check(scaleImages.Distinct().Count()==1,"Camera framing is identical at 0.5x, 1x and 2x avatar scale");
+ Check(sourceDescriptor==EditorJsonUtility.ToJson(descriptor),"Preview preserves all source descriptor settings");
+ Check(face.GetBlendShapeWeight(0)==0,"Preview never writes expression weights to the source");
+ return checks;
+} finally {
+ UnityEngine.Object.DestroyImmediate(parent);UnityEngine.Object.DestroyImmediate(mesh);
+ UnityEngine.Object.DestroyImmediate(material);UnityEngine.Object.DestroyImmediate(clip);
+}

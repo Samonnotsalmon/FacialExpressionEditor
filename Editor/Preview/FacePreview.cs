@@ -19,6 +19,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private readonly Vector3 _eye;
         private readonly Vector3 _forward;
         private readonly float _distance;
+        private readonly float _avatarScale;
 
         private readonly Dictionary<SkinnedMeshRenderer, float[]> _baseWeights = new Dictionary<SkinnedMeshRenderer, float[]>();
         private readonly Dictionary<Renderer, (Material[] materials, bool enabled)> _baseRenderers =
@@ -84,11 +85,16 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 _clone = CreateRenderOnlyClone(source);
                 _clone.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                // A scene avatar may also inherit scale from a parent outside its prefab.
+                _clone.transform.localScale = source.transform.lossyScale;
                 _utility.AddSingleGO(_clone);
 
                 _eye = _clone.transform.TransformPoint(view);
                 _forward = _clone.transform.forward;
-                _distance = Mathf.Max(0.25f, view.y * 0.5f);
+                _avatarScale = Mathf.Max(0.001f, Mathf.Abs(_clone.transform.lossyScale.y));
+                _distance = Mathf.Max(0.25f, view.y * 0.5f) * _avatarScale;
+                camera.nearClipPlane = 0.01f * _avatarScale;
+                camera.farClipPlane = 20f * _avatarScale;
 
                 var lightDirection = Quaternion.LookRotation(-_forward + Vector3.down * 0.4f + Vector3.right * 0.3f);
                 _utility.lights[0].intensity = 1.1f;
@@ -224,7 +230,9 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 if (!_needsBake.Contains(skinned)) continue;
 
-                skinned.BakeMesh(mesh);
+                // BakeMesh(false) includes bone scale without compensating for the renderer
+                // transform. Our child renderer applies that transform again (double scale).
+                skinned.BakeMesh(mesh, true);
                 target.sharedMaterials = skinned.sharedMaterials;
                 target.enabled = skinned.enabled;
                 skinned.GetPropertyBlock(block);
@@ -268,7 +276,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             _utility.BeginStaticPreview(new Rect(0, 0, size, size));
             var camera = _utility.camera;
-            var target = _eye + Vector3.up * HeightOffset;
+            var target = _eye + Vector3.up * (HeightOffset * _avatarScale);
             var direction = Quaternion.AngleAxis(Yaw, Vector3.up) * _forward;
             camera.transform.position = target + direction * (_distance / Mathf.Max(0.1f, Zoom));
             camera.transform.LookAt(target);
