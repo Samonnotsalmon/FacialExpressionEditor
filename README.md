@@ -7,7 +7,7 @@ VRChatアバターの表情・ジェスチャー設定を行うUnityエディタ
 - AFKや付属モーションへ表情制御を譲り、必要に応じてベース顔の補正を反映できる
 - Modular Avatar / NDMFで、ビルド時に非破壊で適用する
 
-現在のバージョンは **0.6.2**。
+現在のバージョンは **0.6.3**。
 
 操作手順は **[操作説明書](docs/manual.md)** を参照してください。初期設定、表情・パーツの編集、瞬き・口キャンセル、AFK・ダンスの連携条件と詳細解析、警告の対処をまとめています。変更内容は [CHANGELOG.md](CHANGELOG.md)、開発向け仕様は [docs/spec.md](docs/spec.md) にあります。
 
@@ -38,10 +38,10 @@ VRChatアバターの表情・ジェスチャー設定を行うUnityエディタ
 
 ## リリースの手順
 1. `package.json` の `version` を上げてコミットする。
-2. 同じバージョンのタグ（`v0.6.2` など）を付けて送る。
+2. 同じバージョンのタグ（`v0.6.3` など）を付けて送る。
    ```
-   git tag v0.6.2
-   git push origin main v0.6.2
+   git tag v0.6.3
+   git push origin main v0.6.3
    ```
 3. GitHub Actions が、リリース（zip）と VCC 用の一覧（GitHub Pages）を作り直す。
 
