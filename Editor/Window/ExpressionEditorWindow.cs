@@ -158,6 +158,11 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             _starting = false;
             if (_avatar == avatar) return;
+            _renamingPartFolder = null;
+            _partFolderDraft = "";
+            _closedPartFolders.Clear();
+            _partCategoryDragCandidate = null;
+            _partCategoryDropBefore = null;
             _avatar = avatar;
             if (Set != null) ExpressionSetUtility.SynchronizeExpressionNames(Set);
             _faceDefaults = null;

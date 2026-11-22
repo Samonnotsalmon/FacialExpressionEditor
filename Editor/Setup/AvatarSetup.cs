@@ -16,7 +16,7 @@ namespace Samon.FacialExpressionEditor.Editor
     /// </summary>
     internal static class AvatarSetup
     {
-        public const string DataFolder = "Assets/FacialExpressionEditor";
+        public const string DataFolder = "Assets/NSL_FacialExpressionEditor";
 
         /// <summary>
         /// 表情設定のアバター。アバターの中（ルートを含む）にあればそのアバター、無ければ編集に使うアバター。
@@ -76,7 +76,7 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var folders = AssetDatabase.FindAssets("t:" + nameof(ExpressionSet))
                 .Select(AssetDatabase.GUIDToAssetPath)
-                .Select(p => Path.GetDirectoryName(p)?.Replace('\\', '/'))
+                .Select(p => AssetPathUtility.SetupFolder(AssetDatabase.LoadAssetAtPath<ExpressionSet>(p)))
                 .Where(f => !string.IsNullOrEmpty(f))
                 .Distinct()
                 .ToArray();
@@ -106,7 +106,7 @@ namespace Samon.FacialExpressionEditor.Editor
         public static FacialExpressionAvatar CreateSetupPrefab(string folder, string name, ExpressionSet set, FaceVariant variant,
             GameObject sourceAvatar)
         {
-            var path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(name, "表情設定")}.prefab");
+            var path = AssetPathUtility.UniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(name, "表情設定")}.prefab");
             var scene = EditorSceneManager.NewPreviewScene();
             try
             {
@@ -133,16 +133,18 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             if (source == null || source.expressionSet == null) throw new System.ArgumentException("複製元の表情設定がありません。");
             var copy = ExpressionSetUtility.Duplicate(source.expressionSet, $"{folder}/{name}_表情データ.asset");
+            var settingsFolder = AssetPathUtility.SettingsFolder(copy);
             FaceVariant baseline = null;
             if (source.faceVariant != null)
             {
                 baseline = Object.Instantiate(source.faceVariant);
-                AssetDatabase.CreateAsset(baseline, $"{folder}/{name}_ベース顔.asset");
+                baseline.useOverridesFolder = true;
+                AssetDatabase.CreateAsset(baseline, AssetPathUtility.UniqueAssetPath($"{settingsFolder}/{name}_ベース顔.asset"));
                 foreach (var replacement in baseline.overrides.Where(o => o.clip != null))
                 {
                     var clip = Object.Instantiate(replacement.clip);
-                    var clipsFolder = AssetPathUtility.EnsureFolder(folder, "Overrides");
-                    AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath($"{clipsFolder}/{AssetPathUtility.SafeFileName(clip.name)}.anim"));
+                    var clipsFolder = AssetPathUtility.EnsureFolder(settingsFolder, "Overrides");
+                    AssetDatabase.CreateAsset(clip, AssetPathUtility.UniqueAssetPath($"{clipsFolder}/{AssetPathUtility.SafeFileName(clip.name)}.anim"));
                     replacement.clip = clip;
                 }
                 EditorUtility.SetDirty(baseline);
@@ -153,7 +155,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (baseline == null)
                 {
                     baseline = ScriptableObject.CreateInstance<FaceVariant>();
-                    AssetDatabase.CreateAsset(baseline, $"{folder}/{name}_ベース顔.asset");
+                    baseline.useOverridesFolder = true;
+                    AssetDatabase.CreateAsset(baseline, AssetPathUtility.UniqueAssetPath($"{settingsFolder}/{name}_ベース顔.asset"));
                 }
                 copy.faceMeshPaths = copy.faceMeshPaths.Where(path =>
                 {
@@ -174,6 +177,8 @@ namespace Samon.FacialExpressionEditor.Editor
             var sourceAvatar = PrefabOf(AvatarRootOf(source)) ?? source.sourceAvatar;
             var prefab = CreateSetupPrefab(folder, name, copy, baseline, sourceAvatar);
             if (prefab == null) throw new System.InvalidOperationException("専用Prefabを作成できませんでした。");
+            LipSyncProfileUtility.Duplicate(source, prefab);
+            var lipBindings = source.lipSyncMeshBindings.Select(b => new LipSyncMeshBinding { targetId=b.targetId, mesh=b.mesh }).ToList();
             AssetDatabase.SaveAssets();
 
             // Project / Prefab Modeでは元Prefabを書き換えず、新しいPrefabを開く。
@@ -211,6 +216,13 @@ namespace Samon.FacialExpressionEditor.Editor
                 applied.enabled = source.enabled;
                 PrefabUtility.RecordPrefabInstancePropertyModifications(applied);
                 Undo.DestroyObjectImmediate(source);
+            }
+            if (prefab.lipSyncProfile)
+            {
+                Undo.RecordObject(applied, undoName);
+                applied.lipSyncProfile = prefab.lipSyncProfile;
+                applied.lipSyncMeshBindings = lipBindings;
+                LipSyncProfileUtility.LoadDraft(applied);
             }
             EditorSceneManager.MarkSceneDirty(applied.gameObject.scene);
             Undo.CollapseUndoOperations(group);
@@ -262,11 +274,11 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var error = ValidateSetupName(name);
             if (error != null) throw new System.ArgumentException(error);
-            var originalFolder = AssetPathUtility.FolderOf(source.expressionSet);
+            var originalFolder = AssetPathUtility.SetupFolder(source.expressionSet);
             var parent = Path.GetDirectoryName(originalFolder)?.Replace('\\', '/');
             if (string.IsNullOrEmpty(parent)) parent = "Assets";
             if (parent != "Assets" && !parent.StartsWith("Assets/")) parent = DataFolder;
-            return AssetDatabase.GenerateUniqueAssetPath(parent + "/" + name.Trim());
+            return AssetPathUtility.UniqueAssetPath(parent + "/" + name.Trim());
         }
 
         public static FacialExpressionAvatar DuplicateBesideSource(FacialExpressionAvatar source, string name = null)

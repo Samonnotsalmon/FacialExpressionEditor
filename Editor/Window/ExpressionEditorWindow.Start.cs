@@ -217,28 +217,35 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawStart()
         {
             _startScroll = EditorGUILayout.BeginScrollView(_startScroll);
-            using (new EditorGUILayout.VerticalScope(GUILayout.MaxWidth(680)))
+            using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.Space(8);
-                EditorGUILayout.LabelField(_selectingAvatar ? "アバターを選ぶ" : "新しく始める", EditorStyles.boldLabel);
-                DrawStartAvatar();
+                GUILayout.FlexibleSpace();
+                // The start screen has a single column, even after choosing an avatar.
+                // Balance the spare width on both sides instead of adding an empty panel.
+                using (new EditorGUILayout.VerticalScope(GUILayout.Width(Mathf.Min(680, Mathf.Max(260, position.width - 32)))))
+                {
+                    EditorGUILayout.Space(8);
+                    EditorGUILayout.LabelField(_selectingAvatar ? "アバターを選ぶ" : "新しく始める", EditorStyles.boldLabel);
+                    DrawStartAvatar();
 
-                if (_startAvatar == null)
-                {
-                    DrawSceneAvatars();
-                    DrawOpenExisting();
+                    if (_startAvatar == null)
+                    {
+                        DrawSceneAvatars();
+                        DrawOpenExisting();
+                    }
+                    else
+                    {
+                        DrawSetupsOfAvatar();
+                        var info = AnalyzeStart();
+                        EditorGUILayout.Space(8);
+                        DrawStartFace(info);
+                        EditorGUILayout.Space(8);
+                        DrawStartData(info);
+                        EditorGUILayout.Space(8);
+                        DrawStartButtons(info);
+                    }
                 }
-                else
-                {
-                    DrawSetupsOfAvatar();
-                    var info = AnalyzeStart();
-                    EditorGUILayout.Space(8);
-                    DrawStartFace(info);
-                    EditorGUILayout.Space(8);
-                    DrawStartData(info);
-                    EditorGUILayout.Space(8);
-                    DrawStartButtons(info);
-                }
+                GUILayout.FlexibleSpace();
             }
             EditorGUILayout.EndScrollView();
         }
@@ -248,8 +255,8 @@ namespace Samon.FacialExpressionEditor.Editor
             var rect = GUILayoutUtility.GetRect(0, 56, GUILayout.ExpandWidth(true));
             if (Event.current.type == EventType.Repaint) EditorGUI.DrawRect(rect, new Color(0, 0, 0, 0.15f));
             GUI.Label(rect, _startAvatar == null
-                    ? "アバターのプレハブをここにドロップ（Hierarchy のアバターでも）"
-                    : "別のアバターにするときは、ここにドロップ",
+                    ? "アバターをドロップ"
+                    : "別のアバターをドロップ",
                 DropHint);
 
             var e = Event.current;
@@ -545,23 +552,24 @@ namespace Samon.FacialExpressionEditor.Editor
             if (_startShare)
             {
                 set = _startSharedSet;
-                folder = AssetPathUtility.FolderOf(set);
+                folder = AssetPathUtility.SetupFolder(set);
                 if (info.FaceDifferences.Count > 0) variant = info.MatchingVariant ?? FaceVariantUtility.Create(set, avatar, name);
             }
             else
             {
                 var parent = EnsureProjectFolder(_startDataFolder);
-                var uniqueFolder = AssetDatabase.GenerateUniqueAssetPath($"{parent}/{AssetPathUtility.SafeFileName(name)}");
+                var uniqueFolder = AssetPathUtility.UniqueAssetPath($"{parent}/{AssetPathUtility.SafeFileName(name)}");
                 folder = EnsureProjectFolder(uniqueFolder);
                 set = CreateInstance<ExpressionSet>();
                 set.independentClips = true;
+                set.usesSettingsFolder = true;
                 set.motionRulesConfigured = true;
                 set.previewHeight = _startPreviewHeight; set.previewZoom = _startPreviewZoom;
                 set.faceMeshPaths = _startMeshPaths.ToList();
                 set.linkedObjectPaths = _startObjectPaths.ToList();
                 set.explicitLayerSelection = true;
                 set.importLayerNames = _startLayerNames.ToList();
-                AssetDatabase.CreateAsset(set, AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(name)}{DataSuffix}.asset"));
+                AssetDatabase.CreateAsset(set, AssetPathUtility.UniqueAssetPath($"{AssetPathUtility.EnsureFolder(folder, "Settings")}/{AssetPathUtility.SafeFileName(name)}{DataSuffix}.asset"));
                 if (_startImportFx && info.GestureClips > 0)
                 {
                     imported = FxImporter.ImportGestures(descriptor, set);
@@ -585,7 +593,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
                 // 取り込んだ表情で動くシェイプキーも含めて、元のプレハブと違えば顔バリアントにする。
                 var differences = FaceVariantUtility.CompareWithOriginal(set, avatar, null, out _);
-                variant = FaceVariantUtility.Create(set, avatar, name + "_ベース顔");
+                variant = FaceVariantUtility.Create(set, avatar, name + "_ベース顔", true);
                 variant.useCapturedValues = true;
                 EditorUtility.SetDirty(variant);
             }

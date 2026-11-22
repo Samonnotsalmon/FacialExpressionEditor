@@ -17,6 +17,8 @@ namespace Samon.FacialExpressionEditor
 
         // 同じグループのパーツは同時に出ない（1つのIntパラメータで切り替える）。空なら単独のトグル。
         public string exclusiveGroup = "";
+        // Editor-only organization; does not affect exclusive groups or asset paths.
+        public string folder = "";
 
         // clip のうち、このパーツとして動かすプロパティ（PropertyKey 形式）。
         public List<string> properties = new List<string>();

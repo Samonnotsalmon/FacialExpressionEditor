@@ -1,0 +1,37 @@
+// FEE-006: synthetic settings and clips; compare the real build plan before/after organization.
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var type=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow");
+var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+var planType=asm.GetType("Samon.FacialExpressionEditor.Editor.BuildPlan");
+var checks=new List<string>();
+void Check(bool ok,string label){if(!ok)throw new Exception(label);checks.Add(label);}
+var folder="Assets/__FEE006_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+EditorWindow window=null;
+try {
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();AssetDatabase.CreateAsset(set,folder+"/Settings.asset");
+ var clip=new AnimationClip();clip.SetCurve("Prop",typeof(GameObject),"m_IsActive",AnimationCurve.Constant(0,1,1));AssetDatabase.CreateAsset(clip,folder+"/Part.anim");
+ foreach(var name in new[]{"Free","GroupedA","GroupedB"})set.parts.Add(new Samon.FacialExpressionEditor.FacialPart{name=name,clip=clip,exclusiveGroup=name=="Free"?"":"Eyes",properties=new List<string>{"Prop|UnityEngine.GameObject|m_IsActive"}});
+ window=(EditorWindow)ScriptableObject.CreateInstance(type);
+ bool Rename(string oldName,string name)=>(bool)type.GetMethod("RenamePartFolder",flags).Invoke(window,new object[]{set,oldName,name});
+ void Remove(string name)=>type.GetMethod("RemovePartFolder",flags).Invoke(window,new object[]{set,name});
+ string Plan(){var p=planType.GetMethod("Create").Invoke(null,new object[]{set});return string.Join(";",((System.Collections.IEnumerable)planType.GetField("Parts").GetValue(p)).Cast<object>().Select(e=>{var t=e.GetType();return ((Samon.FacialExpressionEditor.FacialPart)t.GetField("Part").GetValue(e)).id+":"+t.GetField("Parameter").GetValue(e)+":"+t.GetField("Value").GetValue(e)+":"+t.GetField("IsGrouped").GetValue(e);}));}
+ var before=Plan();var ids=set.parts.Select(p=>p.id).ToArray();var path=AssetDatabase.GetAssetPath(clip);
+ Check(Rename(null,"Accessories"),"Create empty folder");
+ Check(!Rename(null,"Accessories")&&!Rename(null,"a/b")&&!Rename(null,"a\\b")&&!Rename(null," "),"Reject duplicates, nested and blank names");
+ set.parts[0].folder="Accessories";set.parts[1].folder="Accessories";
+ var closed=(HashSet<string>)type.GetField("_closedPartFolders",flags).GetValue(window);closed.Add("folder:Accessories");
+ Undo.IncrementCurrentGroup();Check(Rename("Accessories","Details"),"Rename folder");Undo.FlushUndoRecordObjects();
+ Check(set.parts[0].folder=="Details"&&set.parts[1].folder=="Details","Rename keeps all memberships including dormant exclusive membership");
+ Check(closed.Contains("folder:Details")&&!closed.Contains("folder:Accessories"),"Folded state follows rename");
+ Check(Rename("Details","Details"),"Unchanged name accepted without duplication");
+ Check(Plan()==before,"Organization preserves build parameters, values and exclusivity");
+ Undo.PerformUndo();Check(set.partFolders.Contains("Accessories")&&set.parts[0].folder=="Accessories","Undo restores folder name and memberships");
+ Undo.PerformRedo();Check(set.partFolders.Contains("Details")&&set.parts[0].folder=="Details","Redo restores rename");
+ AssetDatabase.SaveAssetIfDirty(set);var setPath=AssetDatabase.GetAssetPath(set);Resources.UnloadAsset(set);set=AssetDatabase.LoadAssetAtPath<Samon.FacialExpressionEditor.ExpressionSet>(setPath);
+ Check(set.partFolders.Contains("Details")&&set.parts[0].folder=="Details"&&set.parts[1].exclusiveGroup=="Eyes","Disk reload retains folders and exclusive groups");
+ Check(Plan()==before,"Disk reload preserves build plan");
+ Remove("Details");Check(set.partFolders.Count==0&&set.parts.All(p=>string.IsNullOrEmpty(p.folder)),"Remove folder clears memberships");
+ Check(set.parts.Select(p=>p.id).SequenceEqual(ids)&&set.parts.All(p=>p.clip==clip)&&AssetDatabase.GetAssetPath(clip)==path,"Remove preserves all parts, references, order and asset path");
+ Check(Plan()==before,"Removing organization leaves exclusivity unchanged");
+ return new{passed=checks.Count,checks};
+}finally{if(window!=null)UnityEngine.Object.DestroyImmediate(window);AssetDatabase.DeleteAsset(folder);}

@@ -71,7 +71,18 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             var cancelerLayers = new List<VirtualLayer>();
-            if (face.HasMouthCanceler) cancelerLayers.Add(BuildMouthCancelerLayer(cloneContext, face, avatarRoot, writeDefaults));
+            if (face.HasMouthCanceler)
+            {
+                if (!face.SwitchesLipSync) cancelerLayers.Add(BuildMouthCancelerLayer(cloneContext, face, avatarRoot, writeDefaults));
+                else for (int index = 0; index < face.LipSyncTargets.Count; index++)
+                {
+                    var target = face.LipSyncTargets[index];
+                    if (!target.followExpressions || !target.mesh) continue;
+                    var path = AnimationUtility.CalculateTransformPath(target.mesh.transform, avatarRoot.transform);
+                    var bindings = face.MouthMorphs.Where(b => b.path == face.LipSyncTargetPaths[index]).ToList();
+                    if (bindings.Count > 0) cancelerLayers.Add(BuildMouthCancelerLayer(cloneContext, face, avatarRoot, writeDefaults, bindings, LipSyncSetup.ActiveParameter(index), path));
+                }
+            }
 
             var partLayers = BuildPartLayers(cloneContext, set, plan, builder, writeDefaults);
             if (plan.Parts.Count > 0)
@@ -93,6 +104,7 @@ namespace Samon.FacialExpressionEditor.Editor
             if (face.ReplacesBlink) EnsureParameter(fx, FaceControlPlan.BlinkParameter, AnimatorControllerParameterType.Bool, true);
             if (face.UsesMouthCancelParameter) EnsureParameter(fx, FaceControlPlan.MouthCancelParameter, AnimatorControllerParameterType.Bool, true);
             if (face.HasMouthCanceler) EnsureParameter(fx, FaceControlPlan.VisemeParameter, AnimatorControllerParameterType.Int);
+            if (face.SwitchesLipSync) { EnsureParameter(fx, LipSyncSwitchPass.AvatarAllowed, AnimatorControllerParameterType.Bool, true); foreach (var index in Enumerable.Range(0, face.LipSyncTargets.Count)) EnsureParameter(fx, LipSyncSetup.ActiveParameter(index), AnimatorControllerParameterType.Bool); }
             foreach (var entry in plan.Parts)
             {
                 EnsureParameter(fx, entry.Parameter,
@@ -597,16 +609,18 @@ namespace Samon.FacialExpressionEditor.Editor
         /// 口モーフキャンセラー。話している間（Viseme が 0 以外）、指定クリップの0秒時点の値へ戻して、
         /// 表情の口とリップシンクの口が重ならないようにする。口モーフキャンセラーを止める表情の間は働かない。
         /// </summary>
-        private static VirtualLayer BuildMouthCancelerLayer(CloneContext cloneContext, FaceControlPlan face, GameObject avatarRoot, bool writeDefaults)
+        private static VirtualLayer BuildMouthCancelerLayer(CloneContext cloneContext, FaceControlPlan face, GameObject avatarRoot, bool writeDefaults, List<EditorCurveBinding> bindings = null, string activeParameter = null, string destinationPath = null)
         {
-            var layer = VirtualLayer.Create(cloneContext, LayerPrefix + "Mouth Morph Canceler");
+            var layer = VirtualLayer.Create(cloneContext, LayerPrefix + "Mouth Morph Canceler" + (activeParameter == null ? "" : " " + activeParameter));
             var root = layer.StateMachine;
 
             var cancelClip = VirtualClip.Create("Cancel Mouth");
-            foreach (var binding in face.MouthMorphs)
+            foreach (var binding in bindings ?? face.MouthMorphs)
             {
                 var value = AnimationUtility.GetEditorCurve(face.MouthCancelClip, binding).Evaluate(0);
-                cancelClip.SetFloatCurve(binding, new AnimationCurve(new Keyframe(0, value)));
+                var outputBinding = binding;
+                if (destinationPath != null) outputBinding.path = destinationPath;
+                cancelClip.SetFloatCurve(outputBinding, new AnimationCurve(new Keyframe(0, value)));
             }
 
             var idle = root.AddState("Not Speaking", VirtualClip.Create("Not Speaking"), new Vector3(300, 0, 0));
@@ -616,6 +630,7 @@ namespace Samon.FacialExpressionEditor.Editor
             root.DefaultState = idle;
 
             var speaking = new List<AnimatorCondition> { Condition(FaceControlPlan.VisemeParameter, AnimatorConditionMode.NotEqual, 0) };
+            if (activeParameter != null) speaking.Add(Condition(activeParameter, AnimatorConditionMode.If, 0));
             if (face.UsesMouthCancelParameter) speaking.Add(Condition(FaceControlPlan.MouthCancelParameter, AnimatorConditionMode.If, 0));
             idle.Transitions = ImmutableList.Create(Transition(cancel, 0, speaking.ToArray()));
 
@@ -627,6 +642,7 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 stops.Add(Transition(idle, 0, Condition(FaceControlPlan.MouthCancelParameter, AnimatorConditionMode.IfNot, 0)));
             }
+            if (activeParameter != null) stops.Add(Transition(idle, 0, Condition(activeParameter, AnimatorConditionMode.IfNot, 0)));
             cancel.Transitions = stops.ToImmutableList();
             return layer;
         }

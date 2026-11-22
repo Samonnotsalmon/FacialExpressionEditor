@@ -67,8 +67,8 @@ namespace Samon.FacialExpressionEditor.Editor
         internal static TextureFormat IconFormat(BuildTarget target) =>
             target == BuildTarget.Android || target == BuildTarget.iOS ? TextureFormat.ASTC_6x6 : TextureFormat.DXT5;
 
-        private const string NeutralIconKey = "";
-        private const string BaseIconKey = "__base__";
+        private const string NeutralIconKey = MenuIcons.NeutralIconKey;
+        private const string BaseIconKey = MenuIcons.BaseIconKey;
 
         /// <summary>
         /// FaceEmoと同じ構成のメニューを作る。
@@ -172,9 +172,21 @@ namespace Samon.FacialExpressionEditor.Editor
 
             if (plan.Parts.Count > 0)
             {
-                var partControls = plan.Parts
-                    .Select(p => Toggle(p.Part.name, p.Parameter, p.Value))
-                    .ToList();
+                Control PartControl(BuildPlan.PartEntry p)
+                {
+                    var control = Toggle(p.Part.name, p.Parameter, p.Value);
+                    if (icons.TryGetValue(MenuIcons.PartIconKey(p.Part), out var icon)) control.icon = icon;
+                    return control;
+                }
+                var partControls = plan.Parts.Where(p => PartCategoryOrder.Key(p.Part) == "folder:")
+                    .Select(PartControl).ToList();
+                foreach (var key in PartCategoryOrder.Keys(set))
+                {
+                    var children = plan.Parts.Where(p => PartCategoryOrder.Key(p.Part) == key).Select(PartControl).ToList();
+                    if (children.Count == 0) continue;
+                    var name = key.Substring(key.StartsWith("exclusive:") ? 10 : 7);
+                    partControls.Add(SubMenu(name, Menu(context, name, children)));
+                }
                 // 先頭に「すべてOFF」（押すと、ONにしているパーツをまとめてOFFにする）。
                 var reset = Toggle("すべてOFF", BuildPlan.PartResetParameter, 1);
                 reset.type = Control.ControlType.Button;
@@ -210,10 +222,15 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (!EditorApplication.isPlayingOrWillChangePlaymode) MenuIcons.EnsureCached(avatarRoot, set, variant);
 
                 var faceHash = ThumbnailKeys.FaceHash(avatarRoot, set);
+                var capturedKeys = EditorApplication.isPlayingOrWillChangePlaymode
+                    ? MenuIconPrewarmer.Read(avatarRoot.GetComponentInChildren<FacialExpressionAvatar>(true)) : null;
                 var missing = 0;
 
                 void Load(string id, string key, string name)
                 {
+                    // Use the complete pre-Play key: not only the appearance, but also
+                    // asset instance references can change during reloads/build processing.
+                    if (capturedKeys != null && capturedKeys.TryGetValue(id, out var capturedKey)) key = capturedKey;
                     var texture = ThumbnailCache.LoadFromDisk(key);
                     if (texture == null)
                     {
@@ -231,6 +248,11 @@ namespace Samon.FacialExpressionEditor.Editor
                     Load(expression.id, ThumbnailKeys.Expression(expression, variant, faceHash), expression.name);
                 }
                 Load(BaseIconKey, ThumbnailKeys.BaseFace(variant, faceHash), "Base");
+                foreach (var entry in plan.Parts)
+                {
+                    var part = entry.Part;
+                    Load(MenuIcons.PartIconKey(part), ThumbnailKeys.Part(part, faceHash), part.name);
+                }
                 if (MenuIcons.NeedsNeutral(plan)) Load(NeutralIconKey, ThumbnailKeys.Neutral(faceHash), "無表情");
 
                 if (missing > 0)

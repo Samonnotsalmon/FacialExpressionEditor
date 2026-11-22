@@ -16,13 +16,15 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// 表情データのフォルダの Variants/&lt;名前&gt;/ に顔バリアントを作り、アバターからベース顔を検出する。
         /// </summary>
-        public static FaceVariant Create(ExpressionSet set, GameObject avatarRoot, string name)
+        public static FaceVariant Create(ExpressionSet set, GameObject avatarRoot, string name, bool baseline = false)
         {
             var fileName = AssetPathUtility.SafeFileName(name, "Variant");
-            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Variants", fileName);
-            var path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{fileName}.asset");
+            var folder = baseline && set.usesSettingsFolder ? AssetPathUtility.SettingsFolder(set)
+                : AssetPathUtility.EnsureFolder(AssetPathUtility.SettingsFolder(set), "Variants", fileName);
+            var path = AssetPathUtility.UniqueAssetPath($"{folder}/{fileName}.asset");
 
             var variant = ScriptableObject.CreateInstance<FaceVariant>();
+            variant.useOverridesFolder = baseline && set.usesSettingsFolder;
             AssetDatabase.CreateAsset(variant, path);
             variant.useCapturedValues = set.independentClips;
             DetectBaseFace(variant, set, avatarRoot);
@@ -184,7 +186,8 @@ namespace Samon.FacialExpressionEditor.Editor
 
             var sourcePath = AssetDatabase.GetAssetPath(expression.clip);
             var folder = AssetPathUtility.FolderOf(variant);
-            var path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(expression.clip.name)}.anim");
+            if (variant.useOverridesFolder) folder = AssetPathUtility.EnsureFolder(folder, "Overrides");
+            var path = AssetPathUtility.UniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(expression.clip.name)}.anim");
             if (!AssetDatabase.CopyAsset(sourcePath, path)) return null;
 
             var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);

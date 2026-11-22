@@ -1,0 +1,12 @@
+var root=McpSnippet.Find("/Kirishima");var clone=UnityEngine.Object.Instantiate(root);Samon.FacialExpressionEditor.ExpressionSet set=null;AnimationClip clip=null;
+try{
+ var owner=clone.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true);var target=owner.lipSyncSwitch.targets[1];target.followExpressions=true;
+ set=UnityEngine.Object.Instantiate(owner.expressionSet);owner.expressionSet=set;clip=UnityEngine.Object.Instantiate(set.mouthCancelAnimation);set.mouthCancelAnimation=clip;
+ var shapeExists=target.mesh.sharedMesh.GetBlendShapeIndex("Hukurou_BlendShape.eye_close")>=0; var oldPath=AnimationUtility.CalculateTransformPath(target.mesh.transform,clone.transform);
+ var binding=EditorCurveBinding.FloatCurve(oldPath,typeof(SkinnedMeshRenderer),"blendShape.Hukurou_BlendShape.eye_close");AnimationUtility.SetEditorCurve(clip,binding,AnimationCurve.Constant(0,1,0));
+ nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(clone);
+ var d=clone.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();var fx=(UnityEditor.Animations.AnimatorController)d.baseAnimationLayers.Single(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
+ var layer=fx.layers.FirstOrDefault(l=>l.name=="[FacialExpressionEditor] Mouth Morph Canceler FEE/LipSyncTargetActive/1"); if(layer==null)return new{passed=false,shapeExists,oldPath,layers=fx.layers.Select(l=>l.name).ToArray()};var generated=(AnimationClip)layer.stateMachine.states.Single(s=>s.state.name=="Cancel Mouth").state.motion;
+ var actual=AnimationUtility.GetCurveBindings(generated).Single();if(actual.path==oldPath||!AnimationUtility.GetAnimatedObject(clone,actual))throw new Exception("Moved renderer binding lost");
+ return new{passed=true,oldPath,generatedPath=actual.path};
+}finally{UnityEngine.Object.DestroyImmediate(clone);if(set)UnityEngine.Object.DestroyImmediate(set);if(clip)UnityEngine.Object.DestroyImmediate(clip);}

@@ -1,0 +1,16 @@
+var utility=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly.GetType("Samon.FacialExpressionEditor.Editor.LipSyncProfileUtility");
+var source=McpSnippet.All<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true).First(s=>s.gameObject.scene.name=="Core_WK"&&s.lipSyncProfile!=null);
+var prefab=PrefabUtility.GetCorrespondingObjectFromSource(source);
+var folder="Assets/__FEE015Scene_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var previous=UnityEngine.SceneManagement.SceneManager.GetActiveScene();var scene=UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene,UnityEditor.SceneManagement.NewSceneMode.Additive);
+try{
+ var root=new GameObject("Reload fixture");root.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var instance=((GameObject)PrefabUtility.InstantiatePrefab(prefab.gameObject,root.transform)).GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();
+ foreach(var target in instance.lipSyncProfile.settings.targets){var go=new GameObject(target.label);go.transform.SetParent(root.transform);var mesh=go.AddComponent<SkinnedMeshRenderer>();utility.GetMethod("Bind").Invoke(null,new object[]{instance,target.id,mesh});}
+ utility.GetMethod("LoadDraft").Invoke(null,new object[]{instance});
+ var path=folder+"/Reload.unity";UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene,path);UnityEditor.SceneManagement.EditorSceneManager.CloseScene(scene,true);scene=UnityEditor.SceneManagement.EditorSceneManager.OpenScene(path,UnityEditor.SceneManagement.OpenSceneMode.Additive);
+ var reloaded=scene.GetRootGameObjects().Single().GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>();var settings=(Samon.FacialExpressionEditor.LipSyncSwitchSettings)utility.GetMethod("Resolve").Invoke(null,new object[]{reloaded});
+ if(reloaded.lipSyncProfile!=source.lipSyncProfile||settings.targets.Any(t=>!t.mesh||t.mesh.gameObject.scene!=scene||t.mesh.name!=t.label))throw new Exception("Scene reload did not retain per-instance mesh bindings");
+ if(settings.menuName!=source.lipSyncProfile.settings.menuName||settings.defaultSelection!=source.lipSyncProfile.settings.defaultSelection)throw new Exception("Shared settings did not reload");
+ return new{passed=true,sceneReload=true,localBindings=settings.targets.Count,sharedSettings=true};
+}finally{if(scene.IsValid()&&scene.isLoaded)UnityEditor.SceneManagement.EditorSceneManager.CloseScene(scene,true);UnityEngine.SceneManagement.SceneManager.SetActiveScene(previous);AssetDatabase.DeleteAsset(folder);}

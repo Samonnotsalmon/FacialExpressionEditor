@@ -129,15 +129,18 @@ namespace Samon.FacialExpressionEditor.Editor
             if (string.IsNullOrEmpty(path)) return;
             var parent = System.IO.Path.GetDirectoryName(path).Replace('\\', '/');
             var name = System.IO.Path.GetFileNameWithoutExtension(path);
-            var folder = AssetPathUtility.EnsureFolder(parent, name);
-            var copy = ExpressionSetUtility.Duplicate(set, AssetDatabase.GenerateUniqueAssetPath(folder + "/" + name + ".asset"));
+            var folder = AssetPathUtility.UniqueAssetPath(parent + "/" + name);
+            AssetDatabase.CreateFolder(parent, System.IO.Path.GetFileName(folder));
+            var copy = ExpressionSetUtility.Duplicate(set, AssetPathUtility.UniqueAssetPath(folder + "/" + name + ".asset"));
+            var settingsFolder = AssetPathUtility.SettingsFolder(copy);
             var baseline = Variant != null ? Instantiate(Variant) : CreateInstance<FaceVariant>();
             baseline.name = name + "_ベース顔";
-            AssetDatabase.CreateAsset(baseline, AssetDatabase.GenerateUniqueAssetPath(folder + "/" + baseline.name + ".asset"));
+            baseline.useOverridesFolder = true;
+            AssetDatabase.CreateAsset(baseline, AssetPathUtility.UniqueAssetPath(settingsFolder + "/" + baseline.name + ".asset"));
             foreach (var replacement in baseline.overrides.Where(o => o.clip != null))
             {
                 var clip = Instantiate(replacement.clip);
-                AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath(folder + "/" + AssetPathUtility.SafeFileName(clip.name) + ".anim"));
+                AssetDatabase.CreateAsset(clip, AssetPathUtility.UniqueAssetPath(AssetPathUtility.EnsureFolder(settingsFolder, "Overrides") + "/" + AssetPathUtility.SafeFileName(clip.name) + ".anim"));
                 replacement.clip = clip;
             }
             FaceVariantUtility.DetectBaseFace(baseline, copy, AvatarRoot);

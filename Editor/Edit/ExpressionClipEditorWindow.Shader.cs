@@ -16,20 +16,20 @@ namespace Samon.FacialExpressionEditor.Editor
         private static readonly string[] VectorComponents = { "x", "y", "z", "w" };
 
         [SerializeField] private string _shaderRendererPath;
-        [SerializeField] private bool _showRecordedMaterialProperties;
+        [SerializeField] private bool _showRecordedMaterialProperties = true;
         private Vector2 _shaderScroll;
         private Rect _shaderViewport;
 
         private void DrawShaderProperties()
         {
             _shaderScroll = EditorGUILayout.BeginScrollView(_shaderScroll, GUILayout.ExpandHeight(true));
-            DrawMaterialInspector();
-            EditorGUILayout.Space(12);
             var count = Values().Keys.Where(b => b.propertyName.StartsWith(ClipEditing.MaterialPrefix))
                 .Select(b => (b.path, b.type, name: BaseProperty(b.propertyName))).Distinct().Count();
             _showRecordedMaterialProperties = EditorGUILayout.Foldout(_showRecordedMaterialProperties,
-                $"アニメーションに記録済みの項目（{count}）", true);
+                $"記録済みのマテリアル値（{count}）・記録解除", true);
             if (_showRecordedMaterialProperties) DrawCurrentProperties();
+            EditorGUILayout.Space(12);
+            DrawMaterialInspector();
             EditorGUILayout.EndScrollView();
             if (Event.current.type == EventType.Repaint) _shaderViewport = GUILayoutUtility.GetLastRect();
         }
@@ -118,9 +118,14 @@ namespace Samon.FacialExpressionEditor.Editor
 
         private void RecordMaterialInspectorChanges(Renderer renderer)
         {
-            var changed = MaterialAnimationValues.Read(_inspectorMaterial)
+            var current = MaterialAnimationValues.Read(_inspectorMaterial);
+            var changed = current
                 .Where(p => _materialInspectorBaseline.TryGetValue(p.Key, out var old) && !Mathf.Approximately(old, p.Value)).ToList();
             if (changed.Count == 0) return;
+            // Unity samples an incomplete color/vector animation with zero for missing components.
+            // Record the complete property, including components unchanged in the inspector.
+            var names = new HashSet<string>(changed.Select(p => BaseProperty(ClipEditing.MaterialPrefix + p.Key)));
+            changed = current.Where(p => names.Contains(BaseProperty(ClipEditing.MaterialPrefix + p.Key))).ToList();
             Modify("マテリアルのパラメータを変更", targetClip =>
             {
                 foreach (var pair in changed)
@@ -169,7 +174,7 @@ namespace Samon.FacialExpressionEditor.Editor
             foreach (var group in groups)
             {
                 var (path, type, property) = group.Key;
-                var renderer = Root.Find(path)?.GetComponent(type) as Renderer;
+                var renderer = (string.IsNullOrEmpty(path) ? Root : Root.Find(path))?.GetComponent(type) as Renderer;
                 var components = group.ToDictionary(b => Component(b.propertyName), b => b);
 
                 using (new EditorGUILayout.HorizontalScope())
@@ -219,16 +224,53 @@ namespace Samon.FacialExpressionEditor.Editor
                         }
                     }
 
-                    if (GUILayout.Button(new GUIContent("×", "この表情で変えない"), EditorStyles.miniButton, GUILayout.Width(24)))
+                    if (GUILayout.Button(new GUIContent("×", "項目全体の記録を解除（全時刻）"), EditorStyles.miniButton, GUILayout.Width(24)))
                     {
-                        Modify("パラメータを外す", c =>
-                        {
-                            foreach (var binding in group) ClipEditing.RemoveFloat(c, binding);
-                        });
+                        RequestMaterialRecordRemoval(group.ToArray());
                         GUIUtility.ExitGUI();
+                    }
+                    if (components.Keys.Any(k => k.Length == 1) && GUILayout.Button("成分…", EditorStyles.miniButton, GUILayout.Width(52)))
+                    {
+                        var menu = new GenericMenu();
+                        var target = TargetClip;
+                        foreach (var component in ColorComponents.Concat(VectorComponents).Where(components.ContainsKey))
+                        {
+                            var binding = components[component];
+                            var componentLabel = component == "a" ? "A（透明度）の記録を解除" : component.ToUpperInvariant() + "の記録を解除";
+                            menu.AddItem(new GUIContent(componentLabel), false, () =>
+                            {
+                                if (TargetClip == target) RequestMaterialRecordRemoval(new[] { binding });
+                            });
+                        }
+                        menu.ShowAsContext();
                     }
                 }
             }
+        }
+
+        private static bool HasMultipleMaterialKeys(AnimationClip clip, EditorCurveBinding[] bindings) =>
+            clip != null && bindings.Any(b => (AnimationUtility.GetEditorCurve(clip, b)?.length ?? 0) > 1);
+
+        private void RequestMaterialRecordRemoval(EditorCurveBinding[] bindings)
+        {
+            if (HasMultipleMaterialKeys(TargetClip, bindings) && !EditorUtility.DisplayDialog("マテリアルの記録を解除",
+                "選択した値には複数時刻のキーがあります。選択した成分の全時刻の記録を解除しますか？ 他の成分や項目は残ります。", "全時刻の記録を解除", "キャンセル")) return;
+            RemoveMaterialRecords(bindings);
+        }
+
+        private void RemoveMaterialRecords(EditorCurveBinding[] bindings)
+        {
+            if (TargetClip == null) return;
+            var selected = bindings.Where(b => typeof(Renderer).IsAssignableFrom(b.type) &&
+                b.propertyName.StartsWith(ClipEditing.MaterialPrefix) && AnimationUtility.GetEditorCurve(TargetClip, b) != null).Distinct().ToArray();
+            if (selected.Length == 0) return;
+            Modify("マテリアルの記録を解除", clip =>
+            {
+                foreach (var binding in selected) ClipEditing.RemoveFloat(clip, binding);
+            });
+            // Reload the temporary inspector from the source plus remaining curves, so a removed
+            // value cannot linger in the inspector and accidentally be recorded again.
+            _materialInspectorContext = null;
         }
 
         /// <summary>

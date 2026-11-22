@@ -48,6 +48,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
 
             PreviewClips.Release(source);
+            FillMissingMaterialDefaults(new[] { clip });
 
             _cache[expression.id] = clip;
             return clip;
@@ -174,6 +175,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 clip.Settings = AnimationUtility.GetAnimationClipSettings(part.clip);
                 CopyCurves(part.clip, clip, new HashSet<string>(part.properties));
             }
+            FillMissingMaterialDefaults(new[] { clip });
             return clip;
         }
 
@@ -235,6 +237,22 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var list = clips.ToList();
             var bindings = list.SelectMany(c => c.GetFloatCurveBindings()).Where(IsMaterialBinding).Distinct().ToList();
+            // Alpha-only material curves become black in Unity's native animation sampling.
+            // Supply absent components from the selected material/default FX without changing source clips.
+            foreach (var binding in bindings.ToArray())
+            {
+                var dot = binding.propertyName.LastIndexOf('.');
+                var component = binding.propertyName.Substring(dot + 1);
+                var components = component.Length == 1 && "rgba".Contains(component) ? "rgba"
+                    : component.Length == 1 && "xyzw".Contains(component) ? "xyzw" : null;
+                if (components == null) continue;
+                foreach (var c in components)
+                {
+                    var sibling = binding;
+                    sibling.propertyName = binding.propertyName.Substring(0, dot + 1) + c;
+                    if (!bindings.Contains(sibling)) bindings.Add(sibling);
+                }
+            }
             foreach (var binding in bindings)
             {
                 if (!TryGetMaterialRestValue(binding, out var value)) continue;

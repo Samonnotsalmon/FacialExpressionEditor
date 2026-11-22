@@ -1,0 +1,56 @@
+// Synthetic assets only. Verify rename, persistent visibility and independent part classification.
+var asm = typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var utility = asm.GetType("Samon.FacialExpressionEditor.Editor.LibraryClipUtility");
+var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+object Call(string name, params object[] args) => utility.GetMethod(name, flags).Invoke(null,args);
+var checks = new List<string>();
+void Check(bool condition,string name) { if(!condition) throw new Exception(name); checks.Add(name); }
+var folder="Assets/__FEE_WorkflowChecks_"+Guid.NewGuid().ToString("N");
+AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+Samon.FacialExpressionEditor.ExpressionSet restored = null;
+try {
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+ AssetDatabase.CreateAsset(set,folder+"/Settings.asset");
+ var clip=new AnimationClip();
+ clip.SetCurve("Body",typeof(SkinnedMeshRenderer),"blendShape.Smile",AnimationCurve.Linear(0,0,1,80));
+ AssetDatabase.CreateAsset(clip,folder+"/Before.anim");
+ var other=new AnimationClip(); AssetDatabase.CreateAsset(other,folder+"/Occupied.anim");
+ var expression=new Samon.FacialExpressionEditor.Expression {name="Before",clip=clip}; set.expressions.Add(expression);
+ var id=(string)Call("Id",clip);
+ Call("SetHidden",set,clip,true);
+ Check((bool)Call("IsHidden",set,clip),"Individual clip can be hidden");
+ Check(!(bool)Call("IsHidden",set,other),"Other clips stay visible");
+ var before=EditorJsonUtility.ToJson(clip);
+ Check((string)Call("Rename",set,clip,"Occupied")!=null,"Duplicate name rejected");
+ Check((string)Call("Rename",set,clip,"")!=null,"Empty name rejected");
+ Check((string)Call("Rename",set,clip,"bad/name")!=null,"Invalid filename rejected");
+ Check((string)Call("Rename",set,clip,"CON")!=null,"Reserved filename rejected");
+ Check(before==EditorJsonUtility.ToJson(clip),"Rejected names leave animation unchanged");
+ Check((string)Call("Rename",set,clip,"After")==null,"Rename succeeds");
+ Check(AssetDatabase.GetAssetPath(clip)==folder+"/After.anim" && clip.name=="After" && expression.name=="After","File, clip and display names agree");
+ Check(id==(string)Call("Id",clip) && expression.clip==clip,"GUID/local ID and references preserved");
+ var bindings=AnimationUtility.GetCurveBindings(clip);
+ Check(bindings.Length==1 && AnimationUtility.GetEditorCurve(clip,bindings[0]).Evaluate(1)==80,"Unsaved animation curve survives rename");
+ Check((bool)Call("IsHidden",set,clip),"Rename preserves hidden state");
+ set.partFolders.Add("Accessories");
+ var first=new Samon.FacialExpressionEditor.FacialPart {name="A",clip=clip,folder="Accessories",exclusiveGroup="Eyes"};
+ var second=new Samon.FacialExpressionEditor.FacialPart {name="B",clip=other,exclusiveGroup="Eyes"};
+ set.parts.Add(first); set.parts.Add(second);
+ first.folder="Other";
+ Check(first.exclusiveGroup==second.exclusiveGroup,"Organization does not alter exclusivity");
+ var windowType=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow");
+ var folders=(List<string>)windowType.GetMethod("PartFolders",flags).Invoke(null,new object[]{set});
+ Check(folders.SequenceEqual(new[]{"Accessories","Other"}),"Folders include empty folders and existing memberships without duplicates");
+ EditorUtility.SetDirty(set); AssetDatabase.SaveAssetIfDirty(set); AssetDatabase.SaveAssetIfDirty(clip);
+ restored=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+ EditorJsonUtility.FromJsonOverwrite(EditorJsonUtility.ToJson(set),restored);
+ Check((bool)Call("IsHidden",restored,clip),"Hidden state survives serialization");
+ Check(restored.parts.Count==2 && restored.parts[0].folder=="Other" && restored.parts[0].exclusiveGroup=="Eyes","Folders and groups survive serialization");
+ Call("SetHidden",restored,clip,false);
+ Check(!(bool)Call("IsHidden",restored,clip) && (bool)Call("IsHidden",set,clip),"Re-show is scoped to its expression settings");
+ Check(AssetDatabase.LoadAssetAtPath<AnimationClip>(folder+"/After.anim")==clip,"Hide/show never deletes original file");
+ return new {passed=checks.Count,checks};
+} finally {
+ if(restored!=null) UnityEngine.Object.DestroyImmediate(restored);
+ AssetDatabase.DeleteAsset(folder);
+}

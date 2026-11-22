@@ -1,0 +1,17 @@
+var selected=Selection.activeGameObject;var descriptor=selected?selected.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>():null;if(!descriptor)throw new Exception("Select a configured avatar");
+var root=UnityEngine.Object.Instantiate(descriptor.gameObject);var checks=new System.Collections.Generic.List<string>();
+try{
+ var assembly=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;var flags=System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic;
+ var protect=assembly.GetType("Samon.FacialExpressionEditor.Editor.LipSyncProtection").GetMethod("IsProtected",flags);var pass=assembly.GetType("Samon.FacialExpressionEditor.Editor.LipSyncSwitchPass");
+ var owner=root.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true);var c=owner.lipSyncSwitch;
+ Action<bool,string> Check=(ok,n)=>{if(!ok)throw new Exception(n);checks.Add(n);};
+ bool Protected(SkinnedMeshRenderer r,string n){var b=EditorCurveBinding.FloatCurve(AnimationUtility.CalculateTransformPath(r.transform,root.transform),typeof(SkinnedMeshRenderer),"blendShape."+n);return (bool)protect.Invoke(null,new object[]{b,root,owner.expressionSet});}
+ foreach(var t in c.targets)Check(Protected(t.mesh,t.visemes[10]),t.label+" source protected");Check(!Protected(c.targets[0].mesh,"Mouth_Smile"),"Expression mouth editable");
+ var old=new Samon.FacialExpressionEditor.LipSyncSwitchSettings{avatarMesh=c.targets[0].mesh,mascotMesh=c.targets[1].mesh,avatarVisemes=c.targets[0].visemes,mascotVisemes=c.targets[1].visemes,defaultMode=Samon.FacialExpressionEditor.LipSyncMode.Mascot};Samon.FacialExpressionEditor.Editor.LipSyncSetup.Upgrade(old,root.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>());Check(old.targets.Count==2&&old.defaultSelection==2&&old.targets[0].followExpressions&&!old.targets[1].followExpressions,"Legacy settings migrate");
+ var controls=new System.Collections.Generic.List<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control>();for(int i=0;i<18;i++)controls.Add(new VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control{name="Item"+i});
+ var menu=(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu)pass.GetMethod("PagedMenu",flags).Invoke(null,new object[]{"Test",controls});int count=0;var pages=new System.Collections.Generic.List<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu>();while(menu){pages.Add(menu);Check(menu.controls.Count<=8,"Menu page limit");count+=menu.controls.Count(x=>!x.subMenu);menu=menu.controls.FirstOrDefault(x=>x.subMenu)?.subMenu;}Check(count==18,"All target menu entries preserved");foreach(var page in pages)UnityEngine.Object.DestroyImmediate(page);
+ // The same ExpressionSet must remain usable when this avatar opts out.
+ c.enabled=false;nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(root);var d=root.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();Check(d.lipSync==VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape,"Opt-out keeps legacy lip sync");
+ Check(!d.expressionParameters.parameters.Any(p=>p.name.StartsWith("NSL/LipSyncSwitch/")),"Opt-out generates no switch parameters");
+ return new{passed=checks.Count,checks};
+}finally{UnityEngine.Object.DestroyImmediate(root);}

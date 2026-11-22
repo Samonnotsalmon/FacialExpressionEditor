@@ -33,6 +33,9 @@ namespace Samon.FacialExpressionEditor.Editor
         // どれかの表情が視線・リップシンクを止める（このときは全ステートで指定し直す）。
         public bool ControlsEyes { get; private set; }
         public bool ControlsMouth { get; private set; }
+        public bool SwitchesLipSync { get; private set; }
+        public List<LipSyncTarget> LipSyncTargets { get; private set; } = new List<LipSyncTarget>();
+        public List<string> LipSyncTargetPaths { get; private set; } = new List<string>();
 
         // 口モーフキャンセラーで戻すシェイプキー（アバター上に見つかったもの）。
         public List<EditorCurveBinding> MouthMorphs { get; private set; } = new List<EditorCurveBinding>();
@@ -91,7 +94,10 @@ namespace Samon.FacialExpressionEditor.Editor
             // MMDから戻ったときも現在の表情の視線・リップシンク設定を復元する。
             plan.ControlsEyes = true;
             plan.ControlsMouth = true;
+            plan.SwitchesLipSync = LipSyncProfileUtility.Resolve(avatarRoot.GetComponentInChildren<FacialExpressionAvatar>(true))?.enabled == true;
 
+            if (plan.SwitchesLipSync) plan.LipSyncTargets = LipSyncProfileUtility.Resolve(avatarRoot.GetComponentInChildren<FacialExpressionAvatar>(true)).targets;
+            if (plan.SwitchesLipSync) plan.LipSyncTargetPaths = plan.LipSyncTargets.Select(t => AnimationUtility.CalculateTransformPath(t.mesh.transform, avatarRoot.transform)).ToList();
             plan.MouthMorphs = ResolveMouthShapes(set, avatarRoot);
             plan.MouthCancelClip = set.mouthCancelAnimation;
             plan.UsesMouthCancelParameter = plan.HasMouthCanceler && expressions.Any(e => !plan.CancelsMouth(e));
@@ -198,15 +204,16 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 var tracking = ScriptableObject.CreateInstance<VRCAnimatorTrackingControl>();
                 if (ControlsEyes) tracking.trackingEyes = EyesTracked(e) ? VRC_AnimatorTrackingControl.TrackingType.Tracking : VRC_AnimatorTrackingControl.TrackingType.Animation;
-                if (ControlsMouth) tracking.trackingMouth = MouthTracked(e) ? VRC_AnimatorTrackingControl.TrackingType.Tracking : VRC_AnimatorTrackingControl.TrackingType.Animation;
+                if (ControlsMouth) tracking.trackingMouth = (SwitchesLipSync || MouthTracked(e)) ? VRC_AnimatorTrackingControl.TrackingType.Tracking : VRC_AnimatorTrackingControl.TrackingType.Animation;
                 behaviours.Add(tracking);
             }
 
-            if (ReplacesBlink || UsesMouthCancelParameter)
+            if (ReplacesBlink || UsesMouthCancelParameter || SwitchesLipSync)
             {
                 // パラメータは同期しないので、どのプレイヤーの画面でも表情のステートから切り替える。
                 var driver = ScriptableObject.CreateInstance<VRCAvatarParameterDriver>();
                 driver.localOnly = false;
+                if (SwitchesLipSync) driver.parameters.Add(Set(LipSyncSwitchPass.AvatarAllowed, MouthTracked(e)));
                 if (ReplacesBlink) driver.parameters.Add(Set(BlinkParameter, BlinkOn(e)));
                 if (UsesMouthCancelParameter) driver.parameters.Add(Set(MouthCancelParameter, CancelsMouth(e)));
                 behaviours.Add(driver);

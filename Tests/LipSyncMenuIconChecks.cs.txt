@@ -1,0 +1,17 @@
+var root=McpSnippet.Find("/Kirishima");var clone=UnityEngine.Object.Instantiate(root);var icon=new Texture2D(2,2){name="LipSyncIconCheck"};
+try {
+ var owner=clone.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true);var c=owner.lipSyncSwitch;
+ Samon.FacialExpressionEditor.Editor.LipSyncSetup.Upgrade(c,clone.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>());
+ c.showAuto=false;c.showAll=false;c.targets[0].showInMenu=false;c.targets[1].icon=icon;c.targets[1].showInMenu=true;
+ c.patterns.Clear();c.patterns.Add(new Samon.FacialExpressionEditor.LipSyncPattern{label="Visible Pair",icon=icon,targets=new System.Collections.Generic.List<int>{0,1}});
+ c.patterns.Add(new Samon.FacialExpressionEditor.LipSyncPattern{label="Hidden Pattern",showInMenu=false});
+ c.defaultSelection=c.targets.Count+2;
+ nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(clone);
+ var d=clone.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var top=d.expressionsMenu.controls.Single(x=>x.name==c.menuName).subMenu;
+ var speaker=top.controls.Single(x=>x.name=="Speaker").subMenu;
+ if(speaker.controls.Count!=2||speaker.controls.Any(x=>!x.icon))throw new Exception("Menu filter/icon failed");
+ if(speaker.controls.Single(x=>x.name=="Visible Pair").value!=c.targets.Count+2)throw new Exception("Selection values shifted");
+ if(top.controls.Any(x=>x.name=="Visibility")||speaker.controls.Any(x=>x.name=="Auto"))throw new Exception("Removed menu remains");
+ return new{passed=true,entries=speaker.controls.Select(x=>x.name).ToArray(),iconsPreserved=true,selectionValuesPreserved=true};
+}finally{UnityEngine.Object.DestroyImmediate(clone);UnityEngine.Object.DestroyImmediate(icon);}

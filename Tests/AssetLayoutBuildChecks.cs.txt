@@ -1,0 +1,23 @@
+// Build an isolated copy of a configured scene avatar using the new asset layout.
+var source=McpSnippet.All<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true).FirstOrDefault(s=>s.gameObject.scene.IsValid()&&!UnityEditor.SceneManagement.EditorSceneManager.IsPreviewScene(s.gameObject.scene)&&s.expressionSet!=null&&s.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>()!=null);
+if(source==null)throw new Exception("Open a configured avatar scene before running this check.");
+var originalSet=source.expressionSet;var originalPath=AssetDatabase.GetAssetPath(originalSet);var originalJson=EditorJsonUtility.ToJson(originalSet);
+var type=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly.GetType("Samon.FacialExpressionEditor.Editor.AvatarSetup");
+object Call(string method,params object[] args)=>type.GetMethod(method).Invoke(null,args);
+var folder="Assets/__FEE008Build_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));AssetDatabase.CreateFolder(folder,"Copy");
+GameObject clone=null;var checks=new List<string>();void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+try {
+ var wrapper=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("CreateSetupPrefab",folder,"Source",source.expressionSet,source.faceVariant,null);
+ var copy=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateForAvatar",wrapper,folder+"/Copy","Build_FEE");
+ clone=UnityEngine.Object.Instantiate(source.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>().gameObject);clone.name="FEE008 Build Verification";
+ var setup=clone.GetComponentsInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true).First(s=>s.expressionSet==originalSet);
+ setup.expressionSet=copy.expressionSet;setup.faceVariant=copy.faceVariant;setup.expressionSet.menuIcons=false;
+ Check(AssetDatabase.GetAssetPath(setup.expressionSet).StartsWith(folder+"/Copy/Settings/"),"Build input uses new Settings layout");
+ nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(clone);
+ var descriptor=clone.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var fx=descriptor.baseAnimationLayers.First(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
+ Check(fx!=null&&fx.animationClips.Length>0,"NDMF builds FX from new layout");
+ Check(descriptor.expressionsMenu!=null&&descriptor.expressionsMenu.controls.Count>0,"NDMF builds expression menu");
+ Check(source.expressionSet==originalSet&&AssetDatabase.GetAssetPath(originalSet)==originalPath&&EditorJsonUtility.ToJson(originalSet)==originalJson,"Source settings and path remain unchanged");
+ return new{passed=checks.Count,checks};
+} finally {if(clone!=null)UnityEngine.Object.DestroyImmediate(clone);AssetDatabase.DeleteAsset(folder);}

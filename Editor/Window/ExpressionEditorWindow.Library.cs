@@ -28,6 +28,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private Dictionary<string, int> _libraryFolderCounts = new Dictionary<string, int>();
         private readonly Dictionary<AnimationClip, string> _librarySourcePaths = new Dictionary<AnimationClip, string>();
         private List<AnimationClip> _filteredClips = new List<AnimationClip>();
+        [SerializeField] private bool _showHiddenLibraryClips;
 
         // 登録フォルダの一覧（Unity の標準のリスト。選ぶと絞り込み、下の＋で追加、－で選んでいるものを外す）。
         private ReorderableList _folderList;
@@ -45,7 +46,7 @@ namespace Samon.FacialExpressionEditor.Editor
 
             _libraryFolders = ExpressionFileImporter.Folders(set).ToList();
 
-            var expressionsFolder = $"{AssetPathUtility.FolderOf(set)}/Expressions";
+            var expressionsFolder = $"{AssetPathUtility.SetupFolder(set)}/Expressions";
             var searchFolders = set.libraryFolderGuids.Select(AssetDatabase.GUIDToAssetPath).Where(AssetDatabase.IsValidFolder).Distinct().ToList();
             if (AssetDatabase.IsValidFolder(expressionsFolder)) searchFolders.Add(expressionsFolder);
 
@@ -87,6 +88,17 @@ namespace Samon.FacialExpressionEditor.Editor
 
             _libraryFilter = (LibraryFilter)GUILayout.Toolbar((int)_libraryFilter, FilterLabels, EditorStyles.miniButton);
             _librarySearch = EditorGUILayout.TextField(_librarySearch, EditorStyles.toolbarSearchField);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("⋮", EditorStyles.miniButton, GUILayout.Width(24)))
+                {
+                    var menu = new GenericMenu();
+                    menu.AddItem(new GUIContent("非表示項目を表示"), _showHiddenLibraryClips,
+                        () => { _showHiddenLibraryClips = !_showHiddenLibraryClips; Repaint(); });
+                    menu.ShowAsContext();
+                }
+            }
 
             DrawLibraryFolders(set);
 
@@ -101,6 +113,15 @@ namespace Samon.FacialExpressionEditor.Editor
                 var clip = clips[i];
                 var rect = rects[i];
                 if (!IsVisible(rect, _libraryScroll)) continue;
+                var hidden = LibraryClipUtility.IsHidden(set, clip);
+                if (Event.current.type == EventType.ContextClick && rect.Contains(Event.current.mousePosition))
+                {
+                    var menu = new GenericMenu();
+                    menu.AddItem(new GUIContent(hidden ? "再表示" : "非表示"), false,
+                        () => { LibraryClipUtility.SetHidden(set, clip, !hidden); Repaint(); });
+                    menu.ShowAsContext();
+                    Event.current.Use();
+                }
 
                 var used = _usage.IsUsed(clip);
                 var expression = ExpressionSetUtility.FindExpressionByClip(set, clip);
@@ -108,7 +129,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 HandleDragSource(rect, clip);
                 if (DrawCell(rect, expression != null ? ExpressionThumbnail(expression) : ClipThumbnail(clip), expression?.name ?? clip.name,
                         expression != null ? IsSelected(SelectionKind.Expression, expression.id, null) : IsSelected(SelectionKind.Clip, null, clip),
-                        !used ? "未割り当て" : _usage.IsUsedByPart(clip) ? "パーツ使用中" : "使用中",
+                        hidden ? "非表示" : !used ? "未割り当て" : _usage.IsUsedByPart(clip) ? "パーツ使用中" : "使用中",
                         used ? new Color(0.22f, 0.38f, 0.24f, 0.9f) : new Color(0.6f, 0.4f, 0.12f, 0.9f),
                         moving ? "▶ 動く表情" : null))
                 {
@@ -165,6 +186,8 @@ namespace Samon.FacialExpressionEditor.Editor
         private List<AnimationClip> FilteredClips()
         {
             IEnumerable<AnimationClip> clips = _libraryClips;
+            if (!_showHiddenLibraryClips && _avatar != null && _avatar.expressionSet != null)
+                clips = clips.Where(c => !LibraryClipUtility.IsHidden(_avatar.expressionSet, c));
 
             if (_libraryFolderIndex > 0 && _libraryFolderIndex - 1 < _libraryFolders.Count)
             {

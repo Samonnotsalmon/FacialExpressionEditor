@@ -1,0 +1,53 @@
+// FEE-008: synthetic assets and a preview scene; no user settings are changed.
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var setupType=asm.GetType("Samon.FacialExpressionEditor.Editor.AvatarSetup");
+var windowType=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow");
+var flags=System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance;
+object Call(string name,params object[] args)=>setupType.GetMethod(name).Invoke(null,args);
+var checks=new List<string>();void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+string PathOf(UnityEngine.Object obj)=>AssetDatabase.GetAssetPath(obj);
+var folder="Assets/__FEE008_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var scene=UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();EditorWindow window=null;
+try {
+ var root=new GameObject("LayoutAvatar");UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(root,scene);root.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ window=(EditorWindow)ScriptableObject.CreateInstance(windowType);
+ windowType.GetMethod("SetStartAvatar",flags).Invoke(window,new object[]{root});
+ windowType.GetField("_startDataFolder",flags).SetValue(window,folder);
+ windowType.GetField("_startName",flags).SetValue(window,"Fresh");
+ windowType.GetField("_startPlaceInAvatar",flags).SetValue(window,false);
+ var info=windowType.GetMethod("AnalyzeStart",flags).Invoke(window,null);
+ windowType.GetMethod("StartSetup",flags).Invoke(window,new[]{info});
+ var prefab=AssetDatabase.LoadAssetAtPath<GameObject>(folder+"/Fresh/NSL_Fresh_FEE.prefab");
+ Check(prefab!=null,"New setup creates prefab at root");
+ var setup=prefab.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();var set=setup.expressionSet;
+ Check(set.usesSettingsFolder && System.IO.Path.GetDirectoryName(PathOf(set)).Replace('\\','/')==folder+"/Fresh/Settings","New data is in Settings");
+ Check(System.IO.Path.GetDirectoryName(PathOf(setup.faceVariant)).Replace('\\','/')==folder+"/Fresh/Settings","Base face is directly in Settings");
+ Check(!AssetDatabase.IsValidFolder(folder+"/Fresh/Parts")&&!AssetDatabase.IsValidFolder(folder+"/Fresh/Settings/Variants"),"Unused category folders are not created");
+ var e=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(set,"Smile",Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.Empty,null,null,null);
+ var p=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreatePart(set,"Blush");
+ Check(PathOf(e.clip).StartsWith(folder+"/Fresh/Expressions/")&&PathOf(p.clip).StartsWith(folder+"/Fresh/Parts/"),"User clips are at root categories");
+ Check(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.OwnsClip(set,e.clip)&&Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.OwnsPartClip(set,p.clip),"New layout clips are recognized as owned");
+ var mouth=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateMouthCancelClip(set);
+ var blink=(AnimationClip)asm.GetType("Samon.FacialExpressionEditor.Editor.BlinkPoseUtility").GetMethod("Editable",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static).Invoke(null,new object[]{set,root});
+ Check(PathOf(mouth).StartsWith(folder+"/Fresh/Settings/MouthCancel/")&&PathOf(blink).StartsWith(folder+"/Fresh/Settings/Blink/"),"Auxiliary clips use Settings categories");
+ var replacement=Samon.FacialExpressionEditor.Editor.FaceVariantUtility.DuplicateForVariant(setup.faceVariant,e);
+ Check(PathOf(replacement).StartsWith(folder+"/Fresh/Settings/Overrides/"),"Base face replacements use Overrides");
+ var variant=Samon.FacialExpressionEditor.Editor.FaceVariantUtility.Create(set,root,"Alternate");
+ var variantClip=Samon.FacialExpressionEditor.Editor.FaceVariantUtility.DuplicateForVariant(variant,e);
+ Check(PathOf(variant).StartsWith(folder+"/Fresh/Settings/Variants/Alternate/")&&PathOf(variantClip).StartsWith(folder+"/Fresh/Settings/Variants/Alternate/"),"Variant and its clips remain together");
+ var found=(System.Collections.IEnumerable)Call("FindSetups");Check(found.Cast<Samon.FacialExpressionEditor.FacialExpressionAvatar>().Contains(setup),"Prefab discovery includes new layout");
+ var copy=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateBesideSource",setup,"Copy");
+ Check(PathOf(copy.gameObject)==folder+"/Copy/NSL_Copy_FEE.prefab"&&PathOf(copy.expressionSet).StartsWith(folder+"/Copy/Settings/"),"New layout duplicates beside source");
+ Check(PathOf(copy.expressionSet.blinkPose).StartsWith(folder+"/Copy/Settings/Blink/")&&PathOf(copy.expressionSet.mouthCancelAnimation).StartsWith(folder+"/Copy/Settings/MouthCancel/")&&PathOf(copy.faceVariant.overrides[0].clip).StartsWith(folder+"/Copy/Settings/Overrides/"),"Duplicate auxiliary paths use new layout");
+ Check(copy.expressionSet.expressions[0].clip!=e.clip&&copy.expressionSet.parts[0].clip!=p.clip&&copy.faceVariant.overrides[0].clip!=replacement,"Duplicate editable assets are independent");
+ var legacy=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();AssetDatabase.CreateFolder(folder,"Legacy");AssetDatabase.CreateAsset(legacy,folder+"/Legacy/Data.asset");
+ var old=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreatePart(legacy,"Old");
+ var oldMouth=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateMouthCancelClip(legacy);
+ Check(PathOf(old.clip)==folder+"/Legacy/Parts/Old.anim"&&PathOf(oldMouth).StartsWith(folder+"/Legacy/MouthCancel/")&&!legacy.usesSettingsFolder,"Legacy creation keeps original layout");
+ var legacyCopy=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.Duplicate(legacy,folder+"/LegacyCopy.asset");
+ Check(PathOf(legacy)==folder+"/Legacy/Data.asset"&&PathOf(old.clip)==folder+"/Legacy/Parts/Old.anim"&&legacyCopy.usesSettingsFolder,"Copy leaves legacy assets unmoved");
+ EditorUtility.SetDirty(set);AssetDatabase.SaveAssets();var setPath=PathOf(set);Resources.UnloadAsset(set);set=AssetDatabase.LoadAssetAtPath<Samon.FacialExpressionEditor.ExpressionSet>(setPath);
+ Check(set.usesSettingsFolder&&Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.OwnsPartClip(set,set.parts[0].clip),"Layout and references survive reload");
+ Check(!AssetDatabase.IsValidFolder(folder+"/Fresh/Settings/Expressions")&&!AssetDatabase.IsValidFolder(folder+"/Fresh/Settings/Parts"),"User clips never nest inside Settings");
+ return new{passed=checks.Count,checks};
+} finally {if(window!=null)UnityEngine.Object.DestroyImmediate(window);UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene);AssetDatabase.DeleteAsset(folder);}

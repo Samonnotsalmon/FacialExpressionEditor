@@ -38,7 +38,7 @@ try {
  var applied=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateForAvatar",original.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>(),folder+"/Copy","Mascot_FEE");
  var copied=applied.expressionSet;
  Check(avatar.GetComponentsInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true).Length==1,"Exactly one setup remains on target avatar");
- Check(PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(applied.gameObject)==folder+"/Copy/Mascot_FEE.prefab","Scene instance is connected to new prefab");
+ Check(PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(applied.gameObject)==folder+"/Copy/NSL_Mascot_FEE.prefab","Scene instance is connected to new prefab");
  Check(applied.transform.parent==avatar.transform && applied.transform.localPosition==new Vector3(1,2,3),"Placement is preserved");
  Check(other.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet==set && prefab.expressionSet==set,"Other avatar and original prefab retain original settings");
  Check(copied!=set && copied.expressions[0].clip!=expression.clip && copied.parts[0].clip!=part.clip,"Expression and part clips are independent");
@@ -49,10 +49,10 @@ try {
  Check(copied.blinkAnimation!=set.blinkAnimation && copied.mouthCancelAnimation!=set.mouthCancelAnimation,"Auxiliary animations are copied");
  Undo.FlushUndoRecordObjects(); Undo.IncrementCurrentGroup(); Undo.PerformUndo();
  var restored=avatar.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true);
- Check(restored.expressionSet==set && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(restored.gameObject)==folder+"/Source/Original_FEE.prefab","One Undo restores original prefab and settings");
+ Check(restored.expressionSet==set && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(restored.gameObject)==folder+"/Source/NSL_Original_FEE.prefab","One Undo restores original prefab and settings");
  Undo.PerformRedo();
  applied=avatar.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true);
- Check(applied.expressionSet==copied && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(applied.gameObject)==folder+"/Copy/Mascot_FEE.prefab","Redo reapplies new prefab");
+ Check(applied.expressionSet==copied && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(applied.gameObject)==folder+"/Copy/NSL_Mascot_FEE.prefab","Redo reapplies new prefab");
  copied.expressions[0].enableLipSync=false; copied.expressions[0].mouthMorphCancel=false;
  AnimationUtility.SetEditorCurve(copied.expressions[0].clip,binding,AnimationCurve.Constant(0,1,75));
  Check(expression.enableLipSync && expression.mouthMorphCancel && AnimationUtility.GetEditorCurve(expression.clip,binding).Evaluate(0)==50,"Editing copied flags and animation leaves source unchanged");
@@ -63,11 +63,11 @@ try {
  Check(direct!=null && direct.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>()!=null && direct.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>()==null && directCopy.transform.parent==direct.transform,"Root-mounted setup becomes a child prefab without removing avatar");
  var sibling=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateBesideSource",prefab,null);
  var siblingPath=AssetDatabase.GetAssetPath(sibling.expressionSet);
- Check(System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(siblingPath)).Replace('\\','/')==folder,"Automatic duplicate folder is beside source folder");
+ Check(System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(AssetDatabase.GetAssetPath(sibling.gameObject))).Replace('\\','/')==folder,"Automatic duplicate folder is beside source folder");
  var another=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateBesideSource",prefab,null);
  Check(AssetDatabase.GetAssetPath(another.expressionSet)!=siblingPath && sibling.expressionSet!=another.expressionSet,"Repeated automatic duplication creates unique independent folders");
  var named=(Samon.FacialExpressionEditor.FacialExpressionAvatar)Call("DuplicateBesideSource",prefab,"Avatar_マスコット");
- Check(AssetDatabase.GetAssetPath(named.gameObject)==folder+"/Avatar_マスコット/Avatar_マスコット_FEE.prefab","Chosen name is used for sibling folder and prefab");
+ Check(AssetDatabase.GetAssetPath(named.gameObject)==folder+"/Avatar_マスコット/NSL_Avatar_マスコット_FEE.prefab","Chosen name is used for sibling folder and prefab");
  Check(Call("ValidateSetupName","../outside")!=null && Call("ValidateSetupName","")!=null && Call("ValidateSetupName","CON")!=null,"Invalid folder names are rejected");
  var planned=(string)Call("DedicatedSetupFolder",prefab,"NotCreated");
  Check(!AssetDatabase.IsValidFolder(planned),"Previewing destination does not create assets");

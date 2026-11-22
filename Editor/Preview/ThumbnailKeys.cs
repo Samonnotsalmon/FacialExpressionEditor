@@ -71,7 +71,10 @@ namespace Samon.FacialExpressionEditor.Editor
         }
 
         // 中身のハッシュ。オブジェクトが変更されていない間（変更回数が同じ間）は使い回す。
-        private static readonly Dictionary<(int, int), string> ContentHashes = new Dictionary<(int, int), string>();
+        // 保存すると dirty count は 0 に戻る。過去の (instance ID, dirty count) を
+        // 再利用すると、保存前に編集した内容まで古い画像に戻ってしまう。
+        private static readonly Dictionary<int, (Object asset, int dirty, Hash128 dependency, string hash)> ContentHashes
+            = new Dictionary<int, (Object, int, Hash128, string)>();
 
         /// <summary>
         /// アセットの中身から作るキー。保存前の変更（表情の編集ウィンドウでの編集など）でも変わり、
@@ -80,12 +83,15 @@ namespace Samon.FacialExpressionEditor.Editor
         public static string AssetKey(Object asset)
         {
             if (asset == null) return "-";
-            var key = (asset.GetInstanceID(), EditorUtility.GetDirtyCount(asset));
-            if (!ContentHashes.TryGetValue(key, out var hash))
-            {
-                hash = ContentHash(asset);
-                ContentHashes[key] = hash;
-            }
+            var key = asset.GetInstanceID();
+            var dirty = EditorUtility.GetDirtyCount(asset);
+            var path = AssetDatabase.GetAssetPath(asset);
+            // 編集中にキーを要求されず、そのまま保存された場合も検出する。
+            var dependency = string.IsNullOrEmpty(path) ? default : AssetDatabase.GetAssetDependencyHash(path);
+            if (ContentHashes.TryGetValue(key, out var cached) && cached.asset == asset &&
+                cached.dirty == dirty && cached.dependency == dependency) return cached.hash;
+            var hash = ContentHash(asset);
+            ContentHashes[key] = (asset, dirty, dependency, hash);
             return hash;
         }
 

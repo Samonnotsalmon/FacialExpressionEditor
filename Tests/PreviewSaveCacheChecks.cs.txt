@@ -1,0 +1,32 @@
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var method=asm.GetType("Samon.FacialExpressionEditor.Editor.ThumbnailKeys").GetMethod("AssetKey");
+string Key(UnityEngine.Object o)=>(string)method.Invoke(null,new object[]{o});
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+var folder="Assets/__FEE016_"+Guid.NewGuid().ToString("N");
+AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var clip=new AnimationClip();
+var binding=EditorCurveBinding.FloatCurve("Body",typeof(SkinnedMeshRenderer),"blendShape.Test");
+void Set(float v){AnimationUtility.SetEditorCurve(clip,binding,AnimationCurve.Constant(0,0,v));EditorUtility.SetDirty(clip);}
+try {
+ Set(10);AssetDatabase.CreateAsset(clip,folder+"/Edited.anim");AssetDatabase.SaveAssetIfDirty(clip);
+ var initial=Key(clip);
+ Set(80);var edited=Key(clip);Check(initial!=edited,"Editing changes preview key");
+ AssetDatabase.SaveAssetIfDirty(clip);
+ Check(Key(clip)==edited,"Saving keeps edited preview key");
+ Set(60);AssetDatabase.SaveAssetIfDirty(clip);
+ var unseen=Key(clip);Check(unseen!=edited && unseen!=initial,"Edit and save without intermediate preview");
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+ AssetDatabase.CreateAsset(set,folder+"/Set.asset");
+ for(var i=0;i<3;i++){
+  Set(20+i);var before=Key(clip);
+  Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(set,"New"+i,Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.CurrentFace,null,null,null);
+  Check(Key(clip)==before,"Creating expression preserves edited preview "+i);
+  Check(AnimationUtility.GetEditorCurve(clip,binding).Evaluate(0)==20+i,"Creating expression preserves curve "+i);
+ }
+ var undoBefore=Key(clip);Undo.RegisterCompleteObjectUndo(clip,"Preview cache regression");Set(99);Undo.FlushUndoRecordObjects();var undoAfter=Key(clip);
+ Undo.PerformUndo();Check(Key(clip)==undoBefore,"Undo preview matches restored content");
+ Undo.PerformRedo();Check(Key(clip)==undoAfter,"Redo preview matches edited content");
+ AssetDatabase.SaveAssetIfDirty(clip);Check(Key(clip)==undoAfter,"Save after redo keeps preview");
+ return new {passed=checks.Count,checks};
+} finally {Undo.ClearUndo(clip);AssetDatabase.DeleteAsset(folder);}

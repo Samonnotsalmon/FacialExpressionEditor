@@ -1,0 +1,50 @@
+// Integration regression: source scene/assets remain unchanged. Select a configured avatar child.
+var selected=Selection.activeGameObject;var descriptor=selected?selected.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>():null;
+if(!descriptor)throw new Exception("Select configured avatar");
+var reports=new System.Collections.Generic.List<object>();
+foreach(int targetCount in new[]{1,2,3})
+{
+ var clone=UnityEngine.Object.Instantiate(descriptor.gameObject);clone.name="MultiLipSyncValidation";AnimationClip cancelClip=null;Samon.FacialExpressionEditor.ExpressionSet set=null;
+ try{
+  typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly.GetType("Samon.FacialExpressionEditor.Editor.LipSyncProfileUtility").GetMethod("PrepareBuild").Invoke(null,new object[]{clone});
+  var owner=clone.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true);var c=owner.lipSyncSwitch;
+  Samon.FacialExpressionEditor.Editor.LipSyncSetup.Upgrade(c,clone.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>());c.enabled=true;c.defaultSelection=1;
+  if(c.targets.Count!=2)throw new Exception("Fixture expects the two configured targets");
+  // This fixture expands the body target; the configured avatar may list the mascot first.
+  c.targets=c.targets.OrderByDescending(t=>t.followExpressions).ToList();
+  if(targetCount==1)c.targets.RemoveAt(1);
+  if(targetCount==3){
+   var twin=UnityEngine.Object.Instantiate(c.targets[0].mesh.gameObject);twin.name="TwinTest";twin.transform.SetParent(clone.transform,false);var renderer=twin.GetComponent<SkinnedMeshRenderer>();
+   c.targets.Add(new Samon.FacialExpressionEditor.LipSyncTarget{label="Twin",mesh=renderer,visemes=c.targets[0].visemes.ToArray(),followExpressions=true,controlVisibility=true,visibilityTarget=twin,defaultVisible=false});
+   set=UnityEngine.Object.Instantiate(owner.expressionSet);owner.expressionSet=set;cancelClip=UnityEngine.Object.Instantiate(set.mouthCancelAnimation);set.mouthCancelAnimation=cancelClip;
+   foreach(var binding in AnimationUtility.GetCurveBindings(cancelClip).ToArray()){if(binding.path!="Body")continue;var twinBinding=binding;twinBinding.path="TwinTest";AnimationUtility.SetEditorCurve(cancelClip,twinBinding,AnimationUtility.GetEditorCurve(cancelClip,binding));}
+  }
+  var before=c.targets.Select(t=>t.mesh.sharedMesh).ToArray();var counts=before.Select(m=>m.blendShapeCount).ToArray();
+  nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(clone);
+  var d=clone.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();var fx=(UnityEditor.Animations.AnimatorController)d.baseAnimationLayers.Single(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
+  if(fx.parameters.Any(p=>p.name.StartsWith("NSL/LipSyncSwitch/Visible/"))||fx.layers.Any(l=>l.name.StartsWith("Visibility ")))throw new Exception("Visibility generation remains");
+  int checks=0;int controlledCount=targetCount-1;
+  for(int selection=0;selection<=targetCount+1;selection++)for(int mask=0;mask<(1<<controlledCount);mask++)foreach(bool allowed in new[]{false,true})
+  {
+   var visible=new bool[targetCount];visible[0]=true;for(int i=1;i<targetCount;i++)visible[i]=(mask&(1<<(i-1)))!=0;
+   int auto=Enumerable.Range(0,targetCount).Last(i=>visible[i]);
+   bool Match(UnityEditor.Animations.AnimatorCondition condition){
+    bool value=condition.parameter=="FEE/LipSyncAvatarAllowed"?allowed:condition.parameter.StartsWith("NSL/LipSyncSwitch/Visible/")?visible[int.Parse(condition.parameter.Split('/').Last())]:false;
+    if(condition.parameter=="NSL/LipSyncSwitch/Mode")return selection==condition.threshold;
+    return condition.mode==UnityEditor.Animations.AnimatorConditionMode.If?value:!value;
+   }
+   for(int index=0;index<targetCount;index++){
+    var sm=fx.layers.Single(l=>l.name=="Lip Sync Target "+index).stateMachine;var matches=sm.anyStateTransitions.Where(t=>t.conditions.All(Match)).ToArray();if(matches.Length!=1)throw new Exception("Routing ambiguity");
+    bool chosen=selection==targetCount+1||selection==index+1||(selection==0&&index==0);bool expected=chosen&&(!c.targets[index].followExpressions||allowed);
+    var state=matches[0].destinationState;var weight=state.behaviours.OfType<VRC.SDK3.Avatars.Components.VRCAnimatorFaceTrackingBlendshapesSet>().Single().blendSets.Single().weight;
+    if(weight!=(expected?1:0))throw new Exception("Wrong target weight");var flag=state.behaviours.OfType<VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver>().Single().parameters.Single(p=>p.name=="FEE/LipSyncTargetActive/"+index).value;if(flag!=weight)throw new Exception("Active flag mismatch");checks++;
+   }
+  }
+  var cancelLayers=fx.layers.Where(l=>l.name.StartsWith("[FacialExpressionEditor] Mouth Morph Canceler")).ToArray();if(cancelLayers.Length!=(targetCount==3?2:1))throw new Exception("Wrong per-target canceler count");
+  foreach(var layer in cancelLayers){var parameter=layer.name.Substring(layer.name.IndexOf("FEE/LipSyncTargetActive/"));var sm=layer.stateMachine;var idle=sm.states.Single(s=>s.state.name=="Not Speaking").state;if(!idle.transitions.Any(t=>t.conditions.Any(cond=>cond.parameter==parameter&&cond.mode==UnityEditor.Animations.AnimatorConditionMode.If)))throw new Exception("Cancel gate missing");var clips=sm.states.Select(s=>s.state.motion).OfType<AnimationClip>().ToArray();var paths=clips.SelectMany(AnimationUtility.GetCurveBindings).Select(b=>b.path).Distinct().ToArray();if(paths.Length!=1)throw new Exception("Cancel affects multiple targets");}
+  var menuPaths=new System.Collections.Generic.List<string>();Action<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu,string> visit=null;visit=(menu,path)=>{if(menu.controls.Count>8)throw new Exception("Menu overflow");foreach(var control in menu.controls){menuPaths.Add(path+"/"+control.name);if(control.subMenu)visit(control.subMenu,path+"/"+control.name);}};visit(d.expressionsMenu,"");if(!menuPaths.Any(p=>p.EndsWith("/All")))throw new Exception("All missing");
+  for(int i=0;i<targetCount;i++)if(before[i].blendShapeCount!=counts[i])throw new Exception("Source mesh modified");
+  reports.Add(new{targetCount,routingAssertions=checks,cancelLayers=cancelLayers.Length,menusWithinLimit=true});
+ }catch(Exception e){return new{passed=false,targetCount,error=e.ToString()};}finally{UnityEngine.Object.DestroyImmediate(clone);if(set)UnityEngine.Object.DestroyImmediate(set);if(cancelClip)UnityEngine.Object.DestroyImmediate(cancelClip);}
+}
+return new{passed=true,reports};

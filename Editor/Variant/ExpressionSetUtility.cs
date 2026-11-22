@@ -17,7 +17,7 @@ namespace Samon.FacialExpressionEditor.Editor
             return set.expressions.Where(e => ids.Contains(e.id)).ToList();
         }
 
-        // 表示名・クリップ内部名・ファイル名を同じ名前に揃える。
+        // 表示名・クリップ内部名・生成ファイル名を揃える（アニメーションに接頭辞は付けない）。
         public static void MatchExpressionNameToFile(ExpressionSet set, Expression expression)
         {
             if (!OwnsClip(set, expression.clip)) return;
@@ -37,7 +37,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 var desired = AssetPathUtility.SafeFileName(expression.name);
                 if (System.IO.Path.GetFileNameWithoutExtension(path) != desired)
                 {
-                    var target = AssetDatabase.GenerateUniqueAssetPath(System.IO.Path.GetDirectoryName(path).Replace('\\', '/') + "/" + desired + ".anim");
+                    var target = AssetPathUtility.UniqueAssetPath(System.IO.Path.GetDirectoryName(path).Replace('\\', '/') + "/" + desired + ".anim");
                     var error = AssetDatabase.RenameAsset(path, System.IO.Path.GetFileNameWithoutExtension(target));
                     if (!string.IsNullOrEmpty(error)) { Debug.LogWarning(error); continue; }
                 }
@@ -57,8 +57,8 @@ namespace Samon.FacialExpressionEditor.Editor
                 if (!string.IsNullOrEmpty(error)) return error;
             }
             Undo.RecordObject(set, "表情の名前を変更");
-            expression.name = name;
-            expression.clip.name = name;
+            expression.name = AssetPathUtility.SafeFileName(name);
+            expression.clip.name = expression.name;
             EditorUtility.SetDirty(expression.clip);
             EditorUtility.SetDirty(set);
             return null;
@@ -103,7 +103,7 @@ namespace Samon.FacialExpressionEditor.Editor
         public static bool OwnsClip(ExpressionSet set, AnimationClip clip)
         {
             var path = AssetDatabase.GetAssetPath(clip);
-            return !string.IsNullOrEmpty(path) && path.StartsWith($"{AssetPathUtility.FolderOf(set)}/Expressions/");
+            return !string.IsNullOrEmpty(path) && path.StartsWith($"{AssetPathUtility.SetupFolder(set)}/Expressions/");
         }
 
         /// <summary>
@@ -112,9 +112,9 @@ namespace Samon.FacialExpressionEditor.Editor
         /// </summary>
         public static AnimationClip MakeClipEditable(ExpressionSet set, Expression expression)
         {
-            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Expressions");
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.SetupFolder(set), "Expressions");
             var source = expression.clip;
-            var path = AssetDatabase.GenerateUniqueAssetPath(
+            var path = AssetPathUtility.UniqueAssetPath(
                 $"{folder}/{AssetPathUtility.SafeFileName(expression.name)}.anim");
 
             AnimationClip clip;
@@ -133,6 +133,7 @@ namespace Samon.FacialExpressionEditor.Editor
             Undo.RecordObject(set, "表情を編集用に複製");
             if (expression.originalClip == null) expression.originalClip = source;
             expression.clip = clip;
+            if (LibraryClipUtility.IsHidden(set, source)) LibraryClipUtility.SetHidden(set, clip, true);
             MatchExpressionNameToFile(set, expression);
             EditorUtility.SetDirty(set);
             return clip;
@@ -145,8 +146,8 @@ namespace Samon.FacialExpressionEditor.Editor
             if (!OwnsPartClip(set, part.clip)) return;
             var name = System.IO.Path.GetFileNameWithoutExtension(AssetDatabase.GetAssetPath(part.clip));
             if (part.name == name && part.clip.name == name) return;
-            part.name = name;
-            part.clip.name = name;
+            part.name = AssetPathUtility.SafeFileName(name);
+            part.clip.name = part.name;
             EditorUtility.SetDirty(set);
             EditorUtility.SetDirty(part.clip);
         }
@@ -158,14 +159,14 @@ namespace Samon.FacialExpressionEditor.Editor
             if (AssetPathUtility.SafeFileName(name) != name) return "ファイル名に使用できない文字が含まれています";
             if (!OwnsPartClip(set, part.clip)) MakePartClipEditable(set, part);
             var path = AssetDatabase.GetAssetPath(part.clip);
-            if (System.IO.Path.GetFileNameWithoutExtension(path) != name)
+            if (System.IO.Path.GetFileNameWithoutExtension(path) != AssetPathUtility.SafeFileName(name))
             {
-                var error = AssetDatabase.RenameAsset(path, name);
+                var error = AssetDatabase.RenameAsset(path, AssetPathUtility.SafeFileName(name));
                 if (!string.IsNullOrEmpty(error)) return error;
             }
             Undo.RecordObject(set, "パーツの名前を変更");
-            part.name = name;
-            part.clip.name = name;
+            part.name = AssetPathUtility.SafeFileName(name);
+            part.clip.name = part.name;
             EditorUtility.SetDirty(part.clip);
             EditorUtility.SetDirty(set);
             return null;
@@ -177,7 +178,7 @@ namespace Samon.FacialExpressionEditor.Editor
         public static bool OwnsPartClip(ExpressionSet set, AnimationClip clip)
         {
             var path = AssetDatabase.GetAssetPath(clip);
-            return !string.IsNullOrEmpty(path) && path.StartsWith($"{AssetPathUtility.FolderOf(set)}/Parts/");
+            return !string.IsNullOrEmpty(path) && path.StartsWith($"{AssetPathUtility.SetupFolder(set)}/Parts/");
         }
 
         /// <summary>
@@ -185,9 +186,9 @@ namespace Samon.FacialExpressionEditor.Editor
         /// </summary>
         public static FacialPart CreatePart(ExpressionSet set, string name)
         {
-            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Parts");
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.SetupFolder(set), "Parts");
             var clip = new AnimationClip();
-            AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(name)}.anim"));
+            AssetDatabase.CreateAsset(clip, AssetPathUtility.UniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(name)}.anim"));
             AssetDatabase.SaveAssets();
 
             var part = new FacialPart { name = name, clip = clip };
@@ -203,9 +204,9 @@ namespace Samon.FacialExpressionEditor.Editor
         /// </summary>
         public static AnimationClip MakePartClipEditable(ExpressionSet set, FacialPart part)
         {
-            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Parts");
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.SetupFolder(set), "Parts");
             var source = part.clip;
-            var path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(part.name)}.anim");
+            var path = AssetPathUtility.UniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(part.name)}.anim");
 
             AnimationClip clip;
             if (source != null)
@@ -228,6 +229,7 @@ namespace Samon.FacialExpressionEditor.Editor
             Undo.RecordObject(set, "パーツを編集用に複製");
             if (part.originalClip == null) part.originalClip = FindExpressionByClip(set, source)?.originalClip ?? source;
             part.clip = clip;
+            if (LibraryClipUtility.IsHidden(set, source)) LibraryClipUtility.SetHidden(set, clip, true);
             MatchPartNameToFile(set, part);
             EditorUtility.SetDirty(set);
             return clip;
@@ -428,8 +430,8 @@ namespace Samon.FacialExpressionEditor.Editor
         public static AnimationClip CreateMouthCancelClip(ExpressionSet set)
         {
             if (set.mouthCancelAnimation != null) return MakeMouthCancelEditable(set);
-            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "MouthCancel");
-            var path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/MouthCancel.anim");
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.SettingsFolder(set), "MouthCancel");
+            var path = AssetPathUtility.UniqueAssetPath($"{folder}/MouthCancel.anim");
             var clip = new AnimationClip { name = System.IO.Path.GetFileNameWithoutExtension(path) };
             AssetDatabase.CreateAsset(clip, path);
             Undo.RecordObject(set, "口キャンセルを新規作成");
@@ -445,10 +447,10 @@ namespace Samon.FacialExpressionEditor.Editor
             var source = set.mouthCancelAnimation;
             if (source == null) return null;
             if (source == set.editableMouthCancelAnimation) return source;
-            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "MouthCancel");
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.SettingsFolder(set), "MouthCancel");
             var clip = Object.Instantiate(source);
             clip.name = source.name;
-            AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(clip.name)}.anim"));
+            AssetDatabase.CreateAsset(clip, AssetPathUtility.UniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(clip.name)}.anim"));
             Undo.RecordObject(set, "口キャンセルを専用クリップに複製");
             set.mouthCancelAnimation = clip;
             set.editableMouthCancelAnimation = clip;
@@ -464,6 +466,8 @@ namespace Samon.FacialExpressionEditor.Editor
         public static ExpressionSet Duplicate(ExpressionSet source, string path)
         {
             var copy = Object.Instantiate(source);
+            copy.usesSettingsFolder = true;
+            path = AssetPathUtility.NewSettingsPath(path);
             AssetDatabase.CreateAsset(copy, path);
             copy.independentClips = true;
             foreach (var expression in copy.expressions) MakeClipEditable(copy, expression);
@@ -471,7 +475,8 @@ namespace Samon.FacialExpressionEditor.Editor
             foreach (var auxiliary in new[] { copy.blinkAnimation, copy.blinkPose, copy.mouthCancelAnimation }.Where(c => c != null).Distinct().ToList())
             {
                 var clone = Object.Instantiate(auxiliary);
-                AssetDatabase.CreateAsset(clone, AssetDatabase.GenerateUniqueAssetPath($"{AssetPathUtility.FolderOf(copy)}/{AssetPathUtility.SafeFileName(auxiliary.name)}.anim"));
+                var auxiliaryFolder = AssetPathUtility.EnsureFolder(AssetPathUtility.SettingsFolder(copy), copy.mouthCancelAnimation == auxiliary ? "MouthCancel" : "Blink");
+                AssetDatabase.CreateAsset(clone, AssetPathUtility.UniqueAssetPath($"{auxiliaryFolder}/{AssetPathUtility.SafeFileName(auxiliary.name)}.anim"));
                 if (copy.blinkAnimation == auxiliary) copy.blinkAnimation = clone;
                 if (copy.blinkPose == auxiliary) { copy.blinkPose = clone; copy.editableBlinkPose = clone; }
                 if (copy.mouthCancelAnimation == auxiliary)
@@ -491,8 +496,8 @@ namespace Samon.FacialExpressionEditor.Editor
         public static Expression CreateExpression(ExpressionSet set, string name, NewExpressionSource source,
             Expression copyFrom, GameObject avatarRoot, FaceVariant variant)
         {
-            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Expressions");
-            var path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(name)}.anim");
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.SetupFolder(set), "Expressions");
+            var path = AssetPathUtility.UniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(name)}.anim");
 
             AnimationClip clip;
             if (source == NewExpressionSource.CopyExpression)

@@ -1,0 +1,27 @@
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var bt=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionClipBuilder");
+var root=new GameObject("Color regression");var renderer=root.AddComponent<MeshRenderer>();var material=new Material(Shader.Find("Standard"));material.SetColor("_Color",new Color(.8f,.3f,.2f,0));renderer.sharedMaterial=material;
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();var clip=new AnimationClip();var sampled=new AnimationClip();var checks=new List<string>();
+void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+try{
+ var alpha=EditorCurveBinding.FloatCurve("",typeof(MeshRenderer),"material._Color.a");AnimationUtility.SetEditorCurve(clip,alpha,AnimationCurve.Constant(0,1,.6f));
+ clip.SampleAnimation(root,0);var block=new MaterialPropertyBlock();renderer.GetPropertyBlock(block);Check(block.GetVector("_Color").x==0,"Reproduces Unity black RGB for alpha-only clip");renderer.SetPropertyBlock(null);
+ var builder=Activator.CreateInstance(bt,new object[]{set,null,root});
+ var part=new Samon.FacialExpressionEditor.FacialPart{name="Blush",clip=clip,properties=new List<string>{Samon.FacialExpressionEditor.FacialPart.PropertyKey("",typeof(MeshRenderer),"material._Color.a")}};
+ var built=(nadena.dev.ndmf.animator.VirtualClip)bt.GetMethod("BuildPart").Invoke(builder,new object[]{part});
+ foreach(var b in built.GetFloatCurveBindings())AnimationUtility.SetEditorCurve(sampled,b,built.GetFloatCurve(b));
+ sampled.SampleAnimation(root,0);renderer.GetPropertyBlock(block);var value=block.GetVector("_Color");Check(Vector4.Distance(value,(Vector4)(QualitySettings.activeColorSpace==ColorSpace.Linear?new Color(.8f,.3f,.2f,.6f).linear:new Color(.8f,.3f,.2f,.6f)))<.0001f,"Native sampling of corrected part preserves RGB and opacity: "+value+" curves="+string.Join(",",built.GetFloatCurveBindings().Select(b=>b.propertyName+"="+built.GetFloatCurve(b).Evaluate(0))));
+ Check(AnimationUtility.GetCurveBindings(clip).Length==1&&part.properties.Count==1,"Existing source clip and part selection remain unchanged");
+ var expression=new Samon.FacialExpressionEditor.Expression{name="Blush",clip=clip};var expressionClip=(nadena.dev.ndmf.animator.VirtualClip)bt.GetMethod("Build").Invoke(builder,new object[]{expression});Check(expressionClip.GetFloatCurveBindings().Count(b=>b.propertyName.StartsWith("material._Color."))==4,"Expression builds complete RGBA without requiring parts");
+ var off=nadena.dev.ndmf.animator.VirtualClip.Create("Off");bt.GetMethod("FillMissingMaterialDefaults").Invoke(builder,new object[]{new[]{off,built}});Check(off.GetFloatCurve(alpha).Evaluate(0)==0,"Off restores original opacity");
+ var red=alpha;red.propertyName="material._Color.r";built.SetFloatCurve(red,AnimationCurve.Linear(0,.1f,1,.9f));bt.GetMethod("FillMissingMaterialDefaults").Invoke(builder,new object[]{new[]{built}});Check(Mathf.Approximately(built.GetFloatCurve(red).Evaluate(.5f),.5f),"Authored animated RGB is preserved");
+ Check(material.GetColor("_Color")==new Color(.8f,.3f,.2f,0),"Source material is unchanged");
+ var source=McpSnippet.All<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true).First(s=>s.gameObject.scene.IsValid()&&!UnityEditor.SceneManagement.EditorSceneManager.IsPreviewScene(s.gameObject.scene)&&s.expressionSet!=null);
+ var actualRoot=source.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>().gameObject;var actualBuilder=Activator.CreateInstance(bt,new object[]{source.expressionSet,source.faceVariant,actualRoot});
+ foreach(var name in new[]{"hohozome","Aozame"}){
+  var p=source.expressionSet.parts.First(p=>p.name==name);var sourceJson=EditorJsonUtility.ToJson(p.clip);var result=(nadena.dev.ndmf.animator.VirtualClip)bt.GetMethod("BuildPart").Invoke(actualBuilder,new object[]{p});
+  var a=AnimationUtility.GetCurveBindings(p.clip).First(b=>b.propertyName.EndsWith(".a"));var rgb="rgb".Select(c=>{var b=a;b.propertyName=a.propertyName.Substring(0,a.propertyName.Length-1)+c;return result.GetFloatCurve(b)?.Evaluate(0)??-1;}).ToArray();
+  Check(rgb.All(v=>Mathf.Approximately(v,1))&&Mathf.Approximately(result.GetFloatCurve(a).Evaluate(0),.6f),"Actual "+name+" preserves white tint and authored opacity");Check(EditorJsonUtility.ToJson(p.clip)==sourceJson,"Actual "+name+" source unchanged");
+ }
+ return new{passed=checks.Count,checks};
+}finally{UnityEngine.Object.DestroyImmediate(root);UnityEngine.Object.DestroyImmediate(material);UnityEngine.Object.DestroyImmediate(set);UnityEngine.Object.DestroyImmediate(clip);UnityEngine.Object.DestroyImmediate(sampled);}

@@ -8,6 +8,7 @@ namespace Samon.FacialExpressionEditor.Editor
     {
         // 右のプレビューに使う一時クリップと、描画済みの画像。選択や表情データが変わったときだけ作り直す
         // （ウィンドウの再描画のたびに描き直すと重いため）。
+        internal Rect PreviewRect { get; private set; }
         private AnimationClip _detailClip;
         private bool _detailClipReady;
         private string _detailSelectionKey;
@@ -61,6 +62,7 @@ namespace Samon.FacialExpressionEditor.Editor
             EditorGUILayout.LabelField("プレビュー", EditorStyles.boldLabel);
             var size = DetailWidth - 10;
             var rect = GUILayoutUtility.GetRect(size, size, GUILayout.ExpandWidth(false));
+            PreviewRect=rect;
 
             var isFist = _selectionKind == SelectionKind.Fist;
             var expression = _selectionKind == SelectionKind.Expression || isFist ? set.FindExpression(_selectedId) : null;

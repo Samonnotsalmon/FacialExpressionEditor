@@ -40,7 +40,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 }
             }
             var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Blink");
-            var path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/BlinkPose.anim");
+            var path = AssetPathUtility.UniqueAssetPath($"{folder}/BlinkPose.anim");
             pose.name = System.IO.Path.GetFileNameWithoutExtension(path);
             AssetDatabase.CreateAsset(pose, path);
             Undo.RecordObject(set, "専用の目閉じポーズを作成");

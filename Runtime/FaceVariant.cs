@@ -13,6 +13,7 @@ namespace Samon.FacialExpressionEditor
     /// </summary>
     public class FaceVariant : ScriptableObject
     {
+        [HideInInspector] public bool useOverridesFolder;
         // 新規データは読み込んだベース顔を保持する。シーンからの更新は明示的に行う。
         public bool useCapturedValues;
         // 補正値とは別に、読み込み時の顔を保存して再登録時の変更を検出する。

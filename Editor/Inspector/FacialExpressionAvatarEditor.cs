@@ -17,10 +17,38 @@ namespace Samon.FacialExpressionEditor.Editor
         private bool _showBaseFace = true;
         private bool _showInactiveBaseFace;
         private bool _showExpressions = true;
+        private bool _showDetails;
 
         public override void OnInspectorGUI()
         {
             var avatar = (FacialExpressionAvatar)target;
+
+            // Keep the common operations visible; references and legacy controls are optional.
+            var root = AvatarSetup.AvatarRootOf(avatar);
+            var descriptor = root != null ? root.GetComponent<VRCAvatarDescriptor>() : null;
+            var set = avatar.expressionSet;
+            LipSyncSettingsGUI.Draw(avatar, root);
+            if (GUILayout.Button("表情エディタを開く", GUILayout.Height(28)))
+            {
+                if (set != null) ExpressionEditorWindow.Open(avatar);
+                else ExpressionEditorWindow.OpenStart(root);
+            }
+            using (new EditorGUI.DisabledScope(set == null || descriptor == null))
+            if (GUILayout.Button("複製してこのアバター専用にする", GUILayout.Height(24)))
+            {
+                DuplicateSet(avatar, set);
+                GUIUtility.ExitGUI();
+            }
+            if (set == null) EditorGUILayout.HelpBox("表情データが未設定です。", MessageType.Warning);
+            if (root == null) EditorGUILayout.HelpBox("詳細設定で編集に使うアバターを指定してください。", MessageType.Warning);
+            else if (descriptor == null) EditorGUILayout.HelpBox("指定したオブジェクトにVRC Avatar Descriptorがありません。詳細設定でアバターを確認してください。", MessageType.Warning);
+            if (set != null && avatar.faceVariant == null)
+                EditorGUILayout.HelpBox("ベース顔が未設定です。詳細設定から作成できます。", MessageType.Info);
+            if (root != null && set != null && avatar.faceVariant != null && !set.independentClips
+                && FaceVariantUtility.Mismatched(avatar.faceVariant, root).Count > 0)
+                EditorGUILayout.HelpBox("アバターと登録したベース顔に違いがあります。詳細設定で確認してください。", MessageType.Warning);
+            _showDetails = EditorGUILayout.Foldout(_showDetails, "詳細設定", true);
+            if (!_showDetails) return;
 
             serializedObject.Update();
             EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(FacialExpressionAvatar.expressionSet)),
@@ -32,9 +60,9 @@ namespace Samon.FacialExpressionEditor.Editor
             serializedObject.ApplyModifiedProperties();
 
             // アバターの中にあればそのアバター、無ければ編集に使うアバター。
-            var root = AvatarSetup.AvatarRootOf(avatar);
-            var descriptor = root != null ? root.GetComponent<VRCAvatarDescriptor>() : null;
-            var set = avatar.expressionSet;
+            root = AvatarSetup.AvatarRootOf(avatar);
+            descriptor = root != null ? root.GetComponent<VRCAvatarDescriptor>() : null;
+            set = avatar.expressionSet;
 
             EditorGUILayout.Space();
             if (set == null)
@@ -42,11 +70,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 EditorGUILayout.HelpBox("表情データがありません。表情エディタの「新しく始める」で作れます。", MessageType.Info);
                 if (GUILayout.Button("表情エディタで始める", GUILayout.Height(28))) ExpressionEditorWindow.OpenStart(root);
                 return;
-            }
-
-            if (GUILayout.Button("表情エディタを開く", GUILayout.Height(28)))
-            {
-                ExpressionEditorWindow.Open(avatar);
             }
 
             if (descriptor == null)
@@ -94,11 +117,6 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     Selection.activeObject = set;
                 }
-                if (GUILayout.Button(new GUIContent("複製してこのアバター専用にする", "設定とアニメーションを別のPrefabに複製し、シーンでは現在の設定を置き換えます。")))
-                {
-                    DuplicateSet(avatar, set);
-                    GUIUtility.ExitGUI();
-                }
             }
         }
 
@@ -111,7 +129,7 @@ namespace Samon.FacialExpressionEditor.Editor
             _newExpressionName = EditorGUILayout.TextField("名前", _newExpressionName);
             EditorGUILayout.LabelField("登録したベース顔から表情を作成します。", EditorStyles.wordWrappedMiniLabel);
 
-            EditorGUILayout.LabelField($"保存先：{AssetPathUtility.FolderOf(set)}/Expressions/", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField($"保存先：{AssetPathUtility.SetupFolder(set)}/Expressions/", EditorStyles.miniLabel);
             EditorGUI.indentLevel--;
 
             using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(_newExpressionName)))

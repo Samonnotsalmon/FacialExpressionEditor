@@ -8,7 +8,7 @@
     "name": "NotSalmon"
   },
   "vpmDependencies": {
-    "com.vrchat.avatars": ">=3.10.0",
+    "com.vrchat.avatars": ">=3.10.6",
     "nadena.dev.modular-avatar": ">=1.18.0",
     "nadena.dev.ndmf": ">=1.14.0"
   }

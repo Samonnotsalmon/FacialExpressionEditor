@@ -1,0 +1,15 @@
+var root=McpSnippet.Find("/Kirishima");var owner=root.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true);
+var type=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly.GetType("Samon.FacialExpressionEditor.Editor.LipSyncPortraits");
+var photos=new System.Collections.Generic.List<Texture2D>();
+try {
+ for(int i=0;i<owner.lipSyncSwitch.targets.Count;i++){
+  var t=JsonUtility.FromJson<Samon.FacialExpressionEditor.LipSyncTarget>(JsonUtility.ToJson(owner.lipSyncSwitch.targets[i]));t.photoZoom=1;
+  var image=(Texture2D)type.GetMethod("Capture").Invoke(null,new object[]{root,t});photos.Add(image);
+  var pixels=image.GetPixels();if(!pixels.Any(p=>p.a<.1f)||!pixels.Any(p=>p.a>.9f))throw new Exception("Portrait alpha missing");
+  System.IO.File.WriteAllBytes(System.IO.Path.Combine(System.IO.Path.GetTempPath(),"fee-lipsync-portrait-"+i+".png"),image.EncodeToPNG());
+ }
+ var composite=(Texture2D)type.GetMethod("Compose").Invoke(null,new object[]{photos.ToArray()});photos.Add(composite);
+ System.IO.File.WriteAllBytes(System.IO.Path.Combine(System.IO.Path.GetTempPath(),"fee-lipsync-portrait-pair.png"),composite.EncodeToPNG());
+ if(!composite.GetPixels().Any(p=>p.a>.5f))throw new Exception("Empty composite");
+ return new{passed=true,portraits=photos.Count-1,transparency=true,composite=true};
+}finally{foreach(var image in photos)UnityEngine.Object.DestroyImmediate(image);}

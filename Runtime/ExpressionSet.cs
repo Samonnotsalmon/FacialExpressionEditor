@@ -9,11 +9,16 @@ namespace Samon.FacialExpressionEditor
     /// </summary>
     public enum BlinkSourceMode { Legacy, Existing, Generated }
 
-    [CreateAssetMenu(menuName = "NotSalmon/NSL_Facial Expression Editor/表情データ", fileName = "表情データ")]
+    [CreateAssetMenu(menuName = "NotSalmon/NSL_Facial Expression Editor/表情データ", fileName = "NSL_表情データ")]
     public class ExpressionSet : ScriptableObject
     {
+        // 新構成はSettings内に保存。旧データは既存の配置を維持する。
+        [HideInInspector] public bool usesSettingsFolder;
         // 登録フォルダはGUIDで持つ（フォルダを移動・改名しても外れないように）。
         public List<string> libraryFolderGuids = new List<string>();
+        public List<string> hiddenLibraryClipIds = new List<string>();
+        public List<string> partFolders = new List<string>();
+        public List<string> partCategoryOrder = new List<string>();
         public bool independentClips;
         public List<string> exclusiveGroups = new List<string>();
         public float previewHeight = 0.03f;
@@ -57,7 +62,7 @@ namespace Samon.FacialExpressionEditor
         // 固定の表情に切り替えたときの演出の標準（初期値は演出なし＝そのまま切り替える）。
         public SwitchEffect fixedSwitchEffect = new SwitchEffect();
 
-        // 表情メニューで、固定の表情にサムネイルのアイコンを付ける。
+        // 表情メニューで、固定の表情とパーツにサムネイルのアイコンを付ける。
         public bool menuIcons = true;
         public int menuIconSize = 128;
 

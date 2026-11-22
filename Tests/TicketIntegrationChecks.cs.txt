@@ -1,0 +1,33 @@
+// FEE-002..006 combined workflow on synthetic assets only.
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var type=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow");
+var utility=asm.GetType("Samon.FacialExpressionEditor.Editor.LibraryClipUtility");
+var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+object Call(string name,params object[] args)=>utility.GetMethod(name).Invoke(null,args);
+var checks=new List<string>();void Check(bool ok,string label){if(!ok)throw new Exception(label);checks.Add(label);}
+var folder="Assets/__FEE007_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));AssetDatabase.CreateFolder(folder,"Source");AssetDatabase.CreateFolder(folder,"Copy");
+var scene=UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();EditorWindow window=null;
+try{
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.faceControlImported=true;AssetDatabase.CreateAsset(set,folder+"/Source/Settings.asset");
+ var e=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(set,"Before",Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.Empty,null,null,null);
+ var p=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreatePart(set,"Part");p.exclusiveGroup="Eyes";
+ var go=new GameObject("IntegrationAvatar");UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(go,scene);go.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();var avatar=go.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();avatar.expressionSet=set;
+ window=(EditorWindow)ScriptableObject.CreateInstance(type);type.GetField("_selectingAvatar",flags).SetValue(window,true);type.GetField("_starting",flags).SetValue(window,true);
+ type.GetMethod("SetStartAvatar",flags).Invoke(window,new object[]{go});
+ Check(!(bool)type.GetField("_starting",flags).GetValue(window)&&type.GetField("_avatar",flags).GetValue(window)==avatar,"Avatar selection opens existing settings");
+ var binding=EditorCurveBinding.FloatCurve("Face",typeof(SkinnedMeshRenderer),"blendShape.Smile");AnimationUtility.SetEditorCurve(e.clip,binding,AnimationCurve.Constant(0,1,72));
+ Call("SetHidden",set,e.clip,true);Call("SetHidden",set,p.clip,true);
+ Check((string)Call("Rename",set,e.clip,"After")==null&&(bool)Call("IsHidden",set,e.clip),"Edit, hide and rename retain hidden state");
+ type.GetMethod("RenamePartFolder",flags).Invoke(window,new object[]{set,null,"Accessories"});p.folder="Accessories";EditorUtility.SetDirty(set);
+ var copy=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.Duplicate(set,folder+"/Copy/Settings.asset");
+ Check(copy.expressions[0].clip!=e.clip&&copy.parts[0].clip!=p.clip,"Dedicated copy owns separate clips");
+ Check((bool)Call("IsHidden",copy,copy.expressions[0].clip),"Dedicated copy preserves hidden expression");
+ Check((bool)Call("IsHidden",copy,copy.parts[0].clip),"Dedicated copy preserves hidden part clip");
+ Check(copy.partFolders.Contains("Accessories")&&copy.parts[0].folder=="Accessories"&&copy.parts[0].exclusiveGroup=="Eyes","Dedicated copy preserves organization and exclusivity");
+ var copyPath=AssetDatabase.GetAssetPath(copy);Resources.UnloadAsset(copy);copy=AssetDatabase.LoadAssetAtPath<Samon.FacialExpressionEditor.ExpressionSet>(copyPath);
+ Check((bool)Call("IsHidden",copy,copy.expressions[0].clip)&&copy.parts[0].folder=="Accessories","Copy reload retains combined settings");
+ Check(AnimationUtility.GetEditorCurve(copy.expressions[0].clip,binding).Evaluate(0)==72,"Edited curve survives copy and reload");
+ Call("SetHidden",copy,copy.expressions[0].clip,false);Check((bool)Call("IsHidden",set,e.clip)&&!(bool)Call("IsHidden",copy,copy.expressions[0].clip),"Re-show in copy leaves source hidden");
+ Check((string)Call("Rename",copy,copy.expressions[0].clip,"CopyAfter")==null&&e.clip.name=="After","Rename in copy leaves source unchanged");
+ return new{passed=checks.Count,checks};
+}finally{if(window!=null)UnityEngine.Object.DestroyImmediate(window);UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene);AssetDatabase.DeleteAsset(folder);}

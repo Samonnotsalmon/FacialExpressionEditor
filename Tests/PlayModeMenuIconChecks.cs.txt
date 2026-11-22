@@ -1,0 +1,47 @@
+// Run in Unity via execute_code. Synthetic fixtures only; no user assets are changed.
+var type = typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly
+    .GetType("Samon.FacialExpressionEditor.Editor.MenuIconPrewarmer");
+var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+var capture = type.GetMethod("Capture", flags);
+var read = type.GetMethod("Read", flags);
+var clear = type.GetMethod("Clear", flags);
+var checks = new System.Collections.Generic.List<string>();
+void Check(bool ok, string name) { if (!ok) throw new Exception(name); checks.Add(name); }
+System.Collections.Generic.Dictionary<string,string> Read(Samon.FacialExpressionEditor.FacialExpressionAvatar setup) =>
+    (System.Collections.Generic.Dictionary<string,string>)read.Invoke(null, new object[]{setup});
+var root = new GameObject("FEE menu icon checks");
+GameObject clone = null;
+try {
+    var a = root.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();
+    Check(Read(a) == null, "No snapshot falls back to normal cache lookup");
+    var keys = new System.Collections.Generic.Dictionary<string,string> {
+        {"smile", "expr|original-asset-references|original-appearance"},
+        {"__base__", "base|original-appearance"}, {"", "neutral|original-appearance"}
+    };
+    capture.Invoke(null, new object[]{a, keys});
+    var originalToken = a.playModeMenuIconToken;
+    a.playModeMenuIconToken = null;
+    root.name += "(Clone)";
+    Check(Read(a)["smile"] == keys["smile"], "Scene reload losing the temporary field and NDMF rename retain photos");
+    a.playModeMenuIconToken = originalToken;
+    clone = UnityEngine.Object.Instantiate(root);
+    clone.transform.localScale = Vector3.one * 2;
+    var b = clone.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();
+    Check(Read(b)["smile"] == keys["smile"], "Build clone retains exact key despite appearance changes");
+    Check(Read(b)["__base__"] == keys["__base__"] && Read(b)[""] == keys[""], "Base and neutral keys survive cloning");
+    var serialized = EditorJsonUtility.ToJson(b);
+    b.playModeMenuIconToken = null;
+    EditorJsonUtility.FromJsonOverwrite(serialized, b);
+    Check(Read(b)["smile"] == keys["smile"], "Serialized token resolves snapshot after reload");
+    capture.Invoke(null, new object[]{b, new System.Collections.Generic.Dictionary<string,string>{{"smile","other-avatar"}}});
+    Check(Read(a)["smile"] != Read(b)["smile"], "Separate avatars never overwrite each other's keys");
+    clear.Invoke(null, new object[]{a});
+    Check(Read(a) == null && Read(b)["smile"] == "other-avatar", "Clearing one snapshot preserves another avatar");
+    clear.Invoke(null, new object[]{b});
+    Check(string.IsNullOrEmpty(b.playModeMenuIconToken) && Read(b) == null, "Cleanup removes temporary reference");
+    return new {passed=checks.Count, checks};
+} finally {
+    if (clone != null) { clear.Invoke(null, new object[]{clone.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>()}); UnityEngine.Object.DestroyImmediate(clone); }
+    clear.Invoke(null, new object[]{root.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>()});
+    UnityEngine.Object.DestroyImmediate(root);
+}

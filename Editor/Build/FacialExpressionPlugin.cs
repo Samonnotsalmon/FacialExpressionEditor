@@ -13,10 +13,13 @@ namespace Samon.FacialExpressionEditor.Editor
 
         protected override void Configure()
         {
+            // Check before the standalone plugin can consume/remove its authoring component.
+            InPhase(BuildPhase.Resolving).Run("リップシンク設定の重複を確認",
+                context => LipSyncSwitchPass.CheckDuplicate(context.AvatarRootObject));
             // メニューとパラメータはMAのコンポーネントとして作るので、MAが処理する前に置いておく。
-            InPhase(BuildPhase.Generating)
-                .BeforePlugin("nadena.dev.modular-avatar")
-                .Run(GenerateMenuPass.Instance);
+            var generating = InPhase(BuildPhase.Generating).BeforePlugin("nadena.dev.modular-avatar");
+            generating.Run(LipSyncSwitchPass.Instance);
+            generating.Run(GenerateMenuPass.Instance);
 
             // MAで合成された付属FXも含めて、選択した表情レイヤーを置き換える。
             InPhase(BuildPhase.Transforming)

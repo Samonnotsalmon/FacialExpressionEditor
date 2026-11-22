@@ -59,7 +59,44 @@ namespace Samon.FacialExpressionEditor.Editor
         // カメラの寄り具合（1で標準、大きいほど寄る）と、横から見る角度（度）。表情の編集ウィンドウで使う。
         public float Zoom { get; set; } = 1f;
         public float Yaw { get; set; }
+        public float Pitch { get; set; }
+        public Vector3 Offset { get; set; }
         public float HeightOffset { get; set; } = 0.03f;
+
+        private Vector3? portraitCenter;
+        private float portraitDistance;
+        private float portraitPitch;
+        public void ConfigurePortrait(LipSyncTarget target)
+        {
+            var animator=Source.GetComponent<Animator>();
+            var head=animator && animator.isHuman ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+            bool body=head && target.mesh.bones.Contains(head);
+            var descriptor=Source.GetComponent<VRCAvatarDescriptor>();
+            var center=target.photoFocus ? target.photoFocus.position : body && descriptor ? Source.transform.TransformPoint(descriptor.ViewPosition) : target.mesh.bounds.center;
+            portraitCenter=_clone.transform.TransformPoint(Source.transform.InverseTransformPoint(center)+target.photoOffset);
+            portraitDistance=body ? _distance : Mathf.Max(.02f,target.mesh.bounds.extents.magnitude)*3.5f;
+            portraitPitch=target.photoPitch;
+            Zoom=target.photoZoom;Yaw=target.photoYaw;
+            _utility.camera.backgroundColor=target.photoBackground;
+            // Show the selected renderer even when its source visibility is off.
+            string path=AnimationUtility.CalculateTransformPath(target.mesh.transform,Source.transform);
+            var selected=_clone.transform.Find(path);
+            for(var t=selected;t!=null;t=t.parent)t.gameObject.SetActive(true);
+            var group=target.photoRoot ? target.photoRoot : body ? Source : target.mesh.gameObject;
+            if(!group.transform.IsChildOf(Source.transform))throw new ArgumentException("撮影範囲はアバター内に指定してください。");
+            var groupPath=AnimationUtility.CalculateTransformPath(group.transform,Source.transform);
+            var cloneGroup=string.IsNullOrEmpty(groupPath)?_clone.transform:_clone.transform.Find(groupPath);
+            foreach(var r in _clone.GetComponentsInChildren<Renderer>(true))if(!r.transform.IsChildOf(cloneGroup))r.enabled=false;
+            if(group==Source) {
+                var config=LipSyncProfileUtility.Resolve(Source.GetComponentInChildren<FacialExpressionAvatar>(true));
+                if(config!=null)foreach(var other in config.targets.Where(t=>t.mesh&&t.mesh!=target.mesh)) {
+                    string otherPath=AnimationUtility.CalculateTransformPath(other.mesh.transform,Source.transform);
+                    var otherTransform=_clone.transform.Find(otherPath);
+                    if(otherTransform)foreach(var r in otherTransform.GetComponentsInChildren<Renderer>(true))r.enabled=false;
+                }
+            }
+            foreach(var pair in _baked)_needsBake.Add(pair.skinned);
+        }
 
         private static readonly Color Background = new Color(0.19f, 0.19f, 0.2f);
 
@@ -274,15 +311,24 @@ namespace Samon.FacialExpressionEditor.Editor
 
         public Texture2D RenderStatic(int size)
         {
-            _utility.BeginStaticPreview(new Rect(0, 0, size, size));
+            if(portraitCenter.HasValue)_utility.BeginPreview(new Rect(0,0,size,size),GUIStyle.none);
+            else _utility.BeginStaticPreview(new Rect(0, 0, size, size));
             var camera = _utility.camera;
-            var target = _eye + Vector3.up * (HeightOffset * _avatarScale);
-            var direction = Quaternion.AngleAxis(Yaw, Vector3.up) * _forward;
-            camera.transform.position = target + direction * (_distance / Mathf.Max(0.1f, Zoom));
+            var target = portraitCenter ?? (_eye + (Vector3.up * HeightOffset + Offset) * _avatarScale);
+            var direction = Quaternion.Euler(portraitCenter.HasValue ? portraitPitch : Pitch, Yaw, 0) * _forward;
+            camera.transform.position = target + direction * ((portraitCenter.HasValue ? portraitDistance : _distance) / Mathf.Max(0.1f, Zoom));
             camera.transform.LookAt(target);
             SyncBakedRenderers();
             _utility.Render(true);
-            return _utility.EndStaticPreview();
+            if(!portraitCenter.HasValue)return _utility.EndStaticPreview();
+            var rendered=_utility.EndPreview();
+            var previous=RenderTexture.active;
+            var rt=RenderTexture.GetTemporary(size,size,0,RenderTextureFormat.ARGB32);
+            try {
+                Graphics.Blit(rendered,rt);RenderTexture.active=rt;
+                var result=new Texture2D(size,size,TextureFormat.RGBA32,false);
+                result.ReadPixels(new Rect(0,0,size,size),0,0);result.Apply();return result;
+            } finally {RenderTexture.active=previous;RenderTexture.ReleaseTemporary(rt);}
         }
 
         private void Restore()

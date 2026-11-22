@@ -1,0 +1,57 @@
+// FEE-005: isolated assets; exercise the actual library filter and serialized settings.
+var asm = typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var utility = asm.GetType("Samon.FacialExpressionEditor.Editor.LibraryClipUtility");
+var type = asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow");
+var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+object Call(string name, params object[] args) => utility.GetMethod(name).Invoke(null,args);
+var checks = new List<string>();
+void Check(bool ok,string name) { if(!ok) throw new Exception(name); checks.Add(name); }
+var folder="Assets/__FEE005_"+Guid.NewGuid().ToString("N");
+AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var scene=UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
+EditorWindow window=null;
+try {
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+ AssetDatabase.CreateAsset(set,folder+"/Settings.asset");
+ var other=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+ AssetDatabase.CreateAsset(other,folder+"/Other.asset");
+ var clip=new AnimationClip(); AssetDatabase.CreateAsset(clip,folder+"/Before.anim");
+ var visible=new AnimationClip(); AssetDatabase.CreateAsset(visible,folder+"/Visible.anim");
+ var expression=new Samon.FacialExpressionEditor.Expression {name="Before",clip=clip};set.expressions.Add(expression);
+ var go=new GameObject("FEE005Checks");UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(go,scene);
+ var avatar=go.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();avatar.expressionSet=set;
+ void Open() {
+  window=(EditorWindow)ScriptableObject.CreateInstance(type);
+  type.GetField("_avatar",flags).SetValue(window,avatar);
+  type.GetField("_libraryClips",flags).SetValue(window,new List<AnimationClip>{clip,visible});
+ }
+ List<AnimationClip> Filter() => (List<AnimationClip>)type.GetMethod("FilteredClips",flags).Invoke(window,null);
+ Open();Check(Filter().Count==2,"Both clips initially visible");
+ var before=EditorJsonUtility.ToJson(clip);
+ Undo.IncrementCurrentGroup();Call("SetHidden",set,clip,true);Undo.FlushUndoRecordObjects();
+ Check(Filter().SequenceEqual(new[]{visible}),"Only selected clip is hidden by actual filter");
+ Check(!(bool)Call("IsHidden",other,clip),"Other expression settings are unaffected");
+ Check(expression.clip==clip && before==EditorJsonUtility.ToJson(clip) && System.IO.File.Exists(AssetDatabase.GetAssetPath(clip)),"Animation and assigned reference unchanged");
+ Undo.PerformUndo();Check(Filter().Count==2,"Undo restores visibility");
+ Undo.PerformRedo();Check(Filter().SequenceEqual(new[]{visible}),"Redo hides clip");
+ Call("SetHidden",set,clip,true);Check(set.hiddenLibraryClipIds.Count==1,"Repeated hiding does not duplicate IDs");
+ type.GetField("_showHiddenLibraryClips",flags).SetValue(window,true);
+ Check(Filter().Count==2,"Management toggle includes hidden clip");
+ UnityEngine.Object.DestroyImmediate(window);window=null;Open();
+ Check(Filter().SequenceEqual(new[]{visible}),"New editor window retains hidden setting");
+ Check((string)Call("Rename",set,clip,"Renamed")==null && Filter().SequenceEqual(new[]{visible}),"Rename retains hidden setting");
+ AssetDatabase.SaveAssetIfDirty(set);AssetDatabase.SaveAssetIfDirty(clip);
+ var setPath=AssetDatabase.GetAssetPath(set);
+ avatar.expressionSet=null;Resources.UnloadAsset(set);
+ set=AssetDatabase.LoadAssetAtPath<Samon.FacialExpressionEditor.ExpressionSet>(setPath);avatar.expressionSet=set;
+ Check(Filter().SequenceEqual(new[]{visible}) && (bool)Call("IsHidden",set,clip),"Unload and reload from disk retains hidden setting");
+ Check(set.expressions[0].clip==clip,"Assigned reference survives reload");
+ Call("SetHidden",set,clip,false);Check(Filter().Count==2 && set.hiddenLibraryClipIds.Count==0,"Individual re-show restores clip");
+ AssetDatabase.SaveAssetIfDirty(set);
+ Check(AssetDatabase.LoadAssetAtPath<AnimationClip>(folder+"/Renamed.anim")==clip,"Original animation asset still exists");
+ return new {passed=checks.Count,checks};
+} finally {
+ if(window!=null) UnityEngine.Object.DestroyImmediate(window);
+ UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene);
+ AssetDatabase.DeleteAsset(folder);
+}

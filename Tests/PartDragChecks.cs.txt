@@ -1,0 +1,32 @@
+// FEE-009: folder moves, ordering, saved state and exclusive boundaries.
+var type=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow");
+var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+var folder="Assets/__FEE009_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var window=(EditorWindow)ScriptableObject.CreateInstance(type);
+var checks=new List<string>();void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+try{
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();AssetDatabase.CreateAsset(set,folder+"/Settings.asset");
+ var clip=new AnimationClip();AssetDatabase.CreateAsset(clip,folder+"/Part.anim");
+ set.partFolders.AddRange(new[]{"A","B","Empty"});
+ foreach(var name in new[]{"Free","A1","A2","B1","G1","G2","H1"})set.parts.Add(new Samon.FacialExpressionEditor.FacialPart{name=name,clip=clip,folder=name.StartsWith("A")?"A":name.StartsWith("B")?"B":"",exclusiveGroup=name.StartsWith("G")?"Group":name.StartsWith("H")?"Other":""});
+ Samon.FacialExpressionEditor.FacialPart Part(string name)=>set.parts.First(p=>p.name==name);
+ bool Move(string name,string before,string dest,string group=null)=>(bool)type.GetMethod("MovePart",flags).Invoke(window,new object[]{set,Part(name),before==null?null:Part(before),dest,group});
+ string Order(string dest)=>string.Join(",",set.parts.Where(p=>string.IsNullOrEmpty(p.exclusiveGroup)&&p.folder==dest).Select(p=>p.name));
+ Check(Move("Free",null,"Empty")&&Part("Free").folder=="Empty","Drop into empty folder");
+ Check(Move("Free","A2","A")&&Order("A")=="A1,Free,A2","Move between folders before target");
+ Check(Move("A2","A1","A")&&Order("A")=="A2,A1,Free","Reorder upward");
+ Check(Move("A2",null,"A")&&Order("A")=="A1,Free,A2","Append within destination");
+ Undo.IncrementCurrentGroup();Move("Free",null,"");Undo.FlushUndoRecordObjects();
+ Check(Part("Free").folder=="","Drop into unfiled area");
+ Undo.PerformUndo();Check(Part("Free").folder=="A"&&Order("A")=="A1,Free,A2","Undo restores membership and order");
+ Undo.PerformRedo();Check(Part("Free").folder=="","Redo reapplies move");
+ var before=EditorJsonUtility.ToJson(set);
+ Check(!Move("G1",null,"A")&&!Move("Free","G1",null,"Group")&&!Move("G1","H1",null,"Other"),"Reject exclusive classification changes");
+ Check(!Move("A1","A1","A")&&!Move("A1",null,"Missing")&&!Move("A1","B1","A"),"Reject invalid targets");
+ Check(EditorJsonUtility.ToJson(set)==before,"Rejected drops leave settings unchanged");
+ Check(Move("G2","G1",null,"Group")&&set.parts.Where(p=>p.exclusiveGroup=="Group").Select(p=>p.name).SequenceEqual(new[]{"G2","G1"}),"Reorder within exclusive group");
+ Check(set.parts.Count==7&&set.parts.Select(p=>p.id).Distinct().Count()==7&&set.parts.All(p=>p.clip==clip),"Parts and references preserved without duplicates");
+ AssetDatabase.SaveAssetIfDirty(set);var path=AssetDatabase.GetAssetPath(set);var saved=EditorJsonUtility.ToJson(set);Resources.UnloadAsset(set);set=AssetDatabase.LoadAssetAtPath<Samon.FacialExpressionEditor.ExpressionSet>(path);
+ Check(EditorJsonUtility.ToJson(set)==saved,"Membership and order survive reload");
+ return new{passed=checks.Count,checks};
+}finally{UnityEngine.Object.DestroyImmediate(window);AssetDatabase.DeleteAsset(folder);}

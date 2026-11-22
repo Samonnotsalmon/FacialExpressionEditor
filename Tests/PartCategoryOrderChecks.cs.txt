@@ -1,0 +1,34 @@
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var wt=asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionEditorWindow");var ot=asm.GetType("Samon.FacialExpressionEditor.Editor.PartCategoryOrder");var bt=asm.GetType("Samon.FacialExpressionEditor.Editor.BuildPlan");
+var flags=System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance;
+var checks=new List<string>();void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+var folder="Assets/__FEE010_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();AssetDatabase.CreateAsset(set,folder+"/Data.asset");
+var w=(EditorWindow)ScriptableObject.CreateInstance(wt);
+List<string> Keys()=>(List<string>)ot.GetMethod("Keys").Invoke(null,new object[]{set});
+bool Move(string key,string before)=>(bool)wt.GetMethod("MovePartCategory",flags).Invoke(w,new object[]{set,key,before});
+string Plan(){var plan=bt.GetMethod("Create").Invoke(null,new object[]{set});return string.Join(";",((System.Collections.IEnumerable)bt.GetField("Parts").GetValue(plan)).Cast<object>().Select(e=>{var t=e.GetType();return ((Samon.FacialExpressionEditor.FacialPart)t.GetField("Part").GetValue(e)).id+":"+t.GetField("Parameter").GetValue(e)+":"+t.GetField("Value").GetValue(e);}));}
+string Menu(){var plan=bt.GetMethod("Create").Invoke(null,new object[]{set});return string.Join(",",((System.Collections.IEnumerable)ot.GetMethod("MenuParts").Invoke(null,new[]{(object)set,plan})).Cast<object>().Select(e=>((Samon.FacialExpressionEditor.FacialPart)e.GetType().GetField("Part").GetValue(e)).name));}
+try{
+ var clip=new AnimationClip();clip.SetCurve("Prop",typeof(GameObject),"m_IsActive",AnimationCurve.Constant(0,1,1));AssetDatabase.CreateAsset(clip,folder+"/Part.anim");
+ set.partFolders.AddRange(new[]{"A","B"});
+ foreach(var n in new[]{"a1","g1","free","b1","a2","g2"})set.parts.Add(new Samon.FacialExpressionEditor.FacialPart{name=n,folder=n.StartsWith("a")?"A":n=="b1"?"B":"",exclusiveGroup=n.StartsWith("g")?"A":"",clip=clip,properties=new List<string>{"Prop|UnityEngine.GameObject|m_IsActive"}});
+ EditorUtility.SetDirty(set);AssetDatabase.SaveAssets();var before=Plan();var original=set.parts.Select(p=>p.id).ToArray();
+ Check(Keys().SequenceEqual(new[]{"folder:A","folder:B","exclusive:A"}),"Legacy heading order and same-name type distinction");
+ Check(Menu()=="a1,g1,free,b1,a2,g2","Legacy menu order remains unchanged until ordering is saved");
+ Check(Move("exclusive:A","folder:A"),"Move exclusive group before ordinary folder");
+ Check(Menu()=="free,g1,g2,a1,a2,b1","Menu follows mixed heading order with unfiled first");
+ Check(Plan()==before&&set.parts.Select(p=>p.id).SequenceEqual(original),"Parameters values and source part order remain unchanged");
+ Undo.FlushUndoRecordObjects();Undo.IncrementCurrentGroup();Undo.PerformUndo();Check(Menu()=="a1,g1,free,b1,a2,g2","Undo restores legacy order");Undo.PerformRedo();Check(Keys()[0]=="exclusive:A","Redo restores heading order");
+ Check(Move("exclusive:A",""),"Move heading to end");
+ Check(!Move("folder:A","folder:A")&&!Move("missing","")&&!Move("folder:A","missing"),"Invalid and self drops rejected");
+ wt.GetMethod("RenamePartFolder",flags).Invoke(w,new object[]{set,"A","Renamed"});Check(Keys()[0]=="folder:Renamed"&&Keys()[2]=="exclusive:A","Rename retains position and independent group identity");
+ wt.GetMethod("RenamePartFolder",flags).Invoke(w,new object[]{set,null,"New"});Check(Keys().Last()=="folder:New","New folder appended");
+ set.parts[1].exclusiveGroup="Other";Check(Keys().Last()=="exclusive:Other","Newly used group appended");set.parts[1].exclusiveGroup="A";
+ wt.GetMethod("RemovePartFolder",flags).Invoke(w,new object[]{set,"B"});Check(!Keys().Contains("folder:B")&&set.parts[3].folder=="","Removed folder clears order and retains part");
+ Check(set.parts.Count==6&&set.parts.All(p=>p.clip==clip)&&set.parts[0].folder=="Renamed"&&set.parts[1].exclusiveGroup=="A","Memberships and clip references preserved");
+ var expected=string.Join(",",Keys());EditorUtility.SetDirty(set);AssetDatabase.SaveAssets();Resources.UnloadAsset(set);set=AssetDatabase.LoadAssetAtPath<Samon.FacialExpressionEditor.ExpressionSet>(folder+"/Data.asset");Check(string.Join(",",Keys())==expected,"Save and reload preserve order");
+ AssetDatabase.CreateFolder(folder,"Copy");var copy=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.Duplicate(set,folder+"/Copy/Data.asset");Check(copy.partCategoryOrder.SequenceEqual(set.partCategoryOrder),"Dedicated copy preserves order");
+ var empty=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();try{Check(((List<string>)ot.GetMethod("Keys").Invoke(null,new object[]{empty})).Count==0,"Other settings do not inherit order");}finally{UnityEngine.Object.DestroyImmediate(empty);}
+ return new{passed=checks.Count,checks};
+}finally{UnityEngine.Object.DestroyImmediate(w);AssetDatabase.DeleteAsset(folder);}

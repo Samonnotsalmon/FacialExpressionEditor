@@ -24,3 +24,9 @@
 .github        export-ignore
 .gitattributes export-ignore
 .gitignore     export-ignore
+Tests          export-ignore
+Tests.meta     export-ignore
+docs/tickets   export-ignore
+docs/tickets.meta export-ignore
+docs/spec-ideas.md export-ignore
+docs/spec-ideas.md.meta export-ignore

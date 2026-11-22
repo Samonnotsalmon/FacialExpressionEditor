@@ -1,0 +1,13 @@
+var root=UnityEngine.Object.Instantiate(McpSnippet.Find("/Kirishima"));
+try {
+ var c=root.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true).lipSyncSwitch;
+ c.schemaVersion=3;c.defaultSelection=0;c.targets[0].controlVisibility=false;c.targets[1].controlVisibility=true;c.targets[1].defaultVisible=true;
+ Samon.FacialExpressionEditor.Editor.LipSyncSetup.Upgrade(c,root.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>());
+ if(c.defaultSelection!=2||c.targets.Any(t=>t.controlVisibility)||c.showAuto)throw new Exception("Migration failed");
+ var go=c.targets[1].mesh.gameObject;go.SetActive(false);
+ nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(root);
+ if(go.activeSelf)throw new Exception("Visibility was changed by build");
+ var d=root.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ if(d.expressionParameters.parameters.Any(p=>p.name.StartsWith("NSL/LipSyncSwitch/Visible/")))throw new Exception("Visibility parameters remain");
+ return new{passed=true,initialSelection=2,inactiveMeshPreserved=true};
+}finally{UnityEngine.Object.DestroyImmediate(root);}

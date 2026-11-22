@@ -1,0 +1,28 @@
+// Read-only check: run in Play mode with an avatar using FEE part menu icons.
+if (!EditorApplication.isPlaying) throw new Exception("Run this check in Play mode.");
+var results = new List<object>();
+var checkedParts = 0;
+foreach (var avatar in UnityEngine.Object.FindObjectsByType<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(FindObjectsSortMode.None))
+{
+    var visited = new HashSet<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu>();
+    void Visit(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu menu, string path, bool inParts)
+    {
+        if (menu == null || !visited.Add(menu)) return;
+        foreach (var control in menu.controls)
+        {
+            var controlPath = path + "/" + control.name;
+            if (inParts && control.type == VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control.ControlType.Toggle)
+            {
+                if (control.icon == null || control.icon.width < 1 || control.icon.height < 1)
+                    throw new Exception("Missing part icon: " + controlPath);
+                checkedParts++;
+                results.Add(new {avatar=avatar.name, path=controlPath, icon=control.icon.name,
+                    width=control.icon.width, height=control.icon.height});
+            }
+            Visit(control.subMenu, controlPath, inParts || control.name == "パーツ");
+        }
+    }
+    Visit(avatar.expressionsMenu, "", false);
+}
+if (checkedParts == 0) throw new Exception("No part toggles found; this check did not exercise the part menu.");
+return new {checkedParts, results};

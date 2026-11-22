@@ -1,0 +1,65 @@
+// FEE-004: synthetic assets only; never changes the user's expression data.
+var asm = typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var utility = asm.GetType("Samon.FacialExpressionEditor.Editor.LibraryClipUtility");
+var windowType = asm.GetType("Samon.FacialExpressionEditor.Editor.ExpressionClipEditorWindow");
+var flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+object Call(string method, params object[] args) => utility.GetMethod(method).Invoke(null, args);
+var checks = new List<string>();
+void Check(bool ok, string label) { if (!ok) throw new Exception(label); checks.Add(label); }
+var folder = "Assets/__FEE004_" + Guid.NewGuid().ToString("N");
+AssetDatabase.CreateFolder("Assets", folder.Substring(7));
+var scene = UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
+EditorWindow window = null;
+try {
+ var set = ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+ AssetDatabase.CreateAsset(set, folder + "/Settings.asset");
+ AnimationClip Clip(string name) { var c = new AnimationClip(); AssetDatabase.CreateAsset(c, folder + "/" + name + ".anim"); return c; }
+ var clip = Clip("Before"); var occupied = Clip("Occupied"); var replacement = Clip("Replacement");
+ var expression = new Samon.FacialExpressionEditor.Expression { name = "Before", clip = clip };
+ set.expressions.Add(expression);
+ var part = new Samon.FacialExpressionEditor.FacialPart { name = "Part", clip = clip };
+ set.parts.Add(part);
+ var variant = ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.FaceVariant>();
+ variant.overrides.Add(new Samon.FacialExpressionEditor.ExpressionOverride { expressionId = expression.id, clip = replacement });
+ AssetDatabase.CreateAsset(variant, folder + "/Variant.asset");
+ var root = new GameObject("RenameChecks"); UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(root, scene);
+ var avatar = root.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>(); avatar.expressionSet = set; avatar.faceVariant = variant;
+ window = (EditorWindow)ScriptableObject.CreateInstance(windowType);
+ windowType.GetMethod("SetTarget", flags).Invoke(window, new object[] { avatar, expression.id });
+ Check(windowType.GetProperty("TargetClip", flags).GetValue(window) == replacement, "Editor targets variant replacement");
+ Check((string)Call("Rename", set, replacement, "VariantAfter") == null, "Replacement renamed");
+ Check(expression.name == "Before" && clip.name == "Before" && variant.overrides[0].clip == replacement, "Replacement rename preserves shared name and references");
+ windowType.GetMethod("SetTarget", flags).Invoke(window, new object[] { avatar, part.id });
+ Check(windowType.GetProperty("Expression", flags).GetValue(window) != null, "Changing target retains displayed target");
+ Check(windowType.GetProperty("TargetClip", flags).GetValue(window) == clip, "Part targets its own clip");
+ var binding = EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Smile");
+ AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Linear(0, 10, 1, 83));
+ var id = (string)Call("Id", clip); set.hiddenLibraryClipIds.Add(id);
+ var before = EditorJsonUtility.ToJson(clip);
+ foreach (var name in new[] { "", "  ", "bad/name", "bad:name", "CON", "LPT1", "Trailing.", "Occupied", "occupied" })
+  Check((string)Call("Rename", set, clip, name) != null, "Rejected: " + name);
+ Check(EditorJsonUtility.ToJson(clip) == before && AssetDatabase.GetAssetPath(occupied) == folder + "/Occupied.anim", "Rejected names leave both files intact");
+ Check((string)Call("Rename", set, clip, "笑顔テスト") == null, "Japanese filename accepted");
+ Check(clip.name == "笑顔テスト" && expression.name == clip.name && part.name == clip.name && AssetDatabase.GetAssetPath(clip) == folder + "/笑顔テスト.anim", "File and expression/part names agree");
+ Check(expression.clip == clip && part.clip == clip && (string)Call("Id", clip) == id, "References and GUID/local ID preserved");
+ Check(AnimationUtility.GetEditorCurve(clip, binding).Evaluate(1) == 83, "Unsaved curve preserved");
+ Check((bool)Call("IsHidden", set, clip), "Hidden library identity preserved");
+ var sub = new AnimationClip { name = "Embedded" }; AssetDatabase.AddObjectToAsset(sub, set);
+ Check((string)Call("Rename", set, sub, "No") != null && sub.name == "Embedded", "Embedded clip rejected");
+ EditorUtility.SetDirty(set); AssetDatabase.SaveAssetIfDirty(set); AssetDatabase.SaveAssetIfDirty(variant); AssetDatabase.SaveAssetIfDirty(clip); AssetDatabase.SaveAssetIfDirty(replacement);
+ AssetDatabase.ImportAsset(AssetDatabase.GetAssetPath(clip), ImportAssetOptions.ForceUpdate);
+ Check(AssetDatabase.LoadAssetAtPath<AnimationClip>(folder + "/笑顔テスト.anim").name == "笑顔テスト", "Renamed asset survives reimport");
+ var owned=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(set,"Owned",Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.Empty,null,null,null);
+ windowType.GetMethod("SetTarget",flags).Invoke(window,new object[]{avatar,owned.id});
+ AnimationUtility.SetEditorCurve(owned.clip,binding,AnimationCurve.Constant(0,1,61));var ownedClip=owned.clip;Call("SetHidden",set,ownedClip,true);
+ Check(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.RenameExpression(set,owned,"MainEditorName")==null,"Main editor rename succeeds");
+ Check(((Samon.FacialExpressionEditor.Expression)windowType.GetProperty("Expression",flags).GetValue(window)).name=="MainEditorName"&&windowType.GetProperty("TargetClip",flags).GetValue(window)==ownedClip,"Open editor reflects renamed target with same clip");
+ Check(AnimationUtility.GetEditorCurve(ownedClip,binding).Evaluate(0)==61&&(bool)Call("IsHidden",set,ownedClip),"Main editor rename preserves edited curve and hidden state");
+ return new { passed = checks.Count, checks };
+} catch (Exception error) {
+ throw new Exception("Completed checks: " + string.Join(", ", checks) + "\n" + error.ToString());
+} finally {
+ if (window != null) UnityEngine.Object.DestroyImmediate(window);
+ UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene);
+ AssetDatabase.DeleteAsset(folder);
+}

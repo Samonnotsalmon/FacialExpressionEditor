@@ -64,8 +64,8 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 var clip = Compose(_clips, _excluded);
                 clip.name = _name.Trim();
-                var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(_set), "Expressions");
-                AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(clip.name)}.anim"));
+                var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.SetupFolder(_set), "Expressions");
+                AssetDatabase.CreateAsset(clip, AssetPathUtility.UniqueAssetPath($"{folder}/{AssetPathUtility.SafeFileName(clip.name)}.anim"));
                 Undo.RecordObject(_set, "合成表情を追加");
                 var expression = new Expression { name = clip.name, clip = clip };
                 ExpressionSetUtility.MatchExpressionNameToFile(_set, expression);

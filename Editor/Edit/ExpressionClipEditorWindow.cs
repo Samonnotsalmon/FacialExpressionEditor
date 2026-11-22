@@ -30,6 +30,9 @@ namespace Samon.FacialExpressionEditor.Editor
         [SerializeField] private Tab _tab;
         [SerializeField] private float _zoom = 1f;
         [SerializeField] private float _yaw;
+        [SerializeField] private float _pitch;
+        [SerializeField] private Vector3 _viewOffset;
+        internal Rect PreviewRect { get; private set; }
 
         private FacePreview _preview;
         private Texture2D _previewTexture;
@@ -199,11 +202,17 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var size = LeftWidth - 10;
             var rect = GUILayoutUtility.GetRect(size, size, GUILayout.ExpandWidth(false));
+            PreviewRect=rect;
+            if(PreviewNavigation.Handle(rect,ref _viewOffset,ref _yaw,ref _pitch,ref _zoom)){_previewDirty=true;Repaint();}
+            EditorGUILayout.LabelField(PreviewNavigation.Hint,EditorStyles.wordWrappedMiniLabel);
 
             EditorGUI.BeginChangeCheck();
-            _zoom = EditorGUILayout.Slider("寄る", _zoom, 0.5f, 3f);
-            _yaw = EditorGUILayout.Slider("向き", _yaw, -80f, 80f);
+            _zoom = EditorGUILayout.Slider("寄る", _zoom, 0.2f, 8f);
+            _yaw = EditorGUILayout.Slider("向き", _yaw, -180f, 180f);
+            _pitch=EditorGUILayout.Slider("上下の角度",_pitch,-80,80);
+            _viewOffset=EditorGUILayout.Vector3Field("位置調整",_viewOffset);
             if (EditorGUI.EndChangeCheck()) _previewDirty = true;
+            if(GUILayout.Button("構図をリセット")){_zoom=1;_yaw=0;_pitch=0;_viewOffset=Vector3.zero;_previewDirty=true;}
 
             if (Event.current.type != EventType.Repaint) return;
 
@@ -221,7 +230,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 // ビルドと同じ処理（差し替えとベース顔）を通したクリップで描く。AFKは今の時間の形。
                 _preview.Zoom = _zoom * (Set != null ? Set.previewZoom : 1f);
                 _preview.HeightOffset = Set != null ? Set.previewHeight : 0.03f;
-                _preview.Yaw = _yaw;
+                _preview.Yaw = _yaw;_preview.Pitch=_pitch;_preview.Offset=_viewOffset;
                 if (IsAfk)
                 {
                     var clip = AfkProcessedClip();

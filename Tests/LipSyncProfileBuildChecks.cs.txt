@@ -1,0 +1,32 @@
+var type=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly.GetType("Samon.FacialExpressionEditor.Editor.LipSyncProfileUtility");
+var sources=McpSnippet.All<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true).Where(s=>s.gameObject.scene.name=="Core_WK"&&s.lipSyncProfile!=null&&s.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>()!=null).ToArray();
+if(sources.Length!=4)throw new Exception("Expected four migrated Core_WK instances");
+var reports=new List<object>();
+foreach(var source in sources){
+ var root=source.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>().gameObject;var before=EditorJsonUtility.ToJson(source);var originalProfile=EditorJsonUtility.ToJson(source.lipSyncProfile);var clone=UnityEngine.Object.Instantiate(root);Samon.FacialExpressionEditor.LipSyncProfile testProfile=null;
+ try{
+  var owner=clone.GetComponentInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true);
+  // Exercise an explicit speech pattern on the primary avatar, without publishing it.
+  bool pattern=root.name=="Kirishima_WK";
+  if(pattern){testProfile=UnityEngine.Object.Instantiate(owner.lipSyncProfile);owner.lipSyncProfile=testProfile;testProfile.settings.patterns.Add(new Samon.FacialExpressionEditor.LipSyncPattern{label="BothTest",targets=new List<int>{0,1}});testProfile.settings.defaultSelection=4;}
+  var config=(Samon.FacialExpressionEditor.LipSyncSwitchSettings)type.GetMethod("Resolve").Invoke(null,new object[]{owner});
+  if(config.targets.Any(t=>!t.mesh||!t.mesh.transform.IsChildOf(clone.transform)))throw new Exception("Cross-avatar reference");
+  var meshes=config.targets.Select(t=>t.mesh.sharedMesh).ToArray();var counts=meshes.Select(m=>m.blendShapeCount).ToArray();
+  nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(clone);
+  var descriptor=clone.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();var fx=(UnityEditor.Animations.AnimatorController)descriptor.baseAnimationLayers.Single(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
+  int assertions=0;
+  for(int selection=0;selection<=(pattern?4:3);selection++)foreach(bool allowed in new[]{false,true})for(int i=0;i<2;i++){
+   var sm=fx.layers.Single(l=>l.name=="Lip Sync Target "+i).stateMachine;
+   bool Match(UnityEditor.Animations.AnimatorCondition c){if(c.parameter=="NSL/LipSyncSwitch/Mode")return selection==c.threshold;var val=c.parameter=="FEE/LipSyncAvatarAllowed"&&allowed;return c.mode==UnityEditor.Animations.AnimatorConditionMode.If?val:!val;}
+   var transitions=sm.anyStateTransitions.Where(t=>t.conditions.All(Match)).ToArray();if(transitions.Length!=1)throw new Exception("Routing ambiguity");
+   var selected=selection==0?config.defaultSelection:selection;bool speaks=(selected==3||selected==4||selected==i+1)&&(!config.targets[i].followExpressions||allowed);
+   var weight=transitions[0].destinationState.behaviours.OfType<VRC.SDK3.Avatars.Components.VRCAnimatorFaceTrackingBlendshapesSet>().Single().blendSets.Single().weight;
+   if(weight!=(speaks?1:0))throw new Exception("Incorrect routing after profile migration");assertions++;
+  }
+  var names=new List<string>();void Visit(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu m){foreach(var c in m.controls){names.Add(c.name);if(c.subMenu)Visit(c.subMenu);}}Visit(descriptor.expressionsMenu);
+  if(!names.Contains("All")||!config.targets.All(t=>names.Contains(t.label))||(pattern&&!names.Contains("BothTest")))throw new Exception("Missing menu modes");
+  if(meshes.Where((m,i)=>m.blendShapeCount!=counts[i]).Any()||EditorJsonUtility.ToJson(source)!=before||EditorJsonUtility.ToJson(source.lipSyncProfile)!=originalProfile)throw new Exception("Source mutated");
+  reports.Add(new{avatar=root.name,routingAssertions=assertions,menu=true,sourceUnchanged=true});
+ }finally{UnityEngine.Object.DestroyImmediate(clone);if(testProfile)UnityEngine.Object.DestroyImmediate(testProfile);}
+}
+return new{passed=true,reports};

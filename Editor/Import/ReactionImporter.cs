@@ -89,10 +89,10 @@ namespace Samon.FacialExpressionEditor.Editor
             if (existing != null && replacement == null) return existing;
             var from = replacement != null ? replacement : source;
             if (from == null) return null;
-            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.FolderOf(set), "Expressions");
+            var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.SetupFolder(set), "Expressions");
             var clip = Object.Instantiate(from); clip.name = from.name;
             LipSyncProtection.Remove(clip, root, set);
-            AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath(folder + "/" + AssetPathUtility.SafeFileName(from.name) + ".anim"));
+            AssetDatabase.CreateAsset(clip, AssetPathUtility.UniqueAssetPath(folder + "/" + AssetPathUtility.SafeFileName(from.name) + ".anim"));
             Undo.RegisterCreatedObjectUndo(clip, "反応クリップを複製");
             Undo.RecordObject(set, "反応クリップを差し替え");
             var expression = new Expression { name = clip.name, clip = clip, originalClip = from, baseFaceBaked = true };

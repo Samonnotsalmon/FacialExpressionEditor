@@ -1,0 +1,40 @@
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var paths=asm.GetType("Samon.FacialExpressionEditor.Editor.AssetPathUtility");
+var migration=asm.GetType("Samon.FacialExpressionEditor.Editor.GeneratedAssetMigration");
+var setupType=asm.GetType("Samon.FacialExpressionEditor.Editor.AvatarSetup");
+string Unique(string p)=>(string)paths.GetMethod("UniqueAssetPath").Invoke(null,new object[]{p});
+var checks=new List<string>();void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+var root="Assets/__FEE017_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",root.Substring(7));
+Texture2D image=null;string imagePath=null;
+try {
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.independentClips=true;
+ AssetDatabase.CreateAsset(set,root+"/Legacy.asset");
+ var e=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreateExpression(set,"Smile",Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.NewExpressionSource.Empty,null,null,null);
+ var p=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.CreatePart(set,"Blush");
+ Check(AssetDatabase.GetAssetPath(e.clip).EndsWith("/Smile.anim")&&e.name=="Smile","Expression filename and display name without prefix");
+ Check(AssetDatabase.GetAssetPath(p.clip).EndsWith("/Blush.anim")&&p.name=="Blush","Part filename and display name without prefix");
+ Check(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.RenameExpression(set,e,"Happy")==null && AssetDatabase.GetAssetPath(e.clip).EndsWith("/Happy.anim"),"Expression rename stays without prefix");
+ Check(Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.RenamePart(set,p,"Red")==null && AssetDatabase.GetAssetPath(p.clip).EndsWith("/Red.anim"),"Part rename stays without prefix");
+ Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.SynchronizeExpressionNames(set);
+ Check(e.name=="Happy" && p.name=="Red","Synchronization preserves display names");
+ Check(Unique(root+"/NSL_Example.asset").EndsWith("/NSL_Example.asset"),"Prefix is not duplicated");
+ var copy=Samon.FacialExpressionEditor.Editor.ExpressionSetUtility.Duplicate(set,root+"/Copy.asset");
+ Check(AssetDatabase.GetAssetPath(copy).EndsWith("/Settings/NSL_Copy.asset"),"Duplicate settings prefix");
+ var prefab=(Samon.FacialExpressionEditor.FacialExpressionAvatar)setupType.GetMethod("CreateSetupPrefab").Invoke(null,new object[]{root,"Fixture",set,null,null});
+ Check(AssetDatabase.GetAssetPath(prefab).EndsWith("/NSL_Fixture.prefab"),"Prefab prefix");
+ AssetDatabase.CreateFolder(root,"OldIcons");var icon=new Texture2D(2,2);System.IO.File.WriteAllBytes(root+"/OldIcons/Old.png",icon.EncodeToPNG());UnityEngine.Object.DestroyImmediate(icon);AssetDatabase.ImportAsset(root+"/OldIcons/Old.png");
+ var guid=AssetDatabase.AssetPathToGUID(root+"/Legacy.asset");var oldIconGuid=AssetDatabase.AssetPathToGUID(root+"/OldIcons/Old.png");
+ var plan=migration.GetMethod("Plan").Invoke(null,new object[]{root,root+"/OldIcons"});
+ var conflict=new AnimationClip();AssetDatabase.CreateAsset(conflict,root+"/NSL_Legacy.asset");
+ bool refused=false;try{migration.GetMethod("Apply").Invoke(null,new[]{plan});}catch(System.Reflection.TargetInvocationException){refused=true;}
+ Check(refused && AssetDatabase.AssetPathToGUID(root+"/Legacy.asset")==guid,"Collision refuses migration without moving sources");AssetDatabase.DeleteAsset(root+"/NSL_Legacy.asset");
+ migration.GetMethod("Apply").Invoke(null,new[]{plan});
+ Check(AssetDatabase.AssetPathToGUID(root+"/NSL_Legacy.asset")==guid && prefab.expressionSet==set,"Migration retains GUID and prefab reference");
+ Check(AssetDatabase.AssetPathToGUID(root+"/Icons/LipSync/NSL_Old.png")==oldIconGuid,"Icon move retains GUID");
+ Check(((System.Collections.ICollection)migration.GetMethod("Plan").Invoke(null,new object[]{root,root+"/OldIcons"})).Count==0,"Migration is idempotent");
+ image=new Texture2D(2,2);
+ var saved=(Texture2D)asm.GetType("Samon.FacialExpressionEditor.Editor.LipSyncPortraits").GetMethod("Save").Invoke(null,new object[]{image,"FEE017_Test_"+Guid.NewGuid().ToString("N")});
+ imagePath=AssetDatabase.GetAssetPath(saved);
+ Check(imagePath.StartsWith("Assets/NSL_FacialExpressionEditor/Icons/LipSync/NSL_"),"Captured icons use new directory and prefix");
+ return new {passed=checks.Count,checks};
+} finally {if(image)UnityEngine.Object.DestroyImmediate(image);if(imagePath!=null)AssetDatabase.DeleteAsset(imagePath);AssetDatabase.DeleteAsset(root);}
