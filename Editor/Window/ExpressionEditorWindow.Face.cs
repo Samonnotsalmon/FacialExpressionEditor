@@ -41,6 +41,7 @@ namespace Samon.FacialExpressionEditor.Editor
             }
             _showMouthSettings = EditorGUILayout.Foldout(_showMouthSettings, "口キャンセルの設定", true);
             if (_showMouthSettings) DrawMouthCanceler(set);
+            DrawManualEyeLook(set);
         }
 
         private void DrawBlinkSettings(ExpressionSet set)

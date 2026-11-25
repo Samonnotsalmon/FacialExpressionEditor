@@ -1,0 +1,60 @@
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var utility=asm.GetType("Samon.FacialExpressionEditor.Editor.EyeLookPoseUtility");
+var build=utility.GetMethod("BuildPoses");var generate=utility.GetMethod("Generate");
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool ok,string name){if(!ok)throw new Exception(name);checks.Add(name);}
+var root=new GameObject("FEE020 eyes test");
+var folder="Assets/__FEE020_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();AssetDatabase.CreateAsset(set,folder+"/Settings.asset");
+AnimationClip[] clips=null;
+try{
+ var d=root.AddComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ d.enableEyeLook=true;
+ var parent=new GameObject("Head").transform;parent.SetParent(root.transform,false);parent.localRotation=Quaternion.Euler(15,40,10);
+ var l=new GameObject("LeftEye").transform;l.SetParent(parent,false);
+ var r=new GameObject("RightEye").transform;r.SetParent(parent,false);
+ var s=d.customEyeLookSettings;s.leftEye=l;s.rightEye=r;
+ s.eyesLookingStraight=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations();
+ s.eyesLookingUp=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations();
+ s.eyesLookingDown=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations();
+ s.eyesLookingLeft=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations();
+ s.eyesLookingRight=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations();
+ s.eyesLookingStraight.left=Quaternion.Euler(3,10,2);s.eyesLookingStraight.right=Quaternion.Euler(5,-12,-3);
+ s.eyesLookingUp.left=Quaternion.Euler(-20,10,2);s.eyesLookingUp.right=Quaternion.Euler(-15,-12,-3);
+ s.eyesLookingDown.left=Quaternion.Euler(25,10,2);s.eyesLookingDown.right=Quaternion.Euler(30,-12,-3);
+ s.eyesLookingLeft.left=Quaternion.Euler(3,-20,2);s.eyesLookingLeft.right=Quaternion.Euler(5,-40,-3);
+ s.eyesLookingRight.left=Quaternion.Euler(3,40,2);s.eyesLookingRight.right=Quaternion.Euler(5,20,-3);
+ d.customEyeLookSettings=s;
+ var snapshot=EditorJsonUtility.ToJson(d);
+ clips=(AnimationClip[])build.Invoke(null,new object[]{d});
+ var rotations=new[]{s.eyesLookingStraight,s.eyesLookingUp,s.eyesLookingDown,s.eyesLookingLeft,s.eyesLookingRight};
+ Check(clips.Length==5,"Generated five poses without a source menu or FX");
+ for(var i=0;i<5;i++){
+  var bindings=AnimationUtility.GetCurveBindings(clips[i]);
+  Check(bindings.Length==8&&bindings.All(b=>b.type==typeof(Transform)&&b.propertyName.StartsWith("m_LocalRotation.")),"Only two eye rotations recorded: "+i);
+  clips[i].SampleAnimation(root,0);
+  Check(Quaternion.Angle(l.localRotation,rotations[i].left)<0.1f&&Quaternion.Angle(r.localRotation,rotations[i].right)<0.1f,"Local pose matches descriptor for both eyes: "+i);
+ }
+ Check(EditorJsonUtility.ToJson(d)==snapshot,"Descriptor unchanged");
+ generate.Invoke(null,new object[]{set,d});var first=set.eyeLookPoses.ToArray();
+ Check(first.All(c=>AssetDatabase.GetAssetPath(c).StartsWith(folder+"/EyeLook/")&&!c.name.StartsWith("NSL_")),"Saved under settings/EyeLook without animation prefix");
+ Undo.FlushUndoRecordObjects();Undo.IncrementCurrentGroup();
+ generate.Invoke(null,new object[]{set,d});var second=set.eyeLookPoses.ToArray();
+ Check(!second.Intersect(first).Any()&&first.All(c=>c),"Regeneration does not overwrite existing clips");
+ Undo.FlushUndoRecordObjects();Undo.PerformUndo();
+ Check(set.eyeLookPoses.SequenceEqual(first),"Undo restores previous assignments");Undo.PerformRedo();
+ Check(set.eyeLookPoses.SequenceEqual(second),"Redo restores generated assignments");
+ d.enableEyeLook=false;bool rejected=false;try{build.Invoke(null,new object[]{d});}catch(System.Reflection.TargetInvocationException){rejected=true;}
+ Check(rejected,"Disabled Eye Look rejected");d.enableEyeLook=true;
+ s.rightEye=l;d.customEyeLookSettings=s;rejected=false;try{build.Invoke(null,new object[]{d});}catch(System.Reflection.TargetInvocationException){rejected=true;}
+ Check(rejected,"Duplicate eye bone rejected");
+ s.rightEye=null;d.customEyeLookSettings=s;
+ var single=(AnimationClip[])build.Invoke(null,new object[]{d});try{Check(single.All(c=>AnimationUtility.GetCurveBindings(c).Length==4),"Single-eye avatar supported");}finally{foreach(var c in single)UnityEngine.Object.DestroyImmediate(c);}
+ s.leftEye=null;d.customEyeLookSettings=s;rejected=false;try{build.Invoke(null,new object[]{d});}catch(System.Reflection.TargetInvocationException){rejected=true;}
+ Check(rejected,"Missing eye bones rejected");
+ s.leftEye=l;s.eyesLookingUp=null;d.customEyeLookSettings=s;rejected=false;try{build.Invoke(null,new object[]{d});}catch(System.Reflection.TargetInvocationException e){rejected=e.InnerException is InvalidOperationException;}
+ Check(rejected,"Uninitialized rotation gives actionable error");
+ s.eyesLookingUp=new VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations();d.customEyeLookSettings=s;rejected=false;try{build.Invoke(null,new object[]{d});}catch(System.Reflection.TargetInvocationException e){rejected=e.InnerException is InvalidOperationException;}
+ Check(rejected,"Zero quaternion rejected");
+ return new{passed=checks.Count,checks};
+}catch(Exception e){throw new Exception(e.ToString());}finally{if(clips!=null)foreach(var c in clips)UnityEngine.Object.DestroyImmediate(c);Undo.ClearUndo(set);UnityEngine.Object.DestroyImmediate(root);AssetDatabase.DeleteAsset(folder);}

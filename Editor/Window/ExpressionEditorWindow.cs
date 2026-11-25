@@ -453,6 +453,8 @@ namespace Samon.FacialExpressionEditor.Editor
         // ---- ドラッグ＆ドロップ ----
 
         private Object _dragCandidate;
+        private int _dragControl;
+        private Vector2 _dragStart;
 
         /// <summary>
         /// rect 内でドラッグを始めたら、クリップ（や表情設定のプレハブ）をドラッグする。
@@ -461,22 +463,34 @@ namespace Samon.FacialExpressionEditor.Editor
         {
             var e = Event.current;
             if (clip == null) return;
+            var control = GUIUtility.GetControlID("FEE.ClipDrag".GetHashCode(), FocusType.Passive, rect);
 
             if (e.type == EventType.MouseDown && e.button == 0 && rect.Contains(e.mousePosition))
             {
                 _dragCandidate = clip;
+                _dragControl = control;
+                _dragStart = GUIUtility.GUIToScreenPoint(e.mousePosition);
+                // ScrollViewなどにMouseDragを消費されないよう、押したセルが保持する。
+                GUIUtility.hotControl = control;
             }
-            else if (e.type == EventType.MouseDrag && _dragCandidate == clip && rect.Contains(e.mousePosition))
+            else if (e.type == EventType.MouseDrag && _dragCandidate == clip && _dragControl == control &&
+                     (GUIUtility.GUIToScreenPoint(e.mousePosition) - _dragStart).sqrMagnitude >= 36f)
             {
+                // 素早く動かしてセルの外へ出ても、押し始めたクリップをドラッグする。
+                GUIUtility.hotControl = 0;
                 DragAndDrop.PrepareStartDrag();
                 DragAndDrop.objectReferences = new Object[] { clip };
                 DragAndDrop.StartDrag(clip.name);
                 _dragCandidate = null;
+                _dragControl = 0;
                 e.Use();
             }
-            else if (e.type == EventType.MouseUp)
+            else if (e.rawType == EventType.MouseUp || e.type == EventType.DragExited ||
+                     e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape)
             {
+                if (GUIUtility.hotControl == _dragControl) GUIUtility.hotControl = 0;
                 _dragCandidate = null;
+                _dragControl = 0;
             }
         }
 

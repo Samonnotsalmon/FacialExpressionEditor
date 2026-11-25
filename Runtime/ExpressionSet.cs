@@ -8,6 +8,7 @@ namespace Samon.FacialExpressionEditor
     /// ジェスチャーの組（UI上の「表情セット」）は GestureSet、表情メニューの項目は MenuNode。
     /// </summary>
     public enum BlinkSourceMode { Legacy, Existing, Generated }
+    public enum EyeLookSetupMode { AssignClips, GenerateFromDescriptor }
 
     [CreateAssetMenu(menuName = "NotSalmon/NSL_Facial Expression Editor/表情データ", fileName = "NSL_表情データ")]
     public class ExpressionSet : ScriptableObject
@@ -48,6 +49,10 @@ namespace Samon.FacialExpressionEditor
         public bool mmdUnifyFxWriteDefaults = true;
 
         public float defaultTransitionDuration = 0.1f;
+        public bool manualEyeLook;
+        public EyeLookSetupMode eyeLookSetupMode;
+        // 正面・上・下・左・右。視線だけを記録したクリップを指定する。
+        public AnimationClip[] eyeLookPoses = new AnimationClip[5];
 
         public List<Expression> expressions = new List<Expression>();
 

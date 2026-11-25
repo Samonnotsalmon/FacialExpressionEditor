@@ -48,6 +48,12 @@ namespace Samon.FacialExpressionEditor.Editor
             var parameters = holder.AddComponent<ModularAvatarParameters>();
             parameters.parameters.Add(Parameter(BuildPlan.BlinkOffParameter, ParameterSyncType.Bool, false));
             parameters.parameters.Add(Parameter(BuildPlan.DanceEnabledParameter, ParameterSyncType.Bool, false));
+            if (set.manualEyeLook)
+            {
+                parameters.parameters.Add(Parameter(ManualEyeLook.Enabled, ParameterSyncType.Bool, false));
+                parameters.parameters.Add(Parameter(ManualEyeLook.X, ParameterSyncType.Float, false));
+                parameters.parameters.Add(Parameter(ManualEyeLook.Y, ParameterSyncType.Float, false));
+            }
             if (plan.UsesModeParameter) parameters.parameters.Add(Parameter(BuildPlan.ModeParameter, ParameterSyncType.Int, false));
             if (plan.UsesEmoteParameter) parameters.parameters.Add(Parameter(BuildPlan.EmoteParameter, ParameterSyncType.Int, false));
             foreach (var parameter in plan.Parts.Select(p => (p.Parameter, p.IsGrouped)).Distinct())
@@ -194,6 +200,21 @@ namespace Samon.FacialExpressionEditor.Editor
                 rootControls.Add(SubMenu("パーツ", Menu(context, "パーツ", partControls)));
             }
 
+            if (set.manualEyeLook)
+            {
+                ManualEyeLook.Validate(set);
+                rootControls.Add(SubMenu("視線操作", Menu(context, "視線操作", new List<Control>
+                {
+                    Toggle("手動操作ON", ManualEyeLook.Enabled, 1),
+                    new Control
+                    {
+                        name = "目線", type = Control.ControlType.TwoAxisPuppet,
+                        parameter = new Control.Parameter { name = "" },
+                        subParameters = new[] { new Control.Parameter { name = ManualEyeLook.X }, new Control.Parameter { name = ManualEyeLook.Y } },
+                        labels = new[] { new Control.Label { name = "上" }, new Control.Label { name = "右" }, new Control.Label { name = "下" }, new Control.Label { name = "左" } },
+                    },
+                })));
+            }
             rootControls.Add(SubMenu("設定", Menu(context, "設定", new List<Control>
             {
                 Toggle("まばたきOFF", BuildPlan.BlinkOffParameter, 1),

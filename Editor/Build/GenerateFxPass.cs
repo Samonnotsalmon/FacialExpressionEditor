@@ -139,6 +139,7 @@ namespace Samon.FacialExpressionEditor.Editor
             mmdState.UnifyWriteDefaults = set.mmdUnifyFxWriteDefaults;
             BuildDanceMenuControl(fx, cloneContext, set.mmdStopEntireFx);
             BuildMotionIntegration(fx, cloneContext, face, expressionLayer, blinkLayer, cancelerLayers, partLayers, reactionFixedFace);
+            if (set.manualEyeLook) BuildManualEyeLook(fx, controllerContext.Controllers.Values, cloneContext, set);
             if (builder.AmbiguousMaterialProperties.Count > 0)
             {
                 Debug.LogWarning("[FacialExpressionEditor] 次のマテリアルのパラメータは、同じメッシュのマテリアルごとに初期値が違うため、" +
