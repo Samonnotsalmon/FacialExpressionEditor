@@ -13,6 +13,7 @@ namespace Samon.FacialExpressionEditor
     public class FacialExpressionAvatar : MonoBehaviour, IEditorOnly
     {
         public ExpressionSet expressionSet;
+        [HideInInspector] public EditableMenuRoot editableMenu;
 
         public LipSyncSwitchSettings lipSyncSwitch = new LipSyncSwitchSettings();
         [HideInInspector] public LipSyncProfile lipSyncProfile;

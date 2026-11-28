@@ -1,0 +1,22 @@
+var sources=McpSnippet.All<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true).Where(d=>!EditorSceneManager.IsPreviewSceneObject(d)&&d.name.StartsWith("Nakiya_")).ToArray();
+var results=new System.Collections.Generic.List<object>();
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var pass=asm.GetType("Samon.FacialExpressionEditor.Editor.GenerateMenuPass");
+var ma=AppDomain.CurrentDomain.GetAssemblies().First(a=>a.GetType("nadena.dev.modular_avatar.core.editor.MenuInstallHook")!=null);
+var ctxType=ma.GetType("nadena.dev.modular_avatar.core.editor.BuildContext");
+var hookType=ma.GetType("nadena.dev.modular_avatar.core.editor.MenuInstallHook");
+foreach(var source in sources)foreach(var first in new[]{true,false}){
+ var clone=UnityEngine.Object.Instantiate(source.gameObject);
+ var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.menuIcons=false;
+ try{
+ foreach(var old in clone.GetComponentsInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true))UnityEngine.Object.DestroyImmediate(old);
+ var fee=new GameObject("FEE ordering fixture");fee.transform.SetParent(clone.transform,false);if(first)fee.transform.SetAsFirstSibling();else fee.transform.SetAsLastSibling();fee.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet=set;
+ var ctx=new nadena.dev.ndmf.BuildContext(clone,null);
+ pass.GetMethod("Execute",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).Invoke(Activator.CreateInstance(pass,true),new object[]{ctx});
+ var installers=clone.GetComponentsInChildren<nadena.dev.modular_avatar.core.ModularAvatarMenuInstaller>(true).Select(i=>new{path=McpSnippet.PathOf(i.gameObject),target=i.installTargetMenu?i.installTargetMenu.name:null}).ToArray();
+ hookType.GetMethod("OnPreprocessAvatar").Invoke(Activator.CreateInstance(hookType,true),new object[]{clone,Activator.CreateInstance(ctxType,new object[]{ctx})});
+ var order=clone.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>().expressionsMenu.controls.Select(c=>c.name).ToArray();
+ results.Add(new{source=source.name,first,order,installers});
+ }finally{UnityEngine.Object.DestroyImmediate(clone);UnityEngine.Object.DestroyImmediate(set);}
+}
+return results;

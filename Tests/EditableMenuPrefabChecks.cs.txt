@@ -1,0 +1,35 @@
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var export=asm.GetType("Samon.FacialExpressionEditor.Editor.EditableMenuExport");
+var saver=asm.GetType("Samon.FacialExpressionEditor.Editor.EditableMenuPrefab");
+var folder="Assets/__FEE025_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.menuIcons=true;AssetDatabase.CreateAsset(set,folder+"/Settings.asset");
+var prototype=new GameObject("FEE shared fixture");prototype.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet=set;
+var prefab=PrefabUtility.SaveAsPrefabAsset(prototype,folder+"/FEE.prefab");UnityEngine.Object.DestroyImmediate(prototype);
+var a=(GameObject)PrefabUtility.InstantiatePrefab(prefab);var b=(GameObject)PrefabUtility.InstantiatePrefab(prefab);
+var aa=a.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();var bb=b.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();
+var sources=McpSnippet.All<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true).Where(d=>!EditorSceneManager.IsPreviewSceneObject(d)&&d.name.StartsWith("Nakiya_")).ToArray();
+aa.sourceAvatar=sources[0].gameObject;bb.sourceAvatar=sources.Last().gameObject;
+a.transform.localPosition=new Vector3(1,2,3);b.transform.localPosition=new Vector3(4,5,6);PrefabUtility.RecordPrefabInstancePropertyModifications(aa);PrefabUtility.RecordPrefabInstancePropertyModifications(bb);PrefabUtility.RecordPrefabInstancePropertyModifications(a.transform);PrefabUtility.RecordPrefabInstancePropertyModifications(b.transform);
+var custom=new Texture2D(4,4);AssetDatabase.CreateAsset(custom,folder+"/Custom.asset");var last=new Texture2D(4,4);AssetDatabase.CreateAsset(last,folder+"/Last.asset");
+var checks=new System.Collections.Generic.List<string>();void Check(bool ok,string text){if(!ok)throw new Exception(text);checks.Add(text);}
+Texture2D Icon(Samon.FacialExpressionEditor.FacialExpressionAvatar avatar,string key){return avatar.editableMenu.GetComponentsInChildren<Samon.FacialExpressionEditor.EditableMenuItem>().Single(m=>m.key==key).GetComponent<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>().Control.icon;}
+void Save(Samon.FacialExpressionEditor.FacialExpressionAvatar avatar){saver.GetMethod("Save").Invoke(null,new object[]{avatar});}
+try{
+ export.GetMethod("Generate").Invoke(null,new object[]{aa});
+ var item=aa.editableMenu.transform.GetChild(0).GetComponent<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>();item.Control.icon=custom;
+ Save(aa);
+ var saved=AssetDatabase.LoadAssetAtPath<GameObject>(folder+"/FEE.prefab").GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();
+ Check(aa.editableMenu&&bb.editableMenu&&saved.editableMenu,"Shared menu reaches both instances and prefab");
+ Check(a.GetComponentsInChildren<nadena.dev.modular_avatar.core.ModularAvatarMenuInstaller>().Length==1,"Old local output removed without duplicate installer");
+ Check(Icon(aa,"/role:Root")==custom&&Icon(bb,"/role:Root")==custom,"Manual icon saved and shared");
+ Check(saved.sourceAvatar==null&&aa.sourceAvatar==sources[0].gameObject&&bb.sourceAvatar==sources.Last().gameObject,"Avatar references remain per-instance");
+ Check(a.transform.localPosition==new Vector3(1,2,3)&&b.transform.localPosition==new Vector3(4,5,6),"Instance transforms unchanged");
+ var baseKey=aa.editableMenu.GetComponentsInChildren<Samon.FacialExpressionEditor.EditableMenuItem>().Single(m=>m.key.EndsWith("/base")).key;
+ Check(Icon(aa,baseKey)&&EditorUtility.IsPersistent(Icon(aa,baseKey))&&Icon(aa,baseKey)==Icon(bb,baseKey),"Captured Base photo is a shared persistent image");
+ var other=bb.editableMenu.transform.GetChild(0).GetComponent<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>();other.Control.icon=last;PrefabUtility.RecordPrefabInstancePropertyModifications(other);
+ var oldPhoto=Icon(aa,baseKey);set.previewZoom+=0.35f;Save(bb);
+ Check(Icon(aa,"/role:Root")==last&&Icon(bb,"/role:Root")==last,"Last save from another avatar wins");
+ Check(Icon(aa,baseKey)==Icon(bb,baseKey)&&Icon(aa,baseKey)!=oldPhoto,"Newly captured photo replaces old photo for both avatars");
+ export.GetMethod("Validate").Invoke(null,new object[]{aa});export.GetMethod("Validate").Invoke(null,new object[]{bb});Check(true,"Both shared instances validate for build");
+ var savedSource=aa.sourceAvatar;aa.sourceAvatar=null;bool rejected=false;try{Save(aa);}catch(System.Reflection.TargetInvocationException){rejected=true;}aa.sourceAvatar=savedSource;Check(rejected&&Icon(bb,"/role:Root")==last,"Missing capture avatar does not overwrite saved menu");return new{passed=checks.Count,checks};
+}catch(Exception e){throw new Exception(string.Join(" | ",checks)+" FAILED: "+e.ToString());}finally{UnityEngine.Object.DestroyImmediate(a);UnityEngine.Object.DestroyImmediate(b);AssetDatabase.DeleteAsset(folder);}

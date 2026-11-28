@@ -70,6 +70,7 @@ namespace Samon.FacialExpressionEditor
         // 表情メニューで、固定の表情とパーツにサムネイルのアイコンを付ける。
         public bool menuIcons = true;
         public int menuIconSize = 128;
+        public List<MenuIconOverride> menuIconOverrides = new List<MenuIconOverride>();
 
         public List<FacialPart> parts = new List<FacialPart>();
 

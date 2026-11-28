@@ -34,15 +34,23 @@ namespace Samon.FacialExpressionEditor.Editor
             var plan = BuildPlan.Create(set);
             context.GetState<MenuBuildState>().Generated = true;
 
-            var icons = set.menuIcons ? RenderIcons(context, set, plan, avatar.faceVariant) : new Dictionary<string, Texture2D>();
-            var root = BuildRootMenu(context, set, plan, icons);
-            if (root == null) return;
-
-            var holder = new GameObject("FacialExpressionEditor (generated)");
-            holder.transform.SetParent(context.AvatarRootObject.transform, false);
-
-            var installer = holder.AddComponent<ModularAvatarMenuInstaller>();
-            installer.menuToAppend = root;
+            GameObject holder;
+            if (avatar.editableMenu != null)
+            {
+                EditableMenuExport.Validate(avatar);
+                holder = new GameObject("FacialExpressionEditor parameters (generated)");
+                holder.transform.SetParent(avatar.transform, false);
+            }
+            else
+            {
+                var icons = set.menuIcons ? RenderIcons(context, set, plan, avatar.faceVariant) : new Dictionary<string, Texture2D>();
+                var root = BuildRootMenu(context, set, plan, icons);
+                if (root == null) return;
+                holder = new GameObject("FacialExpressionEditor (generated)");
+                holder.transform.SetParent(avatar.transform, false);
+                holder.transform.SetAsFirstSibling();
+                holder.AddComponent<ModularAvatarMenuInstaller>().menuToAppend = root;
+            }
 
             // メニューの選択はワールドを移動したら戻す（保存しない）。
             var parameters = holder.AddComponent<ModularAvatarParameters>();
@@ -85,12 +93,37 @@ namespace Samon.FacialExpressionEditor.Editor
         /// </summary>
         private static VRCExpressionsMenu BuildRootMenu(BuildContext context, ExpressionSet set, BuildPlan plan,
             Dictionary<string, Texture2D> icons)
+            => CreateMenu(context, set, plan, icons, null);
+
+        internal static VRCExpressionsMenu CreateMenu(BuildContext context, ExpressionSet set, BuildPlan plan,
+            Dictionary<string, Texture2D> icons, Dictionary<Control, string> keys)
         {
+            Control Key(Control control, string key) { if (keys != null) keys[control] = key; return control; }
+            var symbols = new Dictionary<MenuIconKind, Texture2D>();
+            Texture2D Symbol(MenuIconKind kind)
+            {
+                if (symbols.TryGetValue(kind, out var texture)) return texture;
+                var source = MenuSymbolIcons.Get(set, kind);
+                // 標準画像だけをビルド用に複製。差し替え画像とプレビューキャッシュを変更しない。
+                if (source.hideFlags == HideFlags.HideAndDontSave)
+                {
+                    texture = Object.Instantiate(source); texture.hideFlags = HideFlags.None;
+                    if (context != null) EditorUtility.CompressTexture(texture, IconFormat(EditorUserBuildSettings.activeBuildTarget), TextureCompressionQuality.Normal);
+                    context?.AssetSaver.SaveAsset(texture);
+                }
+                else texture = source;
+                symbols[kind] = texture;
+                return texture;
+            }
+            Control WithIcon(Control control, MenuIconKind kind) { control.icon = Symbol(kind); return control; }
+            VRCExpressionsMenu Page(string name, List<Control> controls) => Menu(context, name, controls, Symbol(MenuIconKind.Next));
+            Control Folder(string name, VRCExpressionsMenu menu, MenuIconKind kind = MenuIconKind.Folder) => Key(WithIcon(SubMenu(name, menu), kind), "role:" + kind);
+
             Control ModeToggle(BuildPlan.Mode mode, string name)
             {
                 var control = Toggle(name, BuildPlan.ModeParameter, mode.Value);
-                if (icons.TryGetValue(NeutralIconKey, out var icon)) control.icon = icon;
-                return control;
+                control.icon = Symbol(MenuIconKind.Check);
+                return Key(control, "mode:" + (set.menu.Count == 0 || string.IsNullOrEmpty(mode.Node?.id) ? mode.GestureSet.id : mode.Node.id));
             }
 
             List<Control> FolderControls(string parentId)
@@ -101,7 +134,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     if (node.kind == MenuNodeKind.Folder)
                     {
                         var children = FolderControls(node.id);
-                        if (children.Count > 0) controls.Add(SubMenu(node.name, Menu(context, node.name, children)));
+                        if (children.Count > 0) controls.Add(Key(Folder(node.name, Page(node.name, children)), "folder:" + node.id));
                         continue;
                     }
 
@@ -114,9 +147,10 @@ namespace Samon.FacialExpressionEditor.Editor
             var rootControls = new List<Control>();
             if (plan.UsesModeParameter)
             {
-                rootControls.AddRange(set.menu.Count > 0
+                var modeControls = set.menu.Count > 0
                     ? FolderControls("")
-                    : plan.Modes.Select(m => ModeToggle(m, m.GestureSet.name)));
+                    : plan.Modes.Select(m => ModeToggle(m, m.GestureSet.name)).ToList();
+                rootControls.Add(Folder("表情セット", Page("表情セット", modeControls), MenuIconKind.Sets));
             }
 
             if (plan.UsesEmoteParameter)
@@ -125,12 +159,12 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     var control = Toggle(expression.name, BuildPlan.EmoteParameter, plan.EmoteValues[expression.id]);
                     if (icons.TryGetValue(expression.id, out var icon)) control.icon = icon;
-                    return control;
+                    return Key(control, "expression:" + expression.id);
                 }
 
                 Control GestureSetFolder(BuildPlan.Mode mode, string name)
                 {
-                    return SubMenu(name, Menu(context, name, mode.Emotes.Select(EmoteToggle).ToList()));
+                    return Key(Folder(name, Page(name, mode.Emotes.Select(EmoteToggle).ToList())), "set:" + (set.menu.Count == 0 || string.IsNullOrEmpty(mode.Node?.id) ? mode.GestureSet.id : mode.Node.id));
                 }
 
                 List<Control> EmoteFolderControls(string parentId)
@@ -141,7 +175,7 @@ namespace Samon.FacialExpressionEditor.Editor
                         if (node.kind == MenuNodeKind.Folder)
                         {
                             var children = EmoteFolderControls(node.id);
-                            if (children.Count > 0) controls.Add(SubMenu(node.name, Menu(context, node.name, children)));
+                            if (children.Count > 0) controls.Add(Key(Folder(node.name, Page(node.name, children)), "folder:" + node.id));
                             continue;
                         }
 
@@ -153,7 +187,7 @@ namespace Samon.FacialExpressionEditor.Editor
                         }
 
                         var expression = node.kind == MenuNodeKind.Expression ? set.FindExpression(node.expressionId) : null;
-                        if (expression != null) controls.Add(EmoteToggle(expression));
+                        if (expression != null) controls.Add(Key(EmoteToggle(expression), "expression:" + expression.id + ":node:" + node.id));
                     }
                     return controls;
                 }
@@ -169,11 +203,11 @@ namespace Samon.FacialExpressionEditor.Editor
                 // 値0のButtonは押している間も離した後も0。表情選択だけ解除し、パーツは保持する。
                 var release = Toggle("固定解除", BuildPlan.EmoteParameter, 0);
                 release.type = Control.ControlType.Button;
-                emoteControls.Insert(0, release);
+                emoteControls.Insert(0, WithIcon(release, MenuIconKind.Reset));
                 var baseControl = Toggle("Base", BuildPlan.EmoteParameter, plan.BaseFaceValue);
-                if (icons.TryGetValue(BaseIconKey, out var baseIcon)) baseControl.icon = baseIcon;
-                emoteControls.Insert(1, baseControl);
-                rootControls.Add(SubMenu("表情選択", Menu(context, "表情選択", emoteControls)));
+                baseControl.icon = icons.TryGetValue(BaseIconKey, out var baseIcon) ? baseIcon : Symbol(MenuIconKind.Base);
+                emoteControls.Insert(1, Key(baseControl, "base"));
+                rootControls.Add(Folder("表情選択", Page("表情選択", emoteControls), MenuIconKind.Selection));
             }
 
             if (plan.Parts.Count > 0)
@@ -182,7 +216,7 @@ namespace Samon.FacialExpressionEditor.Editor
                 {
                     var control = Toggle(p.Part.name, p.Parameter, p.Value);
                     if (icons.TryGetValue(MenuIcons.PartIconKey(p.Part), out var icon)) control.icon = icon;
-                    return control;
+                    return Key(control, "part:" + p.Part.id);
                 }
                 var partControls = plan.Parts.Where(p => PartCategoryOrder.Key(p.Part) == "folder:")
                     .Select(PartControl).ToList();
@@ -191,38 +225,38 @@ namespace Samon.FacialExpressionEditor.Editor
                     var children = plan.Parts.Where(p => PartCategoryOrder.Key(p.Part) == key).Select(PartControl).ToList();
                     if (children.Count == 0) continue;
                     var name = key.Substring(key.StartsWith("exclusive:") ? 10 : 7);
-                    partControls.Add(SubMenu(name, Menu(context, name, children)));
+                    partControls.Add(Key(Folder(name, Page(name, children)), "category:" + key));
                 }
                 // 先頭に「すべてOFF」（押すと、ONにしているパーツをまとめてOFFにする）。
                 var reset = Toggle("すべてOFF", BuildPlan.PartResetParameter, 1);
                 reset.type = Control.ControlType.Button;
-                partControls.Insert(0, reset);
-                rootControls.Add(SubMenu("パーツ", Menu(context, "パーツ", partControls)));
+                partControls.Insert(0, WithIcon(reset, MenuIconKind.Reset));
+                rootControls.Add(Folder("パーツ", Page("パーツ", partControls), MenuIconKind.Parts));
             }
 
             if (set.manualEyeLook)
             {
                 ManualEyeLook.Validate(set);
-                rootControls.Add(SubMenu("視線操作", Menu(context, "視線操作", new List<Control>
+                rootControls.Add(Folder("視線操作", Page("視線操作", new List<Control>
                 {
-                    Toggle("手動操作ON", ManualEyeLook.Enabled, 1),
+                    WithIcon(Toggle("手動操作ON", ManualEyeLook.Enabled, 1), MenuIconKind.Power),
                     new Control
                     {
-                        name = "目線", type = Control.ControlType.TwoAxisPuppet,
+                        name = "目線", type = Control.ControlType.TwoAxisPuppet, icon = Symbol(MenuIconKind.EyeLook),
                         parameter = new Control.Parameter { name = "" },
                         subParameters = new[] { new Control.Parameter { name = ManualEyeLook.X }, new Control.Parameter { name = ManualEyeLook.Y } },
                         labels = new[] { new Control.Label { name = "上" }, new Control.Label { name = "右" }, new Control.Label { name = "下" }, new Control.Label { name = "左" } },
                     },
-                })));
+                }), MenuIconKind.EyeLook));
             }
-            rootControls.Add(SubMenu("設定", Menu(context, "設定", new List<Control>
+            rootControls.Add(Folder("設定", Page("設定", new List<Control>
             {
-                Toggle("まばたきOFF", BuildPlan.BlinkOffParameter, 1),
-                Toggle("ダンスギミック有効（MMD対応）", BuildPlan.DanceEnabledParameter, 1),
-            })));
+                WithIcon(Toggle("まばたきOFF", BuildPlan.BlinkOffParameter, 1), MenuIconKind.BlinkOff),
+                WithIcon(Toggle("ダンスギミック有効（MMD対応）", BuildPlan.DanceEnabledParameter, 1), MenuIconKind.Dance),
+            }), MenuIconKind.Settings));
 
-            var expressionMenu = Menu(context, "表情", rootControls);
-            return Menu(context, "FacialExpressionEditor", new List<Control> { SubMenu("表情", expressionMenu) });
+            var expressionMenu = Page("表情", rootControls);
+            return Page("FacialExpressionEditor", new List<Control> { Folder("表情", expressionMenu, MenuIconKind.Root) });
         }
 
         /// <summary>
@@ -232,11 +266,11 @@ namespace Samon.FacialExpressionEditor.Editor
         ///   プレイボタンを押した直後に MenuIconPrewarmer が描いておいたキャッシュを使う
         /// - アイコンはおまけなので、何かに失敗してもビルドは止めず、アイコン無しで続ける
         /// </summary>
-        private static Dictionary<string, Texture2D> RenderIcons(BuildContext context, ExpressionSet set, BuildPlan plan,
-            FaceVariant variant)
+        internal static Dictionary<string, Texture2D> RenderIcons(BuildContext context, ExpressionSet set, BuildPlan plan,
+            FaceVariant variant, GameObject editingRoot = null)
         {
             var icons = new Dictionary<string, Texture2D>();
-            var avatarRoot = context.AvatarRootObject;
+            var avatarRoot = context != null ? context.AvatarRootObject : editingRoot;
 
             try
             {
@@ -259,8 +293,8 @@ namespace Samon.FacialExpressionEditor.Editor
                         return;
                     }
                     texture.name = name;
-                    EditorUtility.CompressTexture(texture, IconFormat(EditorUserBuildSettings.activeBuildTarget), TextureCompressionQuality.Normal);
-                    context.AssetSaver.SaveAsset(texture);
+                    if (context != null) EditorUtility.CompressTexture(texture, IconFormat(EditorUserBuildSettings.activeBuildTarget), TextureCompressionQuality.Normal);
+                    context?.AssetSaver.SaveAsset(texture);
                     icons[id] = texture;
                 }
 
@@ -290,7 +324,7 @@ namespace Samon.FacialExpressionEditor.Editor
         /// <summary>
         /// 9個以上あるときは「次へ」のサブメニューで分ける。
         /// </summary>
-        private static VRCExpressionsMenu Menu(BuildContext context, string name, List<Control> controls)
+        private static VRCExpressionsMenu Menu(BuildContext context, string name, List<Control> controls, Texture2D nextIcon = null)
         {
             var menu = ScriptableObject.CreateInstance<VRCExpressionsMenu>();
             menu.name = name;
@@ -301,10 +335,12 @@ namespace Samon.FacialExpressionEditor.Editor
             else
             {
                 menu.controls = controls.Take(MaxControls - 1).ToList();
-                menu.controls.Add(SubMenu("次へ", Menu(context, name, controls.Skip(MaxControls - 1).ToList())));
+                var next = SubMenu("次へ", Menu(context, name, controls.Skip(MaxControls - 1).ToList(), nextIcon));
+                next.icon = nextIcon;
+                menu.controls.Add(next);
             }
 
-            context.AssetSaver.SaveAsset(menu);
+            context?.AssetSaver.SaveAsset(menu);
             return menu;
         }
 
@@ -342,6 +378,9 @@ namespace Samon.FacialExpressionEditor.Editor
                 syncType = type,
                 saved = saved,
                 defaultValue = 0,
+                // Zero is meaningful: default gesture set and no fixed expression.
+                // Otherwise MA can allocate an unused value for an unselected menu.
+                hasExplicitDefaultValue = true,
             };
         }
 

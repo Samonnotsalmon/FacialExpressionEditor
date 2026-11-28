@@ -23,6 +23,7 @@ namespace Samon.FacialExpressionEditor.Editor
         private void DrawMenuTab(ExpressionSet set)
         {
             var width = CenterWidth;
+            DrawMenuIconSettings(set);
 
             _showSwitchEffect = EditorGUILayout.Foldout(_showSwitchEffect, "固定表情への切り替え（瞬き・演出）", true);
             if (_showSwitchEffect)

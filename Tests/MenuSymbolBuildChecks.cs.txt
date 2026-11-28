@@ -1,0 +1,47 @@
+// Unity MCP execute_code. Build a temporary clone only; leave the source scene untouched.
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var helper=asm.GetType("Samon.FacialExpressionEditor.Editor.ManualEyeLook");
+var source=McpSnippet.All<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true).First(d=>!EditorSceneManager.IsPreviewSceneObject(d));
+var snapshot=EditorJsonUtility.ToJson(source);
+var sourceOrder=source.transform.Cast<Transform>().Select(t=>t.name).ToArray();
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool ok,string label){if(!ok)throw new Exception(label);checks.Add(label);}
+// Nakiya-specific test fixture only; no FX discovery in the product.
+var poses=new[]{new[]{"EyeLook_straight","EyeLook_up","EyeLook_down","EyeLook_left","EyeLook_right"}.Select(name=>AssetDatabase.FindAssets(name+" t:AnimationClip").Select(g=>AssetDatabase.LoadAssetAtPath<AnimationClip>(AssetDatabase.GUIDToAssetPath(g))).First(c=>c.name==name)).ToArray()};
+Check(poses[0].All(c=>c),"Explicit Nakiya test clips loaded");
+var folder="Assets/__FEE019_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+AssetDatabase.CreateAsset(set,folder+"/Settings.asset");
+GameObject clone=null;
+System.Collections.Generic.IEnumerable<UnityEditor.Animations.AnimatorState> States(UnityEditor.Animations.AnimatorStateMachine sm){foreach(var s in sm.states)yield return s.state;foreach(var sub in sm.stateMachines)foreach(var s in States(sub.stateMachine))yield return s;}
+System.Collections.Generic.IEnumerable<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control> Controls(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu m){if(!m)yield break;foreach(var c in m.controls){yield return c;if(c.subMenu)foreach(var sub in Controls(c.subMenu))yield return sub;}}
+try{
+ Check(!set.manualEyeLook,"Existing settings default to disabled");
+ set.manualEyeLook=true;set.eyeLookPoses=poses[0];set.menuIcons=false;set.motionRulesConfigured=true;
+ set.blinkSource=Samon.FacialExpressionEditor.BlinkSourceMode.Existing;
+ set.blinkAnimation=Samon.FacialExpressionEditor.Editor.FxImporter.GetFx(source).layers.Single(l=>l.name=="BLINK").stateMachine.states.Single(s=>s.state.name=="ENABLE").state.motion as AnimationClip;
+ helper.GetMethod("Validate").Invoke(null,new object[]{set});Check(true,"Sparse direction poses accept neutral defaults");
+ var saved=set.eyeLookPoses[2];set.eyeLookPoses[2]=null;
+ bool rejected=false;try{helper.GetMethod("Validate").Invoke(null,new object[]{set});}catch(System.Reflection.TargetInvocationException){rejected=true;}
+ Check(rejected,"Missing direction rejected");set.eyeLookPoses[2]=saved;
+ clone=UnityEngine.Object.Instantiate(source.gameObject);clone.name="FEE019 build verification";
+ foreach(var old in clone.GetComponentsInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true))UnityEngine.Object.DestroyImmediate(old);
+ clone.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>().expressionSet=set;
+ nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(clone);
+ var d=clone.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var fx=(UnityEditor.Animations.AnimatorController)d.baseAnimationLayers.First(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
+ var layer=fx.layers.Single(l=>l.name=="[FacialExpressionEditor] Manual eye look");
+ var states=layer.stateMachine.states.Select(s=>s.state).ToArray();
+ var manual=states.Single(s=>s.name=="Manual");var tree=(UnityEditor.Animations.BlendTree)manual.motion;
+ Check(tree.children.Length==5&&tree.blendParameter=="FEE/EyeLookX"&&tree.blendParameterY=="FEE/EyeLookY","Five-direction blend tree generated");
+ var menu=Controls(d.expressionsMenu).Single(c=>c.name=="表情"&&c.subMenu);
+ if(source.expressionsMenu==null||source.expressionsMenu.controls.Count==0)
+  Check(d.expressionsMenu.controls[0]==menu,"FEE is first with MA Extract Menu / empty root");
+ var top=menu.subMenu.controls;
+ Check(top.Select(c=>c.name).SequenceEqual(new[]{"表情選択","視線操作","設定"}),"Full NDMF build keeps expected top-level order");
+ Check(menu.icon&&top.All(c=>c.icon),"Root and folder icons survive full build");
+ Check(Controls(menu.subMenu).Where(c=>c.name=="固定解除"||c.name=="目線"||c.name=="まばたきOFF").All(c=>c.icon),"Operation icons survive full build");
+ Check(EditorJsonUtility.ToJson(source)==snapshot,"Source descriptor unchanged");
+ Check(source.transform.Cast<Transform>().Select(t=>t.name).SequenceEqual(sourceOrder),"Source Hierarchy order unchanged");
+ return new{passed=checks.Count,checks,rootOrder=d.expressionsMenu.controls.Select(c=>c.name)};
+}finally{if(clone)UnityEngine.Object.DestroyImmediate(clone);AssetDatabase.DeleteAsset(folder);}

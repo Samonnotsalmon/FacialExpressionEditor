@@ -1,0 +1,33 @@
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var export=asm.GetType("Samon.FacialExpressionEditor.Editor.EditableMenuExport");
+var folder="Assets/__FEE024_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();set.menuIcons=false;AssetDatabase.CreateAsset(set,folder+"/Settings.asset");
+var go=new GameObject("FEE024 test");var avatar=go.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();avatar.expressionSet=set;
+var checks=new System.Collections.Generic.List<string>();
+void Check(bool ok,string text){if(!ok)throw new Exception(text);checks.Add(text);}
+GameObject Generate(){return (GameObject)export.GetMethod("Generate").Invoke(null,new object[]{avatar});}
+void Validate(){export.GetMethod("Validate").Invoke(null,new object[]{avatar});}
+Samon.FacialExpressionEditor.EditableMenuItem Item(string suffix){return avatar.editableMenu.GetComponentsInChildren<Samon.FacialExpressionEditor.EditableMenuItem>().Single(x=>x.key.Split('/').Last().StartsWith(suffix));}
+var custom=new Texture2D(4,4);AssetDatabase.CreateAsset(custom,folder+"/Custom.asset");
+GameObject loaded=null;
+try{
+ var g=new Samon.FacialExpressionEditor.GestureSet{name="Set"};set.gestureSets.Add(g);
+ for(int i=0;i<12;i++){var e=new Samon.FacialExpressionEditor.Expression{name="E"+i};set.expressions.Add(e);set.menu.Add(new Samon.FacialExpressionEditor.MenuNode{kind=Samon.FacialExpressionEditor.MenuNodeKind.Expression,expressionId=e.id});}
+ Generate();Validate();Check(true,"Generated MA tree validates including pagination");
+ Check(avatar.editableMenu.GetComponentsInChildren<nadena.dev.modular_avatar.core.ModularAvatarMenuInstaller>().Length==1,"One Installer only");
+ Check(avatar.editableMenu.GetComponentsInChildren<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>().All(i=>i.Control.subMenu==null),"All submenus use child items");
+ var selected=set.expressions[9];var marker=Item("expression:"+selected.id);marker.GetComponent<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>().Control.icon=custom;
+ var root=Item("role:Root");root.GetComponent<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>().Control.icon=null;
+ Validate();Check(true,"Icon and explicit null edits accepted");
+ set.menu.Reverse();selected.name="Renamed";
+ bool rejected=false;try{Validate();}catch(System.Reflection.TargetInvocationException){rejected=true;}Check(rejected,"Stale values rejected before build");
+ Generate();Validate();Check(Item("expression:"+selected.id).GetComponent<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>().Control.icon==custom,"Icon survives rename reorder and page move");
+ Check(Item("role:Root").GetComponent<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>().Control.icon==null,"Explicit no-icon survives update");
+ Undo.FlushUndoRecordObjects();Undo.PerformUndo();Check(avatar.editableMenu!=null,"Undo restores old output reference");Undo.PerformRedo();Validate();Check(true,"Redo restores complete output");
+ var prefab=PrefabUtility.SaveAsPrefabAsset(go,folder+"/Output.prefab");loaded=PrefabUtility.LoadPrefabContents(folder+"/Output.prefab");
+ var savedAvatar=loaded.GetComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();export.GetMethod("Validate").Invoke(null,new object[]{savedAvatar});
+ Check(savedAvatar.editableMenu.GetComponentsInChildren<Samon.FacialExpressionEditor.EditableMenuItem>().Where(m=>m.defaultIcon).All(m=>EditorUtility.IsPersistent(m.defaultIcon)),"Default images persist as assets after prefab reload");
+ Check(savedAvatar.editableMenu.GetComponentsInChildren<Samon.FacialExpressionEditor.EditableMenuItem>().Single(m=>m.key.Contains("expression:"+selected.id)).GetComponent<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>().Control.icon==custom,"Custom icon persists after prefab reload");
+ set.menu.Add(new Samon.FacialExpressionEditor.MenuNode{kind=Samon.FacialExpressionEditor.MenuNodeKind.Expression,expressionId=selected.id});Generate();Validate();Check(avatar.editableMenu.GetComponentsInChildren<Samon.FacialExpressionEditor.EditableMenuItem>().Select(m=>m.key).Distinct().Count()==avatar.editableMenu.GetComponentsInChildren<Samon.FacialExpressionEditor.EditableMenuItem>().Length,"Duplicate expression occurrences retain distinct keys"); set.menu.Clear();set.expressions.Clear();Generate();Validate();Check(true,"Legacy gesture-only keys are deterministic");
+ var second=new Samon.FacialExpressionEditor.GestureSet{name="Second"};set.gestureSets.Add(second);var firstNode=new Samon.FacialExpressionEditor.MenuNode{kind=Samon.FacialExpressionEditor.MenuNodeKind.GestureSet,gestureSetId=g.id};var secondNode=new Samon.FacialExpressionEditor.MenuNode{kind=Samon.FacialExpressionEditor.MenuNodeKind.GestureSet,gestureSetId=second.id};set.menu.Add(firstNode);set.menu.Add(secondNode);set.defaultModeId=secondNode.id;Generate();Validate();var modes=avatar.editableMenu.GetComponentsInChildren<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>().Where(i=>i.Control.parameter?.name=="FEE/Mode").ToArray();Check(modes.Single(i=>i.isDefault).label=="Second"&&modes.Single(i=>i.isDefault).Control.value==0,"Non-first starred set is the MA default at zero");Check(modes.All(i=>!i.automaticValue&&!i.isSaved),"Mode values explicit and not saved");set.defaultModeId=firstNode.id;Generate();Validate();modes=avatar.editableMenu.GetComponentsInChildren<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>().Where(i=>i.Control.parameter?.name=="FEE/Mode").ToArray();Check(modes.Single(i=>i.isDefault).label=="Set","Changing star updates exactly one MA default"); return new{passed=checks.Count,checks};
+}catch(Exception e){throw new Exception(string.Join(" | ",checks)+" FAILED: "+e.ToString());}finally{if(loaded)PrefabUtility.UnloadPrefabContents(loaded);UnityEngine.Object.DestroyImmediate(go);AssetDatabase.DeleteAsset(folder);}

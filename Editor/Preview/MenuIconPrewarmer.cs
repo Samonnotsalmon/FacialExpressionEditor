@@ -97,7 +97,7 @@ namespace Samon.FacialExpressionEditor.Editor
             {
                 Clear(avatar);
                 var set = avatar.expressionSet;
-                if (set == null || !set.menuIcons) continue;
+                if (set == null || !set.menuIcons || avatar.editableMenu) continue;
 
                 // ビルドされるのは、アバターの中に入っている表情設定だけ。
                 var root = avatar.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true);

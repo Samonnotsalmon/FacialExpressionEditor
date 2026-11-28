@@ -1,0 +1,47 @@
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var buildType=asm.GetType("Samon.FacialExpressionEditor.Editor.GenerateMenuPass");
+var planType=asm.GetType("Samon.FacialExpressionEditor.Editor.BuildPlan");
+var symbolType=asm.GetType("Samon.FacialExpressionEditor.Editor.MenuSymbolIcons");
+var method=buildType.GetMethod("BuildRootMenu",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
+var source=McpSnippet.All<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true).First(d=>!EditorSceneManager.IsPreviewSceneObject(d));
+var before=EditorJsonUtility.ToJson(source);
+var clone=UnityEngine.Object.Instantiate(source.gameObject);clone.name="FEE022 menu test";
+var set=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();
+var pose=new AnimationClip();AnimationUtility.SetEditorCurve(pose,EditorCurveBinding.FloatCurve("Body",typeof(SkinnedMeshRenderer),"blendShape.Test"),AnimationCurve.Constant(0,1,0));
+var photo=new Texture2D(4,4);var custom=new Texture2D(4,4);
+var checks=new System.Collections.Generic.List<string>();void Check(bool ok,string label){if(!ok)throw new Exception(label);checks.Add(label);}
+var menus=new System.Collections.Generic.List<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu>();
+System.Collections.Generic.IEnumerable<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control> All(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu menu){foreach(var c in menu.controls){yield return c;if(c.subMenu)foreach(var child in All(c.subMenu))yield return child;}}
+try{
+ var context=new nadena.dev.ndmf.BuildContext(clone,null);
+ foreach(Samon.FacialExpressionEditor.MenuIconKind kind in Enum.GetValues(typeof(Samon.FacialExpressionEditor.MenuIconKind))){var icon=(Texture2D)symbolType.GetMethod("Get").Invoke(null,new object[]{set,kind});var pixels=icon.GetPixels32();Check(pixels.All(p=>p.r==255&&p.g==255&&p.b==255)&&pixels.Any(p=>p.a==0)&&pixels.Any(p=>p.a==255),"White and transparent symbol: "+kind);}
+ foreach(var count in new[]{0,1,2,10}){
+  set.gestureSets.Clear();set.parts.Clear();set.expressions.Clear();set.manualEyeLook=count==2;
+  set.eyeLookPoses=Enumerable.Repeat(pose,5).ToArray();
+  var expression=new Samon.FacialExpressionEditor.Expression{name="Photo expression",clip=pose};set.expressions.Add(expression);
+  for(int i=0;i<count;i++){var g=new Samon.FacialExpressionEditor.GestureSet{name="Set "+i};g.mapping.right[1]=expression.id;set.gestureSets.Add(g);}
+  var part=new Samon.FacialExpressionEditor.FacialPart{name="Photo part",clip=pose,folder="My folder"};part.properties.Add("Body|UnityEngine.SkinnedMeshRenderer|blendShape.Test");
+  if(count==2)set.parts.Add(part);
+  set.menuIconOverrides=new System.Collections.Generic.List<Samon.FacialExpressionEditor.MenuIconOverride>{new Samon.FacialExpressionEditor.MenuIconOverride{kind=Samon.FacialExpressionEditor.MenuIconKind.Settings,texture=custom}};
+  var plan=planType.GetMethod("Create").Invoke(null,new object[]{set});
+  var icons=new System.Collections.Generic.Dictionary<string,Texture2D>{{expression.id,photo},{"part:"+part.id,photo}};
+  var root=(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu)method.Invoke(null,new object[]{context,set,plan,icons});menus.Add(root);
+  var top=root.controls.Single().subMenu;var names=top.controls.Select(c=>c.name).ToArray();
+  Check(names.Contains("表情セット")== (count>1),"Set folder conditional: "+count);
+  Check(names.Contains("パーツ")== (count==2),"Parts folder conditional: "+count);
+  var expected=count==2?new[]{"表情セット","表情選択","パーツ","視線操作","設定"}:count>1?new[]{"表情セット","表情選択","設定"}:new[]{"表情選択","設定"};
+  Check(names.SequenceEqual(expected),"Top-level order: "+count);
+  Check(top.controls.Single(c=>c.name=="設定").icon==custom,"Custom settings icon: "+count);
+  Check(All(root).Where(c=>c.subMenu||c.name=="固定解除"||c.name=="Base"||c.name=="すべてOFF"||c.name=="目線").All(c=>c.icon),"Operation/folder icons exist: "+count);
+  Check(All(root).Where(c=>c.parameter?.name=="FEE/Emote"&&c.name==expression.name).All(c=>c.icon==photo),"Expression photo retained: "+count);
+  if(count==2)Check(All(root).Single(c=>c.name==part.name).icon==photo,"Part photo retained under folder");
+  if(count==10)Check(All(root).Any(c=>c.name=="次へ"&&c.icon),"Pagination has next icon");
+ }
+ set.menuIconOverrides.Clear();Check((Texture2D)symbolType.GetMethod("Get").Invoke(null,new object[]{set,Samon.FacialExpressionEditor.MenuIconKind.Settings})!=custom,"Clearing override restores standard");
+ Check(EditorJsonUtility.ToJson(source)==before,"Original descriptor untouched");
+ return new{passed=checks.Count,checks};
+}finally{
+ var objects=new System.Collections.Generic.HashSet<UnityEngine.Object>();foreach(var root in menus){objects.Add(root);foreach(var c in All(root)){if(c.subMenu)objects.Add(c.subMenu);if(c.icon&&c.icon!=photo&&c.icon!=custom&&c.icon.hideFlags!=HideFlags.HideAndDontSave)objects.Add(c.icon);}}
+ foreach(var obj in objects)if(obj)UnityEngine.Object.DestroyImmediate(obj);
+ UnityEngine.Object.DestroyImmediate(clone);UnityEngine.Object.DestroyImmediate(set);UnityEngine.Object.DestroyImmediate(pose);UnityEngine.Object.DestroyImmediate(photo);UnityEngine.Object.DestroyImmediate(custom);
+}

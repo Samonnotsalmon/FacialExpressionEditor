@@ -1,0 +1,13 @@
+var source=McpSnippet.All<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true).First(d=>d.name=="Nakiya_+_MZ_OTK"&&!EditorSceneManager.IsPreviewSceneObject(d));
+var clone=UnityEngine.Object.Instantiate(source.gameObject);clone.name="FEE026 diagnostic";
+try{
+ nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(clone);
+ var d=clone.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
+ var fx=(UnityEditor.Animations.AnimatorController)d.baseAnimationLayers.First(l=>l.type==VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX).animatorController;
+ var mode=d.expressionParameters.parameters.Single(p=>p.name=="FEE/Mode");
+ var emote=d.expressionParameters.parameters.Single(p=>p.name=="FEE/Emote");
+ if(mode.defaultValue!=0||emote.defaultValue!=0)throw new Exception("Invalid startup: mode="+mode.defaultValue+", emote="+emote.defaultValue);
+ var layer=fx.layers.Single(l=>l.name=="[FacialExpressionEditor] Expression");
+ var transitions=layer.stateMachine.anyStateTransitions.Where(t=>t.conditions.Any(c=>c.parameter=="FEE/Mode"&&c.threshold==0)&&t.conditions.Any(c=>c.parameter=="FEE/Emote"&&c.threshold==0)&&t.conditions.Any(c=>c.parameter.StartsWith("Gesture"))).ToArray();
+ if(transitions.Length==0)throw new Exception("No startup gesture transitions");
+ return new{mode=mode.defaultValue,emote=emote.defaultValue,modeSaved=mode.saved,emoteSaved=emote.saved,gestureTransitions=transitions.Length,fxMode=fx.parameters.Single(p=>p.name=="FEE/Mode").defaultInt,fxEmote=fx.parameters.Single(p=>p.name=="FEE/Emote").defaultInt};}finally{UnityEngine.Object.DestroyImmediate(clone);}
