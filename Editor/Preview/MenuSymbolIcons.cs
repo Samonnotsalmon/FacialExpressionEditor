@@ -1,20 +1,28 @@
 using System;
-using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 
 namespace Samon.FacialExpressionEditor.Editor
 {
-    // 白い記号をベクター形状から描く。外部アバターの画像やEditor内蔵画像には依存しない。
+    // 共通の記号画像はパッケージに同梱し、全Prefabで同じアセットを参照する。
     internal static class MenuSymbolIcons
     {
-        private static readonly Dictionary<MenuIconKind, Texture2D> Cache = new Dictionary<MenuIconKind, Texture2D>();
+        internal const string AssetFolder = "Packages/jp.samon.facial-expression-editor/Runtime/Icons/Menu";
         public static readonly string[] Labels = { "表情（入口）", "表情セット", "表情選択", "パーツ", "視線操作・目線", "設定", "固定解除・すべてOFF", "まばたきOFF", "次へ", "分類フォルダ", "セットの選択", "ダンスギミック", "手動操作ON", "Base（写真がない場合）" };
 
         public static Texture2D Get(ExpressionSet set, MenuIconKind kind)
         {
             var custom = set.menuIconOverrides?.Find(i => i != null && i.kind == kind)?.texture;
             if (custom) return custom;
-            if (Cache.TryGetValue(kind, out var cached) && cached) return cached;
+            var path = AssetFolder + "/NSL_" + kind + ".png";
+            var asset = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (!asset) throw new InvalidOperationException("共通メニューアイコンが見つかりません。FEEパッケージを確認してください：" + path);
+            return asset;
+        }
+
+        // パッケージの画像を制作・更新するためだけに使用。通常のメニュー生成では呼ばない。
+        internal static Texture2D Render(MenuIconKind kind)
+        {
             const int size = 128, samples = 3;
             var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
             { name = "FEE Symbol " + kind, hideFlags = HideFlags.HideAndDontSave, wrapMode = TextureWrapMode.Clamp };
@@ -28,7 +36,7 @@ namespace Samon.FacialExpressionEditor.Editor
                     if (Shape(kind, new Vector2((x + (sx + .5f) / samples) / size, (y + (sy + .5f) / samples) / size))) count++;
                 pixels[y * size + x] = new Color32(255, 255, 255, (byte)(255 * count / (samples * samples)));
             }
-            texture.SetPixels32(pixels); texture.Apply(); Cache[kind] = texture;
+            texture.SetPixels32(pixels); texture.Apply();
             return texture;
         }
 

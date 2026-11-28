@@ -25,7 +25,7 @@ try{
  bool rejected=false;try{helper.GetMethod("Validate").Invoke(null,new object[]{set});}catch(System.Reflection.TargetInvocationException){rejected=true;}
  Check(rejected,"Missing direction rejected");set.eyeLookPoses[2]=saved;
  clone=UnityEngine.Object.Instantiate(source.gameObject);clone.name="FEE019 build verification";
- foreach(var old in clone.GetComponentsInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true))UnityEngine.Object.DestroyImmediate(old);
+ foreach(var old in clone.GetComponentsInChildren<Samon.FacialExpressionEditor.FacialExpressionAvatar>(true)){if(old.editableMenu&&old.editableMenu.transform.IsChildOf(clone.transform))UnityEngine.Object.DestroyImmediate(old.editableMenu.gameObject);UnityEngine.Object.DestroyImmediate(old);}
  var fee=clone.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();fee.expressionSet=set; asm.GetType("Samon.FacialExpressionEditor.Editor.EditableMenuExport").GetMethod("Generate").Invoke(null,new object[]{fee});
  nadena.dev.ndmf.AvatarProcessor.ProcessAvatar(clone);
  var d=clone.GetComponent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>();
@@ -44,5 +44,5 @@ try{
  Check(EditorJsonUtility.ToJson(source)==snapshot,"Source descriptor unchanged");
  Check(source.transform.Cast<Transform>().Select(t=>t.name).SequenceEqual(sourceOrder),"Source Hierarchy order unchanged");
  return new{passed=checks.Count,checks,rootOrder=d.expressionsMenu.controls.Select(c=>c.name)};
-}finally{if(clone)UnityEngine.Object.DestroyImmediate(clone);AssetDatabase.DeleteAsset(folder);}
+}catch(Exception e){throw new Exception(string.Join(" | ",checks)+" FAILED: "+e.ToString());}finally{if(clone)UnityEngine.Object.DestroyImmediate(clone);AssetDatabase.DeleteAsset(folder);}
 

@@ -14,7 +14,7 @@ var menus=new System.Collections.Generic.List<VRC.SDK3.Avatars.ScriptableObjects
 System.Collections.Generic.IEnumerable<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control> All(VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu menu){foreach(var c in menu.controls){yield return c;if(c.subMenu)foreach(var child in All(c.subMenu))yield return child;}}
 try{
  var context=new nadena.dev.ndmf.BuildContext(clone,null);
- foreach(Samon.FacialExpressionEditor.MenuIconKind kind in Enum.GetValues(typeof(Samon.FacialExpressionEditor.MenuIconKind))){var icon=(Texture2D)symbolType.GetMethod("Get").Invoke(null,new object[]{set,kind});var pixels=icon.GetPixels32();Check(pixels.All(p=>p.r==255&&p.g==255&&p.b==255)&&pixels.Any(p=>p.a==0)&&pixels.Any(p=>p.a==255),"White and transparent symbol: "+kind);}
+ foreach(Samon.FacialExpressionEditor.MenuIconKind kind in Enum.GetValues(typeof(Samon.FacialExpressionEditor.MenuIconKind))){var icon=(Texture2D)symbolType.GetMethod("Get").Invoke(null,new object[]{set,kind});var decoded=new Texture2D(2,2);decoded.LoadImage(System.IO.File.ReadAllBytes(AssetDatabase.GetAssetPath(icon)));var pixels=decoded.GetPixels32();UnityEngine.Object.DestroyImmediate(decoded);Check(pixels.All(p=>p.r==255&&p.g==255&&p.b==255)&&pixels.Any(p=>p.a==0)&&pixels.Any(p=>p.a==255),"White and transparent symbol: "+kind);}
  foreach(var count in new[]{0,1,2,10}){
   set.gestureSets.Clear();set.parts.Clear();set.expressions.Clear();set.manualEyeLook=count==2;
   set.eyeLookPoses=Enumerable.Repeat(pose,5).ToArray();
@@ -42,6 +42,6 @@ try{
  return new{passed=checks.Count,checks};
 }finally{
  var objects=new System.Collections.Generic.HashSet<UnityEngine.Object>();foreach(var root in menus){objects.Add(root);foreach(var c in All(root)){if(c.subMenu)objects.Add(c.subMenu);if(c.icon&&c.icon!=photo&&c.icon!=custom&&c.icon.hideFlags!=HideFlags.HideAndDontSave)objects.Add(c.icon);}}
- foreach(var obj in objects)if(obj)UnityEngine.Object.DestroyImmediate(obj);
+ foreach(var obj in objects)if(obj&&!EditorUtility.IsPersistent(obj))UnityEngine.Object.DestroyImmediate(obj);
  UnityEngine.Object.DestroyImmediate(clone);UnityEngine.Object.DestroyImmediate(set);UnityEngine.Object.DestroyImmediate(pose);UnityEngine.Object.DestroyImmediate(photo);UnityEngine.Object.DestroyImmediate(custom);
 }

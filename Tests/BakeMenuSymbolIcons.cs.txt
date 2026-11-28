@@ -1,0 +1,6 @@
+var output="D:/Codex/FacialExpressionEditor/Runtime/Icons/Menu";
+System.IO.Directory.CreateDirectory(output);
+var type=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly.GetType("Samon.FacialExpressionEditor.Editor.MenuSymbolIcons");
+
+foreach(Samon.FacialExpressionEditor.MenuIconKind kind in Enum.GetValues(typeof(Samon.FacialExpressionEditor.MenuIconKind))){var texture=(Texture2D)type.GetMethod("Render",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static).Invoke(null,new object[]{kind});try{System.IO.File.WriteAllBytes(output+"/NSL_"+kind+".png",texture.EncodeToPNG());}finally{UnityEngine.Object.DestroyImmediate(texture);}}
+return new{icons=14,output};

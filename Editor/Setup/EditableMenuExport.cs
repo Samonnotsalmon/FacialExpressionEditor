@@ -158,12 +158,13 @@ namespace Samon.FacialExpressionEditor.Editor
                         }
                     }
                 }
-                var folder = AssetPathUtility.EnsureFolder(AssetPathUtility.SetupFolder(avatar.expressionSet), "Icons", "Menu");
+                string folder = null;
                 var saved = new Dictionary<Texture2D, Texture2D>();
                 Texture2D Save(Texture2D texture)
                 {
                     if (!texture || EditorUtility.IsPersistent(texture)) return texture;
                     if (saved.TryGetValue(texture, out var result)) return result;
+                    if (folder == null) folder = AssetPathUtility.EnsureFolder(AssetPathUtility.SetupFolder(avatar.expressionSet), "Icons", "Menu");
                     var bytes = texture.EncodeToPNG();
                     string hash;
                     using (var md5 = System.Security.Cryptography.MD5.Create()) hash = BitConverter.ToString(md5.ComputeHash(bytes)).Replace("-", "");

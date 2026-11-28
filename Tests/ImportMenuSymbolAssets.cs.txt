@@ -1,0 +1,9 @@
+var folder="Packages/jp.samon.facial-expression-editor/Runtime/Icons/Menu";
+AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+foreach(var file in System.IO.Directory.GetFiles(folder,"*.png")){
+ var path=file.Replace('\\','/');var importer=(TextureImporter)AssetImporter.GetAtPath(path);
+ importer.textureType=TextureImporterType.Default;importer.alphaSource=TextureImporterAlphaSource.FromInput;importer.alphaIsTransparency=false;
+ importer.mipmapEnabled=false;importer.isReadable=false;importer.textureCompression=TextureImporterCompression.Uncompressed;importer.wrapMode=TextureWrapMode.Clamp;importer.maxTextureSize=128;importer.SaveAndReimport();
+ System.IO.File.Copy(path+".meta","D:/Codex/FacialExpressionEditor/Runtime/Icons/Menu/"+System.IO.Path.GetFileName(path)+".meta",true);
+}
+return new{imported=System.IO.Directory.GetFiles(folder,"*.png").Length};

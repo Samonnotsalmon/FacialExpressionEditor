@@ -103,15 +103,8 @@ namespace Samon.FacialExpressionEditor.Editor
             Texture2D Symbol(MenuIconKind kind)
             {
                 if (symbols.TryGetValue(kind, out var texture)) return texture;
-                var source = MenuSymbolIcons.Get(set, kind);
-                // 標準画像だけをビルド用に複製。差し替え画像とプレビューキャッシュを変更しない。
-                if (source.hideFlags == HideFlags.HideAndDontSave)
-                {
-                    texture = Object.Instantiate(source); texture.hideFlags = HideFlags.None;
-                    if (context != null) EditorUtility.CompressTexture(texture, IconFormat(EditorUserBuildSettings.activeBuildTarget), TextureCompressionQuality.Normal);
-                    context?.AssetSaver.SaveAsset(texture);
-                }
-                else texture = source;
+                // 同梱の共通画像と差し替え画像をそのまま参照する。
+                texture = MenuSymbolIcons.Get(set, kind);
                 symbols[kind] = texture;
                 return texture;
             }

@@ -1,0 +1,17 @@
+var asm=typeof(Samon.FacialExpressionEditor.Editor.FxImporter).Assembly;
+var symbol=asm.GetType("Samon.FacialExpressionEditor.Editor.MenuSymbolIcons");var export=asm.GetType("Samon.FacialExpressionEditor.Editor.EditableMenuExport");
+var folder="Assets/__FEE028_"+Guid.NewGuid().ToString("N");AssetDatabase.CreateFolder("Assets",folder.Substring(7));
+var a=new GameObject("FEE028 A");var b=new GameObject("FEE028 B");
+var sa=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();var sb=ScriptableObject.CreateInstance<Samon.FacialExpressionEditor.ExpressionSet>();sa.menuIcons=false;sb.menuIcons=false;AssetDatabase.CreateAsset(sa,folder+"/A.asset");AssetDatabase.CreateAsset(sb,folder+"/B.asset");
+var aa=a.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();aa.expressionSet=sa;var bb=b.AddComponent<Samon.FacialExpressionEditor.FacialExpressionAvatar>();bb.expressionSet=sb;
+var checks=new System.Collections.Generic.List<string>();void Check(bool ok,string label){if(!ok)throw new Exception(label);checks.Add(label);}
+try{
+ foreach(Samon.FacialExpressionEditor.MenuIconKind kind in Enum.GetValues(typeof(Samon.FacialExpressionEditor.MenuIconKind))){var x=(Texture2D)symbol.GetMethod("Get").Invoke(null,new object[]{sa,kind});var y=(Texture2D)symbol.GetMethod("Get").Invoke(null,new object[]{sb,kind});Check(x==y&&AssetDatabase.GetAssetPath(x).StartsWith("Packages/jp.samon.facial-expression-editor/Runtime/Icons/Menu/"),"Shared package icon: "+kind);}
+ export.GetMethod("Generate").Invoke(null,new object[]{aa});export.GetMethod("Generate").Invoke(null,new object[]{bb});
+ Check(!System.IO.Directory.Exists(folder+"/Icons"),"Common-only export creates no per-setting image folder");
+ var ma=aa.editableMenu.GetComponentsInChildren<Samon.FacialExpressionEditor.EditableMenuItem>();var mb=bb.editableMenu.GetComponentsInChildren<Samon.FacialExpressionEditor.EditableMenuItem>();Check(ma.All(x=>x.defaultIcon==mb.Single(y=>y.key==x.key).defaultIcon),"Different outputs share all standard texture references");
+ PrefabUtility.SaveAsPrefabAsset(a,folder+"/A.prefab");PrefabUtility.SaveAsPrefabAsset(b,folder+"/B.prefab");
+ var saved=AssetDatabase.LoadAssetAtPath<GameObject>(folder+"/A.prefab").GetComponentsInChildren<Samon.FacialExpressionEditor.EditableMenuItem>();Check(saved.All(m=>AssetDatabase.GetAssetPath(m.defaultIcon).StartsWith("Packages/")),"Saved prefab references packaged textures");
+ var custom=new Texture2D(4,4);AssetDatabase.CreateAsset(custom,folder+"/Custom.asset");var root=ma.Single(m=>m.key=="/role:Root");root.GetComponent<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>().Control.icon=custom;export.GetMethod("Generate").Invoke(null,new object[]{aa});Check(aa.editableMenu.GetComponentsInChildren<Samon.FacialExpressionEditor.EditableMenuItem>().Single(m=>m.key=="/role:Root").GetComponent<nadena.dev.modular_avatar.core.ModularAvatarMenuItem>().Control.icon==custom,"Manual override preserved");
+ return new{passed=checks.Count,checks};
+}finally{UnityEngine.Object.DestroyImmediate(a);UnityEngine.Object.DestroyImmediate(b);AssetDatabase.DeleteAsset(folder);}
